@@ -40,7 +40,10 @@ export interface ElectronAPI {
   recentList: () => Promise<RecentFolder[]>
   recentAdd: (folderPath: string) => Promise<void>
   clipboardSaveImage: (cwd: string) => Promise<string | null>
-  openInVscode: (folderPath: string) => Promise<void>
+  openInEditor: (folderPath: string) => Promise<void>
+  editorGetAvailable: () => Promise<Array<{ id: string; name: string; cmd: string }>>
+  editorGetCurrent: () => Promise<string>
+  editorSetCurrent: (cmd: string) => Promise<void>
   onWindowListUpdated: (callback: (windows: WindowInfo[]) => void) => () => void
 }
 

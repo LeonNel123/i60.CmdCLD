@@ -54,9 +54,18 @@ contextBridge.exposeInMainWorld('api', {
   windowList: (): Promise<Array<{ id: string; label: string }>> =>
     ipcRenderer.invoke('window:list'),
 
-  // VS Code
-  openInVscode: (folderPath: string): Promise<void> =>
-    ipcRenderer.invoke('vscode:open', folderPath),
+  // Editor
+  openInEditor: (folderPath: string): Promise<void> =>
+    ipcRenderer.invoke('editor:open', folderPath),
+
+  editorGetAvailable: (): Promise<Array<{ id: string; name: string; cmd: string }>> =>
+    ipcRenderer.invoke('editor:getAvailable'),
+
+  editorGetCurrent: (): Promise<string> =>
+    ipcRenderer.invoke('editor:getCurrent'),
+
+  editorSetCurrent: (cmd: string): Promise<void> =>
+    ipcRenderer.invoke('editor:setCurrent', cmd),
 
   onWindowListUpdated: (callback: (windows: Array<{ id: string; label: string }>) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, windows: any): void => callback(windows)

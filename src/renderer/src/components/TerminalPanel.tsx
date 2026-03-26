@@ -32,6 +32,9 @@ export function TerminalPanel({
   const fitAddonRef = useRef<FitAddon | null>(null)
   const cleanupRef = useRef<{ removeData: () => void; removeExit: () => void } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [editorName, setEditorName] = useState('Editor')
+  const [availableEditors, setAvailableEditors] = useState<Array<{ id: string; name: string; cmd: string }>>([])
+  const [showEditorPicker, setShowEditorPicker] = useState(false)
 
   useEffect(() => {
     if (!termRef.current) return
@@ -132,6 +135,18 @@ export function TerminalPanel({
     }
   }, [id, folderPath])
 
+  // Load editor info once
+  useEffect(() => {
+    Promise.all([
+      window.api.editorGetAvailable(),
+      window.api.editorGetCurrent(),
+    ]).then(([editors, current]) => {
+      setAvailableEditors(editors)
+      const found = editors.find((e) => e.cmd === current)
+      setEditorName(found?.name || 'Editor')
+    }).catch(() => {})
+  }, [])
+
   // Close context menu on outside click / Escape
   useEffect(() => {
     if (!contextMenu) return
@@ -150,7 +165,16 @@ export function TerminalPanel({
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
     setContextMenu({ x: e.clientX, y: e.clientY })
+    setShowEditorPicker(false)
   }
+
+  const menuItemStyle: React.CSSProperties = {
+    display: 'block', width: '100%', padding: '6px 12px',
+    background: 'none', border: 'none', color: '#ccc',
+    fontSize: '12px', fontFamily: 'monospace', cursor: 'pointer', textAlign: 'left',
+  }
+  const menuHoverIn = (e: React.MouseEvent) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)' }
+  const menuHoverOut = (e: React.MouseEvent) => { (e.target as HTMLElement).style.background = 'none' }
 
   return (
     <div style={{
@@ -205,34 +229,81 @@ export function TerminalPanel({
       <div ref={termRef} style={{ flex: 1, overflow: 'hidden' }} />
 
       {contextMenu && (
-        <div style={{
-          position: 'fixed',
-          left: contextMenu.x,
-          top: contextMenu.y,
-          background: '#1a1a2e',
-          border: '1px solid #333',
-          borderRadius: '6px',
-          padding: '4px 0',
-          minWidth: '160px',
-          zIndex: 2000,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-        }}>
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            left: contextMenu.x,
+            top: contextMenu.y,
+            background: '#1a1a2e',
+            border: '1px solid #333',
+            borderRadius: '6px',
+            padding: '4px 0',
+            minWidth: '180px',
+            zIndex: 2000,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          }}
+        >
           <button
-            onMouseDown={(e) => e.stopPropagation()}
             onClick={() => {
-              window.api.openInVscode(folderPath)
+              window.api.openInEditor(folderPath)
               setContextMenu(null)
             }}
-            style={{
-              display: 'block', width: '100%', padding: '6px 12px',
-              background: 'none', border: 'none', color: '#ccc',
-              fontSize: '12px', fontFamily: 'monospace', cursor: 'pointer', textAlign: 'left',
-            }}
-            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)' }}
-            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'none' }}
+            style={menuItemStyle}
+            onMouseEnter={menuHoverIn}
+            onMouseLeave={menuHoverOut}
           >
-            Open in VS Code
+            Open in {editorName}
           </button>
+          {availableEditors.length > 1 && (
+            <>
+              <div style={{ height: '1px', background: '#333', margin: '4px 0' }} />
+              <div
+                style={{ position: 'relative' }}
+                onMouseEnter={() => setShowEditorPicker(true)}
+                onMouseLeave={() => setShowEditorPicker(false)}
+              >
+                <button
+                  style={{ ...menuItemStyle, display: 'flex', justifyContent: 'space-between' }}
+                  onMouseEnter={menuHoverIn}
+                  onMouseLeave={menuHoverOut}
+                >
+                  <span>Change Editor</span>
+                  <span style={{ fontSize: '10px' }}>{'\u25B6'}</span>
+                </button>
+                {showEditorPicker && (
+                  <div style={{
+                    position: 'absolute',
+                    left: '100%',
+                    top: 0,
+                    background: '#1a1a2e',
+                    border: '1px solid #333',
+                    borderRadius: '6px',
+                    padding: '4px 0',
+                    minWidth: '150px',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                  }}>
+                    {availableEditors.map((e) => (
+                      <button
+                        key={e.id}
+                        onClick={() => {
+                          window.api.editorSetCurrent(e.cmd)
+                          setEditorName(e.name)
+                          setContextMenu(null)
+                          setShowEditorPicker(false)
+                        }}
+                        style={menuItemStyle}
+                        onMouseEnter={menuHoverIn}
+                        onMouseLeave={menuHoverOut}
+                      >
+                        {e.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

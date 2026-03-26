@@ -6,6 +6,8 @@ import { PtyManager } from './pty-manager'
 import { Store } from './store'
 import { WindowRegistry } from './window-registry'
 import { RecentDB } from './recent-db'
+import { Settings } from './settings'
+import { detectEditors, getDefaultEditor } from './editor-detect'
 import type { TerminalMeta } from './pty-manager'
 
 // File logger for debugging startup issues
@@ -29,6 +31,7 @@ log('Single instance lock acquired')
 let ptyManager: PtyManager
 let store: Store
 let recentDB: RecentDB
+let settings: Settings
 const registry = new WindowRegistry()
 const newWindowIds = new Set<string>()
 
@@ -36,6 +39,16 @@ try {
   ptyManager = new PtyManager()
   store = new Store(join(app.getPath('userData'), 'sessions.json'))
   recentDB = new RecentDB(join(app.getPath('userData'), 'recent.db'))
+  settings = new Settings(join(app.getPath('userData'), 'settings.json'))
+
+  // Auto-detect editors and set default if not configured
+  const availableEditors = detectEditors()
+  log(`Detected editors: ${availableEditors.map(e => e.name).join(', ') || 'none'}`)
+  const currentEditor = settings.get('editor')
+  if (!availableEditors.find(e => e.cmd === currentEditor)) {
+    const def = getDefaultEditor(availableEditors)
+    if (def) settings.set('editor', def.cmd)
+  }
   log('All services created')
 } catch (e) {
   log(`Service init FAILED: ${e}`)
@@ -171,9 +184,23 @@ ipcMain.handle('window:list', (event) => {
   return registry.listExcluding(callerId)
 })
 
-// VS Code — no shell: true, prevents command injection
-ipcMain.handle('vscode:open', (_event, folderPath: string) => {
-  execFile('code', [folderPath], () => {})
+// Open in editor — uses configured editor
+ipcMain.handle('editor:open', (_event, folderPath: string) => {
+  const cmd = settings.get('editor')
+  execFile(cmd, [folderPath], () => {})
+})
+
+// Editor settings
+ipcMain.handle('editor:getAvailable', () => {
+  return detectEditors()
+})
+
+ipcMain.handle('editor:getCurrent', () => {
+  return settings.get('editor')
+})
+
+ipcMain.handle('editor:setCurrent', (_event, cmd: string) => {
+  settings.set('editor', cmd)
 })
 
 // Clipboard image paste — saves to .screenshots/ inside the project folder
