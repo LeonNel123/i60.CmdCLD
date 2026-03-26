@@ -27,35 +27,41 @@ export default function App() {
   const [loaded, setLoaded] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>({ type: 'grid' })
 
-  // Load saved state on mount
+  // Load saved state on mount — only if this is the primary window
   useEffect(() => {
-    window.api.loadState().then((state) => {
-      if (state?.windows?.length) {
-        const win = state.windows[0]
-        if (win?.folders?.length) {
-          const entries: TerminalEntry[] = win.folders.map((f) => ({
-            id: crypto.randomUUID(),
-            path: f.path,
-            name: f.path.split(/[\\/]/).pop() || f.path,
-            color: f.color,
-          }))
-          setTerminals(entries)
+    window.api.shouldLoadState().then((shouldLoad) => {
+      if (!shouldLoad) {
+        setLoaded(true)
+        return
+      }
+      window.api.loadState().then((state) => {
+        if (state?.windows?.length) {
+          const win = state.windows[0]
+          if (win?.folders?.length) {
+            const entries: TerminalEntry[] = win.folders.map((f) => ({
+              id: crypto.randomUUID(),
+              path: f.path,
+              name: f.path.split(/[\\/]/).pop() || f.path,
+              color: f.color,
+            }))
+            setTerminals(entries)
 
-          const hasLayouts = win.folders.every((f) => f.layout)
-          if (hasLayouts) {
-            setLayouts(entries.map((e, i) => ({
-              ...win.folders[i].layout,
-              i: e.id,
-            })))
-          } else {
-            setLayouts(calculateLayout(entries.length).map((pos, i) => ({
-              ...pos,
-              i: entries[i].id,
-            })))
+            const hasLayouts = win.folders.every((f) => f.layout)
+            if (hasLayouts) {
+              setLayouts(entries.map((e, i) => ({
+                ...win.folders[i].layout,
+                i: e.id,
+              })))
+            } else {
+              setLayouts(calculateLayout(entries.length).map((pos, i) => ({
+                ...pos,
+                i: entries[i].id,
+              })))
+            }
           }
         }
-      }
-      setLoaded(true)
+        setLoaded(true)
+      })
     })
   }, [])
 
@@ -111,6 +117,7 @@ export default function App() {
 
   const handleConfirmClose = useCallback(() => {
     if (!closingId) return
+    // PTY is already killed by TerminalPanel.handleClose before onClose fires
     const newTerminals = terminals.filter((t) => t.id !== closingId)
     setTerminals(newTerminals)
 
@@ -149,10 +156,7 @@ export default function App() {
 
   const gridRows = Math.ceil(Math.sqrt(terminals.length || 1))
   const rowHeight = Math.max(150, Math.floor(window.innerHeight / gridRows) - 4)
-
-  const focusedTerminal = viewMode.type === 'focused'
-    ? terminals.find((t) => t.id === viewMode.terminalId)
-    : null
+  const isFocused = viewMode.type === 'focused'
 
   return (
     <div style={{ height: '100vh', display: 'flex', background: '#0a0a1a' }}>
@@ -164,8 +168,8 @@ export default function App() {
         onAddFolder={handleAddFolder}
         onNewWindow={handleNewWindow}
       />
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        {terminals.length === 0 ? (
+      <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+        {terminals.length === 0 && (
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -176,18 +180,30 @@ export default function App() {
           }}>
             Click "+ Add Folder" to start a Claude session
           </div>
-        ) : focusedTerminal ? (
-          <div style={{ height: '100%' }}>
+        )}
+
+        {/* Focused mode: all terminals rendered, only selected visible */}
+        {isFocused && terminals.map((t) => (
+          <div
+            key={`focused-${t.id}`}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: viewMode.terminalId === t.id ? 'block' : 'none',
+            }}
+          >
             <TerminalPanel
-              key={focusedTerminal.id}
-              id={focusedTerminal.id}
-              folderPath={focusedTerminal.path}
-              folderName={focusedTerminal.name}
-              color={focusedTerminal.color}
-              onClose={() => handleRequestClose(focusedTerminal.id)}
+              id={t.id}
+              folderPath={t.path}
+              folderName={t.name}
+              color={t.color}
+              onClose={() => handleRequestClose(t.id)}
             />
           </div>
-        ) : (
+        ))}
+
+        {/* Grid mode */}
+        {!isFocused && terminals.length > 0 && (
           <ResponsiveGridLayout
             layouts={{ lg: layouts }}
             breakpoints={{ lg: 0 }}

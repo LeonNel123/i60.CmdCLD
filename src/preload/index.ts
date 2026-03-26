@@ -36,7 +36,10 @@ contextBridge.exposeInMainWorld('api', {
   saveState: (state: unknown): Promise<void> =>
     ipcRenderer.invoke('store:save', state),
 
-  // New: window management
+  // Window management
+  shouldLoadState: (): Promise<boolean> =>
+    ipcRenderer.invoke('window:shouldLoadState'),
+
   windowCreate: (): Promise<string> =>
     ipcRenderer.invoke('window:create'),
 

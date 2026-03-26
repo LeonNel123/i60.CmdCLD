@@ -15,6 +15,7 @@ if (!gotLock) {
 const ptyManager = new PtyManager()
 const store = new Store(join(app.getPath('userData'), 'sessions.json'))
 const registry = new WindowRegistry()
+let isFirstWindow = true
 
 function createWindow(windowId?: string): { id: string; window: BrowserWindow } {
   const id = windowId || crypto.randomUUID()
@@ -138,6 +139,18 @@ ipcMain.handle('dialog:selectFolder', async (event) => {
     properties: ['openDirectory'],
   })
   return result.canceled ? null : result.filePaths[0]
+})
+
+// Tell renderer whether to load saved state (only first window does)
+ipcMain.handle('window:shouldLoadState', (event) => {
+  const windowId = getWindowIdFromEvent(event)
+  if (!windowId) return false
+  // First window loads state, subsequent windows start empty
+  if (isFirstWindow) {
+    isFirstWindow = false
+    return true
+  }
+  return false
 })
 
 // Store IPC handlers

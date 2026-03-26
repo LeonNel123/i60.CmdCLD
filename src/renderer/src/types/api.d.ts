@@ -37,6 +37,7 @@ export interface ElectronAPI {
   selectFolder: () => Promise<string | null>
   loadState: () => Promise<MultiWindowState | null>
   saveState: (state: MultiWindowState) => Promise<void>
+  shouldLoadState: () => Promise<boolean>
   windowCreate: () => Promise<string>
   windowList: () => Promise<WindowInfo[]>
   openInVscode: (folderPath: string) => Promise<void>

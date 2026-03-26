@@ -3,14 +3,15 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 
+// Global set of PTY IDs that have been created — prevents duplicates on remount
+const activePtys = new Set<string>()
+
 interface TerminalPanelProps {
   id: string
   folderPath: string
   folderName: string
   color: string
   onClose: () => void
-  initialScrollback?: string
-  skipAutoLaunch?: boolean
 }
 
 export function TerminalPanel({
@@ -19,8 +20,6 @@ export function TerminalPanel({
   folderName,
   color,
   onClose,
-  initialScrollback,
-  skipAutoLaunch,
 }: TerminalPanelProps) {
   const termRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -46,13 +45,19 @@ export function TerminalPanel({
     requestAnimationFrame(() => {
       fitAddon.fit()
 
-      if (initialScrollback) {
-        term.write(initialScrollback)
-      }
+      // Only create the PTY if it doesn't already exist
+      if (!activePtys.has(id)) {
+        activePtys.add(id)
+        window.api.createTerminal(id, folderPath).catch(() => {
+          term.write('\r\n\x1b[31m[Failed to create terminal]\x1b[0m\r\n')
+          activePtys.delete(id)
+        })
 
-      window.api.createTerminal(id, folderPath).catch(() => {
-        term.write('\r\n\x1b[31m[Failed to create terminal]\x1b[0m\r\n')
-      })
+        // Auto-launch Claude only on first create
+        setTimeout(() => {
+          window.api.writeTerminal(id, 'claude --dangerously-skip-permissions\r')
+        }, 1000)
+      }
 
       const removeData = window.api.onTerminalData(id, (data) => {
         term.write(data)
@@ -60,6 +65,7 @@ export function TerminalPanel({
 
       const removeExit = window.api.onTerminalExit(id, (code) => {
         term.write(`\r\n\x1b[33m[Process exited with code ${code}]\x1b[0m\r\n`)
+        activePtys.delete(id)
       })
 
       term.onData((data) => {
@@ -79,12 +85,6 @@ export function TerminalPanel({
         }
         return true
       })
-
-      if (!skipAutoLaunch) {
-        setTimeout(() => {
-          window.api.writeTerminal(id, 'claude --dangerously-skip-permissions\r')
-        }, 1000)
-      }
 
       ;(term as any)._cmdcld_cleanup = { removeData, removeExit }
     })
@@ -106,7 +106,7 @@ export function TerminalPanel({
         cleanup.removeExit()
       }
       term.dispose()
-      window.api.killTerminal(id)
+      // Do NOT kill the PTY here — only kill on explicit close via killTerminal()
     }
   }, [id, folderPath])
 
@@ -128,6 +128,13 @@ export function TerminalPanel({
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
     setContextMenu({ x: e.clientX, y: e.clientY })
+  }
+
+  const handleClose = () => {
+    // Explicitly kill the PTY only when the user closes the terminal
+    activePtys.delete(id)
+    window.api.killTerminal(id)
+    onClose()
   }
 
   return (
@@ -165,7 +172,7 @@ export function TerminalPanel({
           {folderName}
         </span>
         <button
-          onClick={onClose}
+          onClick={handleClose}
           onMouseDown={(e) => e.stopPropagation()}
           style={{
             background: 'none',
@@ -182,7 +189,6 @@ export function TerminalPanel({
       </div>
       <div ref={termRef} style={{ flex: 1, overflow: 'hidden' }} />
 
-      {/* Context menu — right-click on drag handle */}
       {contextMenu && (
         <div style={{
           position: 'fixed',
