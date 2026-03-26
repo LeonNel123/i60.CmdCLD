@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage } from 'electron'
 import { join } from 'path'
-import { execFile } from 'child_process'
+import { spawn } from 'child_process'
 import { appendFileSync, existsSync, statSync, writeFileSync, mkdirSync } from 'fs'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
@@ -185,9 +185,15 @@ ipcMain.handle('window:list', (event) => {
 })
 
 // Open in editor — uses configured editor
+// spawn with shell:true is needed because editors like 'code' are .cmd batch files on Windows
+// folderPath is validated as a directory before use, cmd comes from settings
 ipcMain.handle('editor:open', (_event, folderPath: string) => {
   const cmd = settings.get('editor')
-  execFile(cmd, [folderPath], () => {})
+  try {
+    if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) return
+  } catch { return }
+  const child = spawn(cmd, [folderPath], { shell: true, detached: true, stdio: 'ignore' })
+  child.unref()
 })
 
 // Editor settings

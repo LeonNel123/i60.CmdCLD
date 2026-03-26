@@ -34,7 +34,7 @@ export function TerminalPanel({
   const termRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
-  const cleanupRef = useRef<{ removeData: () => void; removeExit: () => void } | null>(null)
+  const cleanupRef = useRef<{ removeData: () => void; removeExit: () => void; removePaste: () => void } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [editorName, setEditorName] = useState('Editor')
   const [availableEditors, setAvailableEditors] = useState<Array<{ id: string; name: string; cmd: string }>>([])
@@ -67,34 +67,43 @@ export function TerminalPanel({
       activePtys.delete(id)
     })
 
-    cleanupRef.current = { removeData, removeExit }
+    const termEl = termRef.current!
+    const removePaste = () => termEl.removeEventListener('paste', pasteHandler as EventListener)
+    cleanupRef.current = { removeData, removeExit, removePaste }
 
     term.onData((data) => {
       window.api.writeTerminal(id, data)
     })
 
+    // Handle Ctrl+C copy when text is selected
     term.attachCustomKeyEventHandler((e) => {
-      if (e.type === 'keydown' && e.ctrlKey && e.key === 'v') {
-        // Try image first (for pasting screenshots into Claude CLI)
-        window.api.clipboardSaveImage(folderPath).then((imgPath) => {
-          if (imgPath) {
-            // Paste the file path — Claude Code accepts image paths
-            window.api.writeTerminal(id, imgPath)
-          } else {
-            // No image, fall back to text paste
-            return navigator.clipboard.readText().then((text) => {
-              if (text) window.api.writeTerminal(id, text)
-            })
-          }
-        }).catch(() => {})
-        return false
-      }
       if (e.type === 'keydown' && e.ctrlKey && e.key === 'c' && term.hasSelection()) {
         navigator.clipboard.writeText(term.getSelection()).catch(() => {})
         return false
       }
+      // Block xterm's default Ctrl+V handling — we handle paste via the DOM event below
+      if ((e.type === 'keydown' || e.type === 'keyup') && e.ctrlKey && e.key === 'v') {
+        return false
+      }
       return true
     })
+
+    // Handle paste via DOM event to avoid double-paste
+    const pasteHandler = (e: ClipboardEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      // Try image first (for pasting screenshots into Claude CLI)
+      window.api.clipboardSaveImage(folderPath).then((imgPath) => {
+        if (imgPath) {
+          window.api.writeTerminal(id, imgPath)
+        } else {
+          return navigator.clipboard.readText().then((text) => {
+            if (text) window.api.writeTerminal(id, text)
+          })
+        }
+      }).catch(() => {})
+    }
+    termRef.current!.addEventListener('paste', pasteHandler as EventListener)
 
     // Fit and create PTY after layout is ready
     requestAnimationFrame(() => {
@@ -134,6 +143,7 @@ export function TerminalPanel({
       if (cleanupRef.current) {
         cleanupRef.current.removeData()
         cleanupRef.current.removeExit()
+        cleanupRef.current.removePaste()
         cleanupRef.current = null
       }
       term.dispose()
