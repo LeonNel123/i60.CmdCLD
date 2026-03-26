@@ -54,21 +54,6 @@ contextBridge.exposeInMainWorld('api', {
   openInVscode: (folderPath: string): Promise<void> =>
     ipcRenderer.invoke('vscode:open', folderPath),
 
-  // New: receive events for multi-window
-  onTerminalReceive: (callback: (data: {
-    id: string; path: string; name: string; color: string; scrollback: string
-  }) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, data: any): void => callback(data)
-    ipcRenderer.on('terminal:receive', listener)
-    return () => { ipcRenderer.removeListener('terminal:receive', listener) }
-  },
-
-  onTerminalRemoved: (callback: (terminalId: string) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, id: string): void => callback(id)
-    ipcRenderer.on('terminal:removed', listener)
-    return () => { ipcRenderer.removeListener('terminal:removed', listener) }
-  },
-
   onWindowListUpdated: (callback: (windows: Array<{ id: string; label: string }>) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, windows: any): void => callback(windows)
     ipcRenderer.on('window:list-updated', listener)

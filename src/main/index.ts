@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { execFile } from 'child_process'
-import { appendFileSync, mkdirSync } from 'fs'
+import { appendFileSync, existsSync, statSync } from 'fs'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
 import { WindowRegistry } from './window-registry'
@@ -16,15 +16,12 @@ function log(msg: string): void {
 }
 
 log('=== App starting ===')
-log(`userData: ${app.getPath('userData')}`)
-log(`exe: ${process.execPath}`)
-log(`argv: ${process.argv.join(' ')}`)
 
 // Single instance lock — only one app process at a time
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   log('Single instance lock failed — another instance is running. Exiting.')
-  app.exit(0)  // exit() is synchronous, quit() is not
+  app.exit(0)
 }
 
 log('Single instance lock acquired')
@@ -33,28 +30,15 @@ let ptyManager: PtyManager
 let store: Store
 let recentDB: RecentDB
 const registry = new WindowRegistry()
+const newWindowIds = new Set<string>()
 
 try {
   ptyManager = new PtyManager()
-  log('PtyManager created')
-} catch (e) {
-  log(`PtyManager FAILED: ${e}`)
-  throw e
-}
-
-try {
   store = new Store(join(app.getPath('userData'), 'sessions.json'))
-  log('Store created')
-} catch (e) {
-  log(`Store FAILED: ${e}`)
-  throw e
-}
-
-try {
   recentDB = new RecentDB(join(app.getPath('userData'), 'recent.db'))
-  log('RecentDB created')
+  log('All services created')
 } catch (e) {
-  log(`RecentDB FAILED: ${e}`)
+  log(`Service init FAILED: ${e}`)
   throw e
 }
 
@@ -80,7 +64,6 @@ function createWindow(opts?: { empty?: boolean }): { id: string; window: Browser
 
   win.setMenuBarVisibility(false)
 
-  // Pass empty flag via URL query parameter — renderer reads this synchronously
   if (process.env.ELECTRON_RENDERER_URL) {
     const url = new URL(process.env.ELECTRON_RENDERER_URL)
     if (isEmpty) url.searchParams.set('empty', '1')
@@ -97,17 +80,25 @@ function createWindow(opts?: { empty?: boolean }): { id: string; window: Browser
   registry.register(id, win)
   broadcastWindowList()
 
-  // Save window bounds on resize/move
+  // Debounced bounds save — avoids sync I/O on every pixel during drag/resize
+  let boundsTimer: ReturnType<typeof setTimeout>
   const saveBounds = (): void => {
-    if (!win.isDestroyed()) {
-      store.saveWindowBounds(id, win.getBounds())
-    }
+    clearTimeout(boundsTimer)
+    boundsTimer = setTimeout(() => {
+      if (!win.isDestroyed()) {
+        store.saveWindowBounds(id, win.getBounds())
+      }
+    }, 500)
   }
   win.on('resize', saveBounds)
   win.on('move', saveBounds)
 
-  // Use 'close' (before destroy) to safely access webContents
   win.on('close', () => {
+    clearTimeout(boundsTimer)
+    // Save final bounds
+    if (!win.isDestroyed()) {
+      store.saveWindowBounds(id, win.getBounds())
+    }
     const owned = ptyManager.listByWebContents(win.webContents)
     for (const meta of owned) {
       ptyManager.kill(meta.id)
@@ -115,7 +106,6 @@ function createWindow(opts?: { empty?: boolean }): { id: string; window: Browser
     registry.unregister(id)
   })
 
-  // Use 'closed' (after destroy) for cleanup that doesn't need webContents
   win.on('closed', () => {
     broadcastWindowList()
     if (registry.size() === 0) {
@@ -146,6 +136,12 @@ ipcMain.handle('pty:create', (event, id: string, cwd: string) => {
   if (!windowId) return
   const wc = registry.getWebContents(windowId)
   if (!wc) return
+  // Validate cwd is a real directory
+  try {
+    if (!existsSync(cwd) || !statSync(cwd).isDirectory()) return
+  } catch { return }
+  // Prevent overwriting existing PTY
+  if (ptyManager.getMeta(id)) return
   const name = cwd.split(/[\\/]/).pop() || cwd
   const meta: TerminalMeta = { id, path: cwd, name, color: '' }
   ptyManager.create(id, cwd, wc, meta)
@@ -163,7 +159,7 @@ ipcMain.handle('pty:kill', (_event, id: string) => {
   ptyManager.kill(id)
 })
 
-// Window management — new windows always start empty
+// Window management
 ipcMain.handle('window:create', () => {
   const { id } = createWindow({ empty: true })
   return id
@@ -175,9 +171,9 @@ ipcMain.handle('window:list', (event) => {
   return registry.listExcluding(callerId)
 })
 
-// VS Code
+// VS Code — no shell: true, prevents command injection
 ipcMain.handle('vscode:open', (_event, folderPath: string) => {
-  execFile('code', [folderPath], { shell: true }, () => {})
+  execFile('code', [folderPath], () => {})
 })
 
 // Dialog IPC handler
@@ -206,7 +202,10 @@ ipcMain.handle('store:load', () => {
 })
 
 ipcMain.handle('store:save', (_event, state) => {
-  store.save(state)
+  // Basic validation before saving
+  if (state && typeof state === 'object' && Array.isArray(state.windows)) {
+    store.save(state)
+  }
 })
 
 app.whenReady().then(() => {
@@ -219,7 +218,6 @@ app.whenReady().then(() => {
   }
 })
 
-// When second instance is launched, focus the existing window
 app.on('second-instance', () => {
   const list = registry.list()
   if (list.length > 0) {
@@ -234,6 +232,7 @@ app.on('second-instance', () => {
 app.on('window-all-closed', () => {
   log('All windows closed — quitting')
   ptyManager.killAll()
+  recentDB.close()
   app.quit()
 })
 

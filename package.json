@@ -8,7 +8,7 @@
     "build": "electron-vite build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package": "electron-vite build && electron-builder --win dir"
+    "package": "electron-vite build && electron-builder --win nsis"
   },
   "build": {
     "appId": "com.i60.cmdcld",
@@ -20,8 +20,14 @@
       "out/**/*"
     ],
     "win": {
-      "target": "dir",
+      "target": "nsis",
       "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "artifactName": "CmdCLD-Setup.exe"
     },
     "npmRebuild": false,
     "asarUnpack": [

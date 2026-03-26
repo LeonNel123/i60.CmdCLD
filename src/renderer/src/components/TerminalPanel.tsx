@@ -6,6 +6,12 @@ import '@xterm/xterm/css/xterm.css'
 // Global set of PTY IDs that have been created — prevents duplicates on remount
 const activePtys = new Set<string>()
 
+// Kill a PTY explicitly (called from App.tsx on confirmed close)
+export function killPty(id: string): void {
+  activePtys.delete(id)
+  window.api.killTerminal(id)
+}
+
 interface TerminalPanelProps {
   id: string
   folderPath: string
@@ -24,6 +30,7 @@ export function TerminalPanel({
   const termRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const cleanupRef = useRef<{ removeData: () => void; removeExit: () => void } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
@@ -42,10 +49,40 @@ export function TerminalPanel({
     terminalRef.current = term
     fitAddonRef.current = fitAddon
 
+    // Register IPC listeners BEFORE creating PTY to avoid missing early data
+    const removeData = window.api.onTerminalData(id, (data) => {
+      term.write(data)
+    })
+
+    const removeExit = window.api.onTerminalExit(id, (code) => {
+      term.write(`\r\n\x1b[33m[Process exited with code ${code}]\x1b[0m\r\n`)
+      activePtys.delete(id)
+    })
+
+    cleanupRef.current = { removeData, removeExit }
+
+    term.onData((data) => {
+      window.api.writeTerminal(id, data)
+    })
+
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type === 'keydown' && e.ctrlKey && e.key === 'v') {
+        navigator.clipboard.readText().then((text) => {
+          if (text) window.api.writeTerminal(id, text)
+        }).catch(() => {})
+        return false
+      }
+      if (e.type === 'keydown' && e.ctrlKey && e.key === 'c' && term.hasSelection()) {
+        navigator.clipboard.writeText(term.getSelection()).catch(() => {})
+        return false
+      }
+      return true
+    })
+
+    // Fit and create PTY after layout is ready
     requestAnimationFrame(() => {
       fitAddon.fit()
 
-      // Only create the PTY if it doesn't already exist
       if (!activePtys.has(id)) {
         activePtys.add(id)
         window.api.createTerminal(id, folderPath).catch(() => {
@@ -53,60 +90,36 @@ export function TerminalPanel({
           activePtys.delete(id)
         })
 
-        // Auto-launch Claude only on first create
         setTimeout(() => {
           window.api.writeTerminal(id, 'claude --dangerously-skip-permissions\r')
         }, 1000)
       }
-
-      const removeData = window.api.onTerminalData(id, (data) => {
-        term.write(data)
-      })
-
-      const removeExit = window.api.onTerminalExit(id, (code) => {
-        term.write(`\r\n\x1b[33m[Process exited with code ${code}]\x1b[0m\r\n`)
-        activePtys.delete(id)
-      })
-
-      term.onData((data) => {
-        window.api.writeTerminal(id, data)
-      })
-
-      term.attachCustomKeyEventHandler((e) => {
-        if (e.type === 'keydown' && e.ctrlKey && e.key === 'v') {
-          navigator.clipboard.readText().then((text) => {
-            if (text) window.api.writeTerminal(id, text)
-          }).catch(() => {})
-          return false
-        }
-        if (e.type === 'keydown' && e.ctrlKey && e.key === 'c' && term.hasSelection()) {
-          navigator.clipboard.writeText(term.getSelection()).catch(() => {})
-          return false
-        }
-        return true
-      })
-
-      ;(term as any)._cmdcld_cleanup = { removeData, removeExit }
     })
 
+    // Debounced resize observer
+    let resizeTimer: ReturnType<typeof setTimeout>
     const resizeObserver = new ResizeObserver(() => {
-      if (fitAddonRef.current && terminalRef.current) {
-        fitAddonRef.current.fit()
-        const { cols, rows } = terminalRef.current
-        window.api.resizeTerminal(id, cols, rows)
-      }
+      clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        if (fitAddonRef.current && terminalRef.current) {
+          fitAddonRef.current.fit()
+          const { cols, rows } = terminalRef.current
+          window.api.resizeTerminal(id, cols, rows)
+        }
+      }, 100)
     })
     resizeObserver.observe(termRef.current)
 
     return () => {
+      clearTimeout(resizeTimer)
       resizeObserver.disconnect()
-      const cleanup = (term as any)._cmdcld_cleanup
-      if (cleanup) {
-        cleanup.removeData()
-        cleanup.removeExit()
+      if (cleanupRef.current) {
+        cleanupRef.current.removeData()
+        cleanupRef.current.removeExit()
+        cleanupRef.current = null
       }
       term.dispose()
-      // Do NOT kill the PTY here — only kill on explicit close via killTerminal()
+      // Do NOT kill PTY here — only kill on explicit close via killPty()
     }
   }, [id, folderPath])
 
@@ -128,13 +141,6 @@ export function TerminalPanel({
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
     setContextMenu({ x: e.clientX, y: e.clientY })
-  }
-
-  const handleClose = () => {
-    // Explicitly kill the PTY only when the user closes the terminal
-    activePtys.delete(id)
-    window.api.killTerminal(id)
-    onClose()
   }
 
   return (
@@ -172,7 +178,7 @@ export function TerminalPanel({
           {folderName}
         </span>
         <button
-          onClick={handleClose}
+          onClick={onClose}
           onMouseDown={(e) => e.stopPropagation()}
           style={{
             background: 'none',

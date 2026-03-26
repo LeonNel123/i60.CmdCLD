@@ -3,7 +3,7 @@ import { Responsive, WidthProvider, Layout } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { Sidebar } from './components/Sidebar'
-import { TerminalPanel } from './components/TerminalPanel'
+import { TerminalPanel, killPty } from './components/TerminalPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { assignColor } from './utils/colors'
 import { calculateLayout } from './utils/grid-layout'
@@ -68,28 +68,31 @@ export default function App() {
     })
   }, [])
 
-  // Save state whenever terminals or layouts change
+  // Save state whenever terminals or layouts change (debounced)
   useEffect(() => {
     if (!loaded) return
-    const state: MultiWindowState = {
-      windows: [{
-        id: 'current',
-        bounds: { width: 0, height: 0, x: 0, y: 0 },
-        sidebarCollapsed: false,
-        viewMode: viewMode.type === 'grid' ? 'grid' : { focused: viewMode.terminalId },
-        folders: terminals.map((t) => {
-          const l = layouts.find((lay) => lay.i === t.id)
-          return {
-            path: t.path,
-            color: t.color,
-            layout: l
-              ? { x: l.x, y: l.y, w: l.w, h: l.h }
-              : { x: 0, y: 0, w: 12, h: 1 },
-          }
-        }),
-      }],
-    }
-    window.api.saveState(state)
+    const timer = setTimeout(() => {
+      const state: MultiWindowState = {
+        windows: [{
+          id: 'current',
+          bounds: { width: 0, height: 0, x: 0, y: 0 },
+          sidebarCollapsed: false,
+          viewMode: viewMode.type === 'grid' ? 'grid' : { focused: viewMode.terminalId },
+          folders: terminals.map((t) => {
+            const l = layouts.find((lay) => lay.i === t.id)
+            return {
+              path: t.path,
+              color: t.color,
+              layout: l
+                ? { x: l.x, y: l.y, w: l.w, h: l.h }
+                : { x: 0, y: 0, w: 12, h: 1 },
+            }
+          }),
+        }],
+      }
+      window.api.saveState(state)
+    }, 500)
+    return () => clearTimeout(timer)
   }, [terminals, layouts, loaded, viewMode])
 
   // Helper to add a folder as a new terminal
@@ -131,6 +134,7 @@ export default function App() {
 
   const handleConfirmClose = useCallback(() => {
     if (!closingId) return
+    killPty(closingId)
     const newTerminals = terminals.filter((t) => t.id !== closingId)
     setTerminals(newTerminals)
 

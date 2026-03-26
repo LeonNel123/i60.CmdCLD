@@ -87,16 +87,6 @@ export class PtyManager {
     this.ptys.set(id, entry)
   }
 
-  move(id: string, newWebContents: WebContents): string | null {
-    const entry = this.ptys.get(id)
-    if (!entry) return null
-
-    const scrollbackData = entry.scrollback.getAll()
-    entry.webContents = newWebContents
-
-    return scrollbackData
-  }
-
   getMeta(id: string): TerminalMeta | undefined {
     return this.ptys.get(id)?.meta
   }
@@ -120,7 +110,8 @@ export class PtyManager {
   }
 
   killAll(): void {
-    for (const [id] of this.ptys) {
+    const ids = [...this.ptys.keys()]
+    for (const id of ids) {
       this.kill(id)
     }
   }

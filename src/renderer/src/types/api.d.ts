@@ -3,14 +3,6 @@ export interface WindowInfo {
   label: string
 }
 
-export interface TerminalTransfer {
-  id: string
-  path: string
-  name: string
-  color: string
-  scrollback: string
-}
-
 export interface WindowState {
   id: string
   bounds: { width: number; height: number; x: number; y: number }
@@ -48,8 +40,6 @@ export interface ElectronAPI {
   recentList: () => Promise<RecentFolder[]>
   recentAdd: (folderPath: string) => Promise<void>
   openInVscode: (folderPath: string) => Promise<void>
-  onTerminalReceive: (callback: (data: TerminalTransfer) => void) => () => void
-  onTerminalRemoved: (callback: (terminalId: string) => void) => () => void
   onWindowListUpdated: (callback: (windows: WindowInfo[]) => void) => () => void
 }
 
