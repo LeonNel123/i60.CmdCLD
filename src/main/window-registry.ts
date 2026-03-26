@@ -45,17 +45,23 @@ export class WindowRegistry {
 
   broadcastExcept(excludeId: string, channel: string, ...args: unknown[]): void {
     for (const [id, entry] of this.windows) {
-      if (id !== excludeId && !entry.window.isDestroyed()) {
-        entry.window.webContents.send(channel, ...args)
+      if (id !== excludeId) {
+        try {
+          if (!entry.window.isDestroyed()) {
+            entry.window.webContents.send(channel, ...args)
+          }
+        } catch {}
       }
     }
   }
 
   broadcastAll(channel: string, ...args: unknown[]): void {
     for (const [, entry] of this.windows) {
-      if (!entry.window.isDestroyed()) {
-        entry.window.webContents.send(channel, ...args)
-      }
+      try {
+        if (!entry.window.isDestroyed()) {
+          entry.window.webContents.send(channel, ...args)
+        }
+      } catch {}
     }
   }
 

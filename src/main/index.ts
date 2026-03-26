@@ -55,14 +55,18 @@ function createWindow(windowId?: string): { id: string; window: BrowserWindow } 
   win.on('resize', saveBounds)
   win.on('move', saveBounds)
 
-  win.on('closed', () => {
+  // Use 'close' (before destroy) to safely access webContents
+  win.on('close', () => {
     const owned = ptyManager.listByWebContents(win.webContents)
     for (const meta of owned) {
       ptyManager.kill(meta.id)
     }
     registry.unregister(id)
-    broadcastWindowList()
+  })
 
+  // Use 'closed' (after destroy) for cleanup that doesn't need webContents
+  win.on('closed', () => {
+    broadcastWindowList()
     if (registry.size() === 0) {
       app.quit()
     }
