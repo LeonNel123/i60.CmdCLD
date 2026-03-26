@@ -15,7 +15,7 @@ if (!gotLock) {
 const ptyManager = new PtyManager()
 const store = new Store(join(app.getPath('userData'), 'sessions.json'))
 const registry = new WindowRegistry()
-let isFirstWindow = true
+const newWindowIds = new Set<string>()
 
 function createWindow(windowId?: string): { id: string; window: BrowserWindow } {
   const id = windowId || crypto.randomUUID()
@@ -115,7 +115,9 @@ ipcMain.handle('pty:kill', (_event, id: string) => {
 
 // Window management — new windows always start empty
 ipcMain.handle('window:create', () => {
-  const { id } = createWindow()
+  const id = crypto.randomUUID()
+  newWindowIds.add(id)
+  createWindow(id)
   return id
 })
 
@@ -141,16 +143,16 @@ ipcMain.handle('dialog:selectFolder', async (event) => {
   return result.canceled ? null : result.filePaths[0]
 })
 
-// Tell renderer whether to load saved state (only first window does)
+// Tell renderer whether to load saved state
+// New windows (created via window:create) are tracked and start empty
 ipcMain.handle('window:shouldLoadState', (event) => {
   const windowId = getWindowIdFromEvent(event)
   if (!windowId) return false
-  // First window loads state, subsequent windows start empty
-  if (isFirstWindow) {
-    isFirstWindow = false
-    return true
+  if (newWindowIds.has(windowId)) {
+    newWindowIds.delete(windowId)
+    return false
   }
-  return false
+  return true
 })
 
 // Store IPC handlers
