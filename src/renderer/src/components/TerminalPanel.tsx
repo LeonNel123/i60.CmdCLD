@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
+import { onTerminalDataReceived, removeTerminalActivity } from '../utils/terminal-activity'
 
 // Global set of PTY IDs that have been created — prevents duplicates on remount
 const activePtys = new Set<string>()
@@ -9,6 +10,7 @@ const activePtys = new Set<string>()
 // Kill a PTY explicitly (called from App.tsx on confirmed close)
 export function killPty(id: string): void {
   activePtys.delete(id)
+  removeTerminalActivity(id)
   window.api.killTerminal(id)
 }
 
@@ -57,6 +59,7 @@ export function TerminalPanel({
     // Register IPC listeners BEFORE creating PTY to avoid missing early data
     const removeData = window.api.onTerminalData(id, (data) => {
       term.write(data)
+      onTerminalDataReceived(id)
     })
 
     const removeExit = window.api.onTerminalExit(id, (code) => {

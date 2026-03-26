@@ -17,6 +17,7 @@ interface SidebarProps {
   onShowAll: () => void
   onAddFolder: () => void
   onNewWindow: () => void
+  busyTerminals: Set<string>
   recentFolders: RecentFolder[]
   onOpenRecent: (path: string) => void
   onOpenSettings: () => void
@@ -33,6 +34,7 @@ export function Sidebar({
   onAddFolder,
   onNewWindow,
   recentFolders,
+  busyTerminals,
   onOpenRecent,
   onOpenSettings,
 }: SidebarProps) {
@@ -111,6 +113,7 @@ export function Sidebar({
       <div style={{ overflowY: 'auto', padding: '4px', flexShrink: 0 }}>
         {terminals.map((t) => {
           const isActive = viewMode.type === 'focused' && viewMode.terminalId === t.id
+          const busy = busyTerminals.has(t.id)
           return (
             <button
               key={t.id}
@@ -124,6 +127,8 @@ export function Sidebar({
                 borderRadius: '50%',
                 background: t.color,
                 flexShrink: 0,
+                boxShadow: busy ? `0 0 6px 2px ${t.color}80` : 'none',
+                animation: busy ? 'pulse 1.5s ease-in-out infinite' : 'none',
               }} />
               {!collapsed && (
                 <span style={{

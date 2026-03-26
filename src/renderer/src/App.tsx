@@ -9,6 +9,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { LaunchDialog } from './components/LaunchDialog'
 import { assignColor } from './utils/colors'
 import { calculateLayout } from './utils/grid-layout'
+import { onActivityChange } from './utils/terminal-activity'
 import type { MultiWindowState, RecentFolder } from './types/api'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
@@ -32,8 +33,21 @@ export default function App() {
   const [recentFolders, setRecentFolders] = useState<RecentFolder[]>([])
   const [showSettings, setShowSettings] = useState(false)
   const [pendingLaunch, setPendingLaunch] = useState<{ path: string; name: string } | null>(null)
+  const [busyTerminals, setBusyTerminals] = useState<Set<string>>(new Set())
   const [claudeArgs, setClaudeArgs] = useState('--dangerously-skip-permissions')
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
+
+  // Track terminal busy/idle state
+  useEffect(() => {
+    return onActivityChange((id, busy) => {
+      setBusyTerminals((prev) => {
+        const next = new Set(prev)
+        if (busy) next.add(id)
+        else next.delete(id)
+        return next
+      })
+    })
+  }, [])
 
   // Load settings + saved state + recent folders on mount
   useEffect(() => {
@@ -216,6 +230,7 @@ export default function App() {
       <Sidebar
         terminals={terminals}
         viewMode={viewMode}
+        busyTerminals={busyTerminals}
         onSelectTerminal={handleSelectTerminal}
         onShowAll={handleShowAll}
         onAddFolder={handleAddFolder}
