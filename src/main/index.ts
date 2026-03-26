@@ -23,8 +23,8 @@ log(`argv: ${process.argv.join(' ')}`)
 // Single instance lock — only one app process at a time
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
-  log('Single instance lock failed — another instance is running. Quitting.')
-  app.quit()
+  log('Single instance lock failed — another instance is running. Exiting.')
+  app.exit(0)  // exit() is synchronous, quit() is not
 }
 
 log('Single instance lock acquired')
