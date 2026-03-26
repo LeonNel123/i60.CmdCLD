@@ -15,11 +15,11 @@ if (!gotLock) {
 const ptyManager = new PtyManager()
 const store = new Store(join(app.getPath('userData'), 'sessions.json'))
 const registry = new WindowRegistry()
-const newWindowIds = new Set<string>()
 
-function createWindow(windowId?: string): { id: string; window: BrowserWindow } {
-  const id = windowId || crypto.randomUUID()
+function createWindow(opts?: { empty?: boolean }): { id: string; window: BrowserWindow } {
+  const id = crypto.randomUUID()
   const bounds = store.getWindowBounds(id)
+  const isEmpty = opts?.empty ?? false
 
   const win = new BrowserWindow({
     width: bounds.width,
@@ -38,10 +38,18 @@ function createWindow(windowId?: string): { id: string; window: BrowserWindow } 
 
   win.setMenuBarVisibility(false)
 
+  // Pass empty flag via URL query parameter — renderer reads this synchronously
   if (process.env.ELECTRON_RENDERER_URL) {
-    win.loadURL(process.env.ELECTRON_RENDERER_URL)
+    const url = new URL(process.env.ELECTRON_RENDERER_URL)
+    if (isEmpty) url.searchParams.set('empty', '1')
+    win.loadURL(url.toString())
   } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'))
+    const filePath = join(__dirname, '../renderer/index.html')
+    if (isEmpty) {
+      win.loadFile(filePath, { query: { empty: '1' } })
+    } else {
+      win.loadFile(filePath)
+    }
   }
 
   registry.register(id, win)
@@ -115,9 +123,7 @@ ipcMain.handle('pty:kill', (_event, id: string) => {
 
 // Window management — new windows always start empty
 ipcMain.handle('window:create', () => {
-  const id = crypto.randomUUID()
-  newWindowIds.add(id)
-  createWindow(id)
+  const { id } = createWindow({ empty: true })
   return id
 })
 
@@ -141,18 +147,6 @@ ipcMain.handle('dialog:selectFolder', async (event) => {
     properties: ['openDirectory'],
   })
   return result.canceled ? null : result.filePaths[0]
-})
-
-// Tell renderer whether to load saved state
-// New windows (created via window:create) are tracked and start empty
-ipcMain.handle('window:shouldLoadState', (event) => {
-  const windowId = getWindowIdFromEvent(event)
-  if (!windowId) return false
-  if (newWindowIds.has(windowId)) {
-    newWindowIds.delete(windowId)
-    return false
-  }
-  return true
 })
 
 // Store IPC handlers

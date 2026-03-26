@@ -27,41 +27,41 @@ export default function App() {
   const [loaded, setLoaded] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>({ type: 'grid' })
 
-  // Load saved state on mount — only if this is the primary window
+  // Load saved state on mount — skip if this is a new empty window
+  // The main process passes ?empty=1 in the URL for new windows
   useEffect(() => {
-    window.api.shouldLoadState().then((shouldLoad) => {
-      if (!shouldLoad) {
-        setLoaded(true)
-        return
-      }
-      window.api.loadState().then((state) => {
-        if (state?.windows?.length) {
-          const win = state.windows[0]
-          if (win?.folders?.length) {
-            const entries: TerminalEntry[] = win.folders.map((f) => ({
-              id: crypto.randomUUID(),
-              path: f.path,
-              name: f.path.split(/[\\/]/).pop() || f.path,
-              color: f.color,
-            }))
-            setTerminals(entries)
+    const isEmptyWindow = new URLSearchParams(window.location.search).has('empty')
+    if (isEmptyWindow) {
+      setLoaded(true)
+      return
+    }
+    window.api.loadState().then((state) => {
+      if (state?.windows?.length) {
+        const win = state.windows[0]
+        if (win?.folders?.length) {
+          const entries: TerminalEntry[] = win.folders.map((f) => ({
+            id: crypto.randomUUID(),
+            path: f.path,
+            name: f.path.split(/[\\/]/).pop() || f.path,
+            color: f.color,
+          }))
+          setTerminals(entries)
 
-            const hasLayouts = win.folders.every((f) => f.layout)
-            if (hasLayouts) {
-              setLayouts(entries.map((e, i) => ({
-                ...win.folders[i].layout,
-                i: e.id,
-              })))
-            } else {
-              setLayouts(calculateLayout(entries.length).map((pos, i) => ({
-                ...pos,
-                i: entries[i].id,
-              })))
-            }
+          const hasLayouts = win.folders.every((f) => f.layout)
+          if (hasLayouts) {
+            setLayouts(entries.map((e, i) => ({
+              ...win.folders[i].layout,
+              i: e.id,
+            })))
+          } else {
+            setLayouts(calculateLayout(entries.length).map((pos, i) => ({
+              ...pos,
+              i: entries[i].id,
+            })))
           }
         }
-        setLoaded(true)
-      })
+      }
+      setLoaded(true)
     })
   }, [])
 
