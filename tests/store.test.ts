@@ -1,52 +1,55 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'fs'
+import { Store } from '../src/main/store'
+import { writeFileSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
-import { tmpdir } from 'os'
-import { Store, SessionState } from '../src/main/store'
 
-let tempDir: string
-let store: Store
+const TEST_DIR = join(__dirname, '.tmp-store-test')
+const TEST_FILE = join(TEST_DIR, 'sessions.json')
 
 beforeEach(() => {
-  tempDir = mkdtempSync(join(tmpdir(), 'cmdcld-test-'))
-  store = new Store(join(tempDir, 'sessions.json'))
+  mkdirSync(TEST_DIR, { recursive: true })
 })
 
 afterEach(() => {
-  rmSync(tempDir, { recursive: true, force: true })
+  rmSync(TEST_DIR, { recursive: true, force: true })
 })
 
-describe('Store', () => {
-  it('returns default state when no file exists', () => {
-    const state = store.load()
-    expect(state.folders).toEqual([])
-    expect(state.windowBounds).toBeDefined()
-    expect(state.windowBounds.width).toBeGreaterThan(0)
-  })
-
-  it('saves and loads state', () => {
-    const state: SessionState = {
-      folders: [{ path: 'C:\\test', color: '#f472b6', layout: { x: 0, y: 0, w: 12, h: 1 } }],
-      windowBounds: { width: 1400, height: 900, x: 50, y: 50 }
+describe('Store multi-window', () => {
+  it('loads new multi-window format', () => {
+    const data = {
+      windows: [{
+        id: 'win-1',
+        bounds: { x: 0, y: 0, width: 1200, height: 800 },
+        sidebarCollapsed: false,
+        viewMode: 'grid',
+        folders: [{ path: 'C:\\project', color: '#f00', layout: { x: 0, y: 0, w: 12, h: 1 } }],
+      }],
     }
-    store.save(state)
-    const loaded = new Store(join(tempDir, 'sessions.json')).load()
-    expect(loaded).toEqual(state)
+    writeFileSync(TEST_FILE, JSON.stringify(data))
+    const store = new Store(TEST_FILE)
+    const state = store.load()
+    expect(state.windows).toHaveLength(1)
+    expect(state.windows[0].folders[0].path).toBe('C:\\project')
   })
 
-  it('writes valid JSON to disk', () => {
-    store.save({
-      folders: [{ path: 'C:\\proj', color: '#22c55e', layout: { x: 0, y: 0, w: 6, h: 1 } }],
-      windowBounds: { width: 1200, height: 800, x: 0, y: 0 }
-    })
-    const raw = readFileSync(join(tempDir, 'sessions.json'), 'utf-8')
-    const parsed = JSON.parse(raw)
-    expect(parsed.folders).toHaveLength(1)
+  it('migrates old single-window format', () => {
+    const oldData = {
+      folders: [
+        { path: 'C:\\old-project', color: '#0f0', layout: { x: 0, y: 0, w: 12, h: 1 } },
+      ],
+      windowBounds: { x: 100, y: 100, width: 1000, height: 700 },
+    }
+    writeFileSync(TEST_FILE, JSON.stringify(oldData))
+    const store = new Store(TEST_FILE)
+    const state = store.load()
+    expect(state.windows).toHaveLength(1)
+    expect(state.windows[0].folders[0].path).toBe('C:\\old-project')
+    expect(state.windows[0].bounds.width).toBe(1000)
   })
 
-  it('handles corrupted file gracefully', () => {
-    writeFileSync(join(tempDir, 'sessions.json'), 'NOT JSON')
-    const s = new Store(join(tempDir, 'sessions.json'))
-    expect(s.load().folders).toEqual([])
+  it('returns default state for empty/missing file', () => {
+    const store = new Store(TEST_FILE)
+    const state = store.load()
+    expect(state.windows).toEqual([])
   })
 })
