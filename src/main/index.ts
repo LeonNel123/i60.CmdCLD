@@ -71,7 +71,7 @@ function createWindow(opts?: { empty?: boolean }): { id: string; window: Browser
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
     },
-    backgroundColor: '#0a0a1a',
+    backgroundColor: '#1e1e1e',
     title: 'CmdCLD',
   })
 

@@ -89,8 +89,8 @@ export function Sidebar({
       width,
       minWidth: width,
       height: '100%',
-      background: '#0d1117',
-      borderRight: '1px solid #1e293b',
+      background: '#181818',
+      borderRight: '1px solid #2d2d2d',
       display: 'flex',
       flexDirection: 'column',
       transition: 'width 150ms ease',
@@ -98,7 +98,7 @@ export function Sidebar({
       flexShrink: 0,
     }}>
       {/* Action buttons */}
-      <div style={{ padding: '6px 4px', borderBottom: '1px solid #1e293b' }}>
+      <div style={{ padding: '6px 4px', borderBottom: '1px solid #2d2d2d' }}>
         <button onClick={onAddFolder} style={btnStyle()} title="Add Folder">
           <span style={{ color: '#22c55e', fontSize: '14px', lineHeight: 1 }}>+</span>
           {!collapsed && <span>Add Folder</span>}
@@ -146,7 +146,7 @@ export function Sidebar({
 
       {/* Recent folders — expandable, hidden when sidebar collapsed */}
       {!collapsed && recentFolders.length > 0 && (
-        <div style={{ flex: 1, overflowY: 'auto', borderTop: '1px solid #1e293b' }}>
+        <div style={{ flex: 1, overflowY: 'auto', borderTop: '1px solid #2d2d2d' }}>
           <button
             onClick={toggleRecent}
             style={{
@@ -190,7 +190,7 @@ export function Sidebar({
       )}
 
       {/* Bottom actions */}
-      <div style={{ padding: '6px 4px', borderTop: '1px solid #1e293b', flexShrink: 0 }}>
+      <div style={{ padding: '6px 4px', borderTop: '1px solid #2d2d2d', flexShrink: 0 }}>
         <button onClick={onShowAll} style={btnStyle(viewMode.type === 'grid')} title="Show All">
           <span style={{ fontSize: '13px', lineHeight: 1 }}>&#9635;</span>
           {!collapsed && <span>Show All</span>}

@@ -34,7 +34,7 @@ export function TerminalPanel({
   const termRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
-  const cleanupRef = useRef<{ removeData: () => void; removeExit: () => void; removePaste: () => void } | null>(null)
+  const cleanupRef = useRef<{ removeData: () => void; removeExit: () => void } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [editorName, setEditorName] = useState('Editor')
   const [availableEditors, setAvailableEditors] = useState<Array<{ id: string; name: string; cmd: string }>>([])
@@ -45,9 +45,32 @@ export function TerminalPanel({
 
     const term = new Terminal({
       cursorBlink: true,
-      theme: { background: '#0d1117' },
-      fontFamily: 'Consolas, "Courier New", monospace',
+      theme: {
+        background: '#1e1e1e',
+        foreground: '#cccccc',
+        cursor: '#aeafad',
+        selectionBackground: '#264f78',
+        black: '#000000',
+        red: '#cd3131',
+        green: '#0dbc79',
+        yellow: '#e5e510',
+        blue: '#2472c8',
+        magenta: '#bc3fbc',
+        cyan: '#11a8cd',
+        white: '#e5e5e5',
+        brightBlack: '#666666',
+        brightRed: '#f14c4c',
+        brightGreen: '#23d18b',
+        brightYellow: '#f5f543',
+        brightBlue: '#3b8eea',
+        brightMagenta: '#d670d6',
+        brightCyan: '#29b8db',
+        brightWhite: '#e5e5e5',
+      },
+      fontFamily: 'Cascadia Code, Consolas, "Courier New", monospace',
       fontSize: 13,
+      lineHeight: 1.2,
+      letterSpacing: 0,
     })
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
@@ -67,43 +90,41 @@ export function TerminalPanel({
       activePtys.delete(id)
     })
 
-    const termEl = termRef.current!
-    const removePaste = () => termEl.removeEventListener('paste', pasteHandler as EventListener)
-    cleanupRef.current = { removeData, removeExit, removePaste }
+    cleanupRef.current = { removeData, removeExit }
 
     term.onData((data) => {
       window.api.writeTerminal(id, data)
     })
 
-    // Handle Ctrl+C copy when text is selected
+    // Paste flag to prevent double-paste
+    let pasteHandled = false
+
     term.attachCustomKeyEventHandler((e) => {
+      // Ctrl+C: copy selection
       if (e.type === 'keydown' && e.ctrlKey && e.key === 'c' && term.hasSelection()) {
         navigator.clipboard.writeText(term.getSelection()).catch(() => {})
         return false
       }
-      // Block xterm's default Ctrl+V handling — we handle paste via the DOM event below
-      if ((e.type === 'keydown' || e.type === 'keyup') && e.ctrlKey && e.key === 'v') {
-        return false
+      // Ctrl+V: custom paste with image support
+      if (e.ctrlKey && e.key === 'v') {
+        if (e.type === 'keydown' && !pasteHandled) {
+          pasteHandled = true
+          window.api.clipboardSaveImage(folderPath).then((imgPath) => {
+            if (imgPath) {
+              window.api.writeTerminal(id, imgPath)
+            } else {
+              return navigator.clipboard.readText().then((text) => {
+                if (text) window.api.writeTerminal(id, text)
+              })
+            }
+          }).catch(() => {}).finally(() => {
+            setTimeout(() => { pasteHandled = false }, 100)
+          })
+        }
+        return false // block xterm on both keydown and keyup
       }
       return true
     })
-
-    // Handle paste via DOM event to avoid double-paste
-    const pasteHandler = (e: ClipboardEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      // Try image first (for pasting screenshots into Claude CLI)
-      window.api.clipboardSaveImage(folderPath).then((imgPath) => {
-        if (imgPath) {
-          window.api.writeTerminal(id, imgPath)
-        } else {
-          return navigator.clipboard.readText().then((text) => {
-            if (text) window.api.writeTerminal(id, text)
-          })
-        }
-      }).catch(() => {})
-    }
-    termRef.current!.addEventListener('paste', pasteHandler as EventListener)
 
     // Fit and create PTY after layout is ready
     requestAnimationFrame(() => {
@@ -143,7 +164,6 @@ export function TerminalPanel({
       if (cleanupRef.current) {
         cleanupRef.current.removeData()
         cleanupRef.current.removeExit()
-        cleanupRef.current.removePaste()
         cleanupRef.current = null
       }
       term.dispose()
@@ -197,20 +217,22 @@ export function TerminalPanel({
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      border: `2px solid ${color}`,
+      border: `1px solid ${color}40`,
       borderRadius: '4px',
       overflow: 'hidden',
+      background: '#1e1e1e',
     }}>
       <div
         className="drag-handle"
         onContextMenu={handleContextMenu}
         style={{
-          background: `${color}20`,
-          padding: '4px 10px',
+          background: '#252526',
+          padding: '3px 10px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          borderBottom: `1px solid ${color}`,
+          borderBottom: `1px solid ${color}60`,
+          borderLeft: `2px solid ${color}`,
           cursor: 'grab',
           flexShrink: 0,
         }}

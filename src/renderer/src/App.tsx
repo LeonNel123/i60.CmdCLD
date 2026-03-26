@@ -226,7 +226,7 @@ export default function App() {
   const isFocused = viewMode.type === 'focused'
 
   return (
-    <div style={{ height: '100vh', display: 'flex', background: '#0a0a1a' }}>
+    <div style={{ height: '100vh', display: 'flex', background: '#1e1e1e' }}>
       <Sidebar
         terminals={terminals}
         viewMode={viewMode}
