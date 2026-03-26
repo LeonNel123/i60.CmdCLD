@@ -182,7 +182,10 @@ ipcMain.handle('clipboard:saveImage', (_event, cwd: string) => {
   if (img.isEmpty()) return null
   const screenshotsDir = join(cwd, '.screenshots')
   mkdirSync(screenshotsDir, { recursive: true })
-  const filePath = join(screenshotsDir, `clipboard-${Date.now()}.png`)
+  const now = new Date()
+  const ts = now.toISOString().replace(/[T:]/g, '-').replace(/\..+/, '').replace(/-/g, (m, i) => i < 10 ? '-' : i === 10 ? '_' : '')
+  const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}h${String(now.getMinutes()).padStart(2,'0')}m${String(now.getSeconds()).padStart(2,'0')}s`
+  const filePath = join(screenshotsDir, `screenshot-${stamp}.png`)
   writeFileSync(filePath, img.toPNG())
   return filePath
 })
