@@ -1,13 +1,14 @@
+// src/renderer/src/App.tsx
 import { useState, useEffect, useCallback } from 'react'
 import { Responsive, WidthProvider, Layout } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
-import { TopBar } from './components/TopBar'
+import { Sidebar } from './components/Sidebar'
 import { TerminalPanel } from './components/TerminalPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { assignColor } from './utils/colors'
 import { calculateLayout } from './utils/grid-layout'
-import type { SessionState } from './types/api'
+import type { MultiWindowState, WindowInfo, TerminalTransfer } from './types/api'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
@@ -16,61 +17,127 @@ interface TerminalEntry {
   path: string
   name: string
   color: string
+  initialScrollback?: string
+  skipAutoLaunch?: boolean
 }
+
+type ViewMode = { type: 'grid' } | { type: 'focused'; terminalId: string }
 
 export default function App() {
   const [terminals, setTerminals] = useState<TerminalEntry[]>([])
   const [layouts, setLayouts] = useState<Layout[]>([])
   const [closingId, setClosingId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>({ type: 'grid' })
+  const [windowList, setWindowList] = useState<WindowInfo[]>([])
 
   // Load saved state on mount
   useEffect(() => {
     window.api.loadState().then((state) => {
-      if (state?.folders?.length) {
-        const entries: TerminalEntry[] = state.folders.map((f) => ({
-          id: crypto.randomUUID(),
-          path: f.path,
-          name: f.path.split(/[\\/]/).pop() || f.path,
-          color: f.color,
-        }))
-        setTerminals(entries)
+      if (state?.windows?.length) {
+        // For now, load the first window's state (multi-window restore is handled by main process)
+        const win = state.windows[0]
+        if (win?.folders?.length) {
+          const entries: TerminalEntry[] = win.folders.map((f) => ({
+            id: crypto.randomUUID(),
+            path: f.path,
+            name: f.path.split(/[\\/]/).pop() || f.path,
+            color: f.color,
+          }))
+          setTerminals(entries)
 
-        const hasLayouts = state.folders.every((f) => f.layout)
-        if (hasLayouts) {
-          setLayouts(entries.map((e, i) => ({
-            ...state.folders[i].layout,
-            i: e.id,
-          })))
-        } else {
-          setLayouts(calculateLayout(entries.length).map((pos, i) => ({
-            ...pos,
-            i: entries[i].id,
-          })))
+          const hasLayouts = win.folders.every((f) => f.layout)
+          if (hasLayouts) {
+            setLayouts(entries.map((e, i) => ({
+              ...win.folders[i].layout,
+              i: e.id,
+            })))
+          } else {
+            setLayouts(calculateLayout(entries.length).map((pos, i) => ({
+              ...pos,
+              i: entries[i].id,
+            })))
+          }
         }
       }
       setLoaded(true)
     })
+
+    // Fetch initial window list
+    window.api.windowList().then(setWindowList)
+  }, [])
+
+  // Listen for multi-window events
+  useEffect(() => {
+    const removeReceive = window.api.onTerminalReceive((data: TerminalTransfer) => {
+      const newEntry: TerminalEntry = {
+        id: data.id,
+        path: data.path,
+        name: data.name,
+        color: data.color,
+        initialScrollback: data.scrollback,
+        skipAutoLaunch: true,
+      }
+      setTerminals((prev) => {
+        const next = [...prev, newEntry]
+        setLayouts(calculateLayout(next.length).map((pos, i) => ({
+          ...pos,
+          i: next[i].id,
+        })))
+        return next
+      })
+    })
+
+    const removeRemoved = window.api.onTerminalRemoved((terminalId: string) => {
+      setTerminals((prev) => {
+        const next = prev.filter((t) => t.id !== terminalId)
+        setLayouts(calculateLayout(next.length).map((pos, i) => ({
+          ...pos,
+          i: next[i].id,
+        })))
+        return next
+      })
+      setViewMode((prev) =>
+        prev.type === 'focused' && prev.terminalId === terminalId
+          ? { type: 'grid' }
+          : prev
+      )
+    })
+
+    const removeWindowList = window.api.onWindowListUpdated((windows: WindowInfo[]) => {
+      setWindowList(windows)
+    })
+
+    return () => {
+      removeReceive()
+      removeRemoved()
+      removeWindowList()
+    }
   }, [])
 
   // Save state whenever terminals or layouts change
   useEffect(() => {
     if (!loaded) return
-    const state: SessionState = {
-      folders: terminals.map((t) => {
-        const l = layouts.find((lay) => lay.i === t.id)
-        return {
-          path: t.path,
-          color: t.color,
-          layout: l
-            ? { x: l.x, y: l.y, w: l.w, h: l.h }
-            : { x: 0, y: 0, w: 12, h: 1 },
-        }
-      }),
-      windowBounds: { width: 0, height: 0, x: 0, y: 0 }, // managed by main process
+    const state: MultiWindowState = {
+      windows: [{
+        id: 'current',
+        bounds: { width: 0, height: 0, x: 0, y: 0 },
+        sidebarCollapsed: false,
+        viewMode: viewMode.type === 'grid' ? 'grid' : { focused: viewMode.terminalId },
+        folders: terminals.map((t) => {
+          const l = layouts.find((lay) => lay.i === t.id)
+          return {
+            path: t.path,
+            color: t.color,
+            layout: l
+              ? { x: l.x, y: l.y, w: l.w, h: l.h }
+              : { x: 0, y: 0, w: 12, h: 1 },
+          }
+        }),
+      }],
     }
     window.api.saveState(state)
-  }, [terminals, layouts, loaded])
+  }, [terminals, layouts, loaded, viewMode])
 
   const handleAddFolder = useCallback(async () => {
     const folderPath = await window.api.selectFolder()
@@ -109,19 +176,55 @@ export default function App() {
     }))
     setLayouts(newLayouts)
     setClosingId(null)
+    setViewMode((prev) =>
+      prev.type === 'focused' && prev.terminalId === closingId
+        ? { type: 'grid' }
+        : prev
+    )
   }, [closingId, terminals])
 
   const handleLayoutChange = useCallback((layout: Layout[]) => {
     setLayouts(layout)
   }, [])
 
+  const handleMove = useCallback((terminalId: string, targetWindowId: string) => {
+    window.api.moveTerminal(terminalId, targetWindowId)
+  }, [])
+
+  const handleNewWindow = useCallback(() => {
+    window.api.windowCreate()
+  }, [])
+
+  const handleSelectTerminal = useCallback((id: string) => {
+    setViewMode((prev) =>
+      prev.type === 'focused' && prev.terminalId === id
+        ? { type: 'grid' }
+        : { type: 'focused', terminalId: id }
+    )
+  }, [])
+
+  const handleShowAll = useCallback(() => {
+    setViewMode({ type: 'grid' })
+  }, [])
+
   const gridRows = Math.ceil(Math.sqrt(terminals.length || 1))
-  const rowHeight = Math.max(150, Math.floor((window.innerHeight - 50) / gridRows) - 12)
+  const rowHeight = Math.max(150, Math.floor(window.innerHeight / gridRows) - 4)
+
+  const focusedTerminal = viewMode.type === 'focused'
+    ? terminals.find((t) => t.id === viewMode.terminalId)
+    : null
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#0a0a1a' }}>
-      <TopBar count={terminals.length} onAdd={handleAddFolder} />
-      <div style={{ flex: 1, overflow: 'auto' }}>
+    <div style={{ height: '100vh', display: 'flex', background: '#0a0a1a' }}>
+      <Sidebar
+        terminals={terminals}
+        viewMode={viewMode}
+        onSelectTerminal={handleSelectTerminal}
+        onShowAll={handleShowAll}
+        onAddFolder={handleAddFolder}
+        onNewWindow={handleNewWindow}
+      />
+      <div style={{ flex: 1, overflow: 'hidden' }}>
         {terminals.length === 0 ? (
           <div style={{
             display: 'flex',
@@ -133,7 +236,24 @@ export default function App() {
           }}>
             Click "+ Add Folder" to start a Claude session
           </div>
+        ) : focusedTerminal ? (
+          /* Focused mode: single terminal fills the space */
+          <div style={{ height: '100%' }}>
+            <TerminalPanel
+              key={focusedTerminal.id}
+              id={focusedTerminal.id}
+              folderPath={focusedTerminal.path}
+              folderName={focusedTerminal.name}
+              color={focusedTerminal.color}
+              onClose={() => handleRequestClose(focusedTerminal.id)}
+              windowList={windowList}
+              onMove={handleMove}
+              initialScrollback={focusedTerminal.initialScrollback}
+              skipAutoLaunch={focusedTerminal.skipAutoLaunch}
+            />
+          </div>
         ) : (
+          /* Grid mode */
           <ResponsiveGridLayout
             layouts={{ lg: layouts }}
             breakpoints={{ lg: 0 }}
@@ -142,7 +262,7 @@ export default function App() {
             draggableHandle=".drag-handle"
             onLayoutChange={handleLayoutChange}
             compactType="vertical"
-            margin={[4, 4]}
+            margin={[2, 2]}
           >
             {terminals.map((t) => (
               <div key={t.id}>
@@ -152,6 +272,10 @@ export default function App() {
                   folderName={t.name}
                   color={t.color}
                   onClose={() => handleRequestClose(t.id)}
+                  windowList={windowList}
+                  onMove={handleMove}
+                  initialScrollback={t.initialScrollback}
+                  skipAutoLaunch={t.skipAutoLaunch}
                 />
               </div>
             ))}
