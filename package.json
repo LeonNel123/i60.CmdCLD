@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "postinstall": "electron-rebuild",
     "test": "vitest run",
     "test:watch": "vitest"
   },
