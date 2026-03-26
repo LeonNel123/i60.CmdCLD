@@ -1,5 +1,18 @@
 import * as pty from 'node-pty'
 import { WebContents } from 'electron'
+import { execFileSync } from 'child_process'
+
+// Use pwsh (PowerShell 7+) if available, fall back to Windows PowerShell 5.1
+function getShell(): string {
+  try {
+    execFileSync('pwsh', ['-Version'], { stdio: 'ignore' })
+    return 'pwsh.exe'
+  } catch {
+    return 'powershell.exe'
+  }
+}
+
+const SHELL = getShell()
 
 export class ScrollbackBuffer {
   private chunks: string[] = []
@@ -48,7 +61,7 @@ export class PtyManager {
   private ptys = new Map<string, PtyEntry>()
 
   create(id: string, cwd: string, webContents: WebContents, meta: TerminalMeta): void {
-    const ptyProcess = pty.spawn('powershell.exe', [], {
+    const ptyProcess = pty.spawn(SHELL, [], {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,
