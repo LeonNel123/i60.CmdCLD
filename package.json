@@ -8,7 +8,7 @@
     "build": "electron-vite build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package": "electron-vite build && electron-builder --win portable"
+    "package": "electron-vite build && electron-builder --win dir"
   },
   "build": {
     "appId": "com.i60.cmdcld",
@@ -20,11 +20,8 @@
       "out/**/*"
     ],
     "win": {
-      "target": "portable",
+      "target": "dir",
       "icon": "build/icon.ico"
-    },
-    "portable": {
-      "artifactName": "CmdCLD.exe"
     },
     "npmRebuild": false,
     "asarUnpack": [
