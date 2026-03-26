@@ -7,7 +7,7 @@ import { TerminalPanel } from './components/TerminalPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { assignColor } from './utils/colors'
 import { calculateLayout } from './utils/grid-layout'
-import type { MultiWindowState } from './types/api'
+import type { MultiWindowState, RecentFolder } from './types/api'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
@@ -26,10 +26,13 @@ export default function App() {
   const [closingId, setClosingId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>({ type: 'grid' })
+  const [recentFolders, setRecentFolders] = useState<RecentFolder[]>([])
 
-  // Load saved state on mount — skip if this is a new empty window
-  // The main process passes ?empty=1 in the URL for new windows
+  // Load saved state + recent folders on mount
   useEffect(() => {
+    // Load recent folders once (frozen for session)
+    window.api.recentList().then(setRecentFolders).catch(() => {})
+
     const isEmptyWindow = new URLSearchParams(window.location.search).has('empty')
     if (isEmptyWindow) {
       setLoaded(true)
@@ -89,10 +92,8 @@ export default function App() {
     window.api.saveState(state)
   }, [terminals, layouts, loaded, viewMode])
 
-  const handleAddFolder = useCallback(async () => {
-    const folderPath = await window.api.selectFolder()
-    if (!folderPath) return
-
+  // Helper to add a folder as a new terminal
+  const addTerminalForPath = useCallback((folderPath: string) => {
     const usedColors = terminals.map((t) => t.color)
     const newEntry: TerminalEntry = {
       id: crypto.randomUUID(),
@@ -109,7 +110,20 @@ export default function App() {
       i: newTerminals[i].id,
     }))
     setLayouts(newLayouts)
+
+    // Track in recent DB (silently, don't update UI list)
+    window.api.recentAdd(folderPath).catch(() => {})
   }, [terminals])
+
+  const handleAddFolder = useCallback(async () => {
+    const folderPath = await window.api.selectFolder()
+    if (!folderPath) return
+    addTerminalForPath(folderPath)
+  }, [addTerminalForPath])
+
+  const handleOpenRecent = useCallback((path: string) => {
+    addTerminalForPath(path)
+  }, [addTerminalForPath])
 
   const handleRequestClose = useCallback((id: string) => {
     setClosingId(id)
@@ -117,7 +131,6 @@ export default function App() {
 
   const handleConfirmClose = useCallback(() => {
     if (!closingId) return
-    // PTY is already killed by TerminalPanel.handleClose before onClose fires
     const newTerminals = terminals.filter((t) => t.id !== closingId)
     setTerminals(newTerminals)
 
@@ -167,6 +180,8 @@ export default function App() {
         onShowAll={handleShowAll}
         onAddFolder={handleAddFolder}
         onNewWindow={handleNewWindow}
+        recentFolders={recentFolders}
+        onOpenRecent={handleOpenRecent}
       />
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {terminals.length === 0 && (
@@ -182,7 +197,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Focused mode: all terminals rendered, only selected visible */}
         {isFocused && terminals.map((t) => (
           <div
             key={`focused-${t.id}`}
@@ -202,7 +216,6 @@ export default function App() {
           </div>
         ))}
 
-        {/* Grid mode */}
         {!isFocused && terminals.length > 0 && (
           <ResponsiveGridLayout
             layouts={{ lg: layouts }}

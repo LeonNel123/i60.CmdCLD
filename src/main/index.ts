@@ -4,6 +4,7 @@ import { execFile } from 'child_process'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
 import { WindowRegistry } from './window-registry'
+import { RecentDB } from './recent-db'
 import type { TerminalMeta } from './pty-manager'
 
 // Single instance lock — only one app process at a time
@@ -15,6 +16,7 @@ if (!gotLock) {
 const ptyManager = new PtyManager()
 const store = new Store(join(app.getPath('userData'), 'sessions.json'))
 const registry = new WindowRegistry()
+const recentDB = new RecentDB(join(app.getPath('userData'), 'recent.db'))
 
 function createWindow(opts?: { empty?: boolean }): { id: string; window: BrowserWindow } {
   const id = crypto.randomUUID()
@@ -147,6 +149,15 @@ ipcMain.handle('dialog:selectFolder', async (event) => {
     properties: ['openDirectory'],
   })
   return result.canceled ? null : result.filePaths[0]
+})
+
+// Recent folders
+ipcMain.handle('recent:list', () => {
+  return recentDB.list()
+})
+
+ipcMain.handle('recent:add', (_event, folderPath: string) => {
+  recentDB.add(folderPath)
 })
 
 // Store IPC handlers

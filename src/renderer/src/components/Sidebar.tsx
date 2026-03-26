@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import type { RecentFolder } from '../types/api'
 
 interface TerminalEntry {
   id: string
+  path: string
   name: string
   color: string
 }
@@ -15,6 +17,8 @@ interface SidebarProps {
   onShowAll: () => void
   onAddFolder: () => void
   onNewWindow: () => void
+  recentFolders: RecentFolder[]
+  onOpenRecent: (path: string) => void
 }
 
 const EXPANDED_WIDTH = 180
@@ -27,11 +31,19 @@ export function Sidebar({
   onShowAll,
   onAddFolder,
   onNewWindow,
+  recentFolders,
+  onOpenRecent,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
       const saved = localStorage.getItem('sidebar-collapsed')
       return saved === null ? true : saved === 'true'
+    } catch { return true }
+  })
+
+  const [recentExpanded, setRecentExpanded] = useState(() => {
+    try {
+      return localStorage.getItem('sidebar-recent-expanded') !== 'false'
     } catch { return true }
   })
 
@@ -41,9 +53,16 @@ export function Sidebar({
     try { localStorage.setItem('sidebar-collapsed', String(next)) } catch {}
   }
 
-  const width = collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH
+  const toggleRecent = () => {
+    const next = !recentExpanded
+    setRecentExpanded(next)
+    try { localStorage.setItem('sidebar-recent-expanded', String(next)) } catch {}
+  }
 
-  const btnStyle = (active = false): React.CSSProperties => ({
+  const width = collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH
+  const activePaths = new Set(terminals.map((t) => t.path))
+
+  const btnStyle = (active = false, disabled = false): React.CSSProperties => ({
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
@@ -52,12 +71,13 @@ export function Sidebar({
     justifyContent: collapsed ? 'center' : 'flex-start',
     background: active ? 'rgba(255,255,255,0.08)' : 'none',
     border: 'none',
-    color: '#ccc',
-    cursor: 'pointer',
+    color: disabled ? '#444' : '#ccc',
+    cursor: disabled ? 'default' : 'pointer',
     fontSize: '12px',
     fontFamily: 'monospace',
     borderRadius: '3px',
     textAlign: 'left',
+    opacity: disabled ? 0.5 : 1,
   })
 
   return (
@@ -85,8 +105,8 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Folder list */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px' }}>
+      {/* Active terminals */}
+      <div style={{ overflowY: 'auto', padding: '4px', flexShrink: 0 }}>
         {terminals.map((t) => {
           const isActive = viewMode.type === 'focused' && viewMode.terminalId === t.id
           return (
@@ -117,8 +137,53 @@ export function Sidebar({
         })}
       </div>
 
+      {/* Recent folders — expandable, hidden when sidebar collapsed */}
+      {!collapsed && recentFolders.length > 0 && (
+        <div style={{ flex: 1, overflowY: 'auto', borderTop: '1px solid #1e293b' }}>
+          <button
+            onClick={toggleRecent}
+            style={{
+              ...btnStyle(),
+              padding: '6px 10px',
+              color: '#888',
+              fontSize: '11px',
+              justifyContent: 'space-between',
+            }}
+          >
+            <span>Recent</span>
+            <span style={{ fontSize: '10px' }}>{recentExpanded ? '\u25BC' : '\u25B6'}</span>
+          </button>
+          {recentExpanded && recentFolders.map((f) => {
+            const isOpen = activePaths.has(f.path)
+            return (
+              <button
+                key={f.path}
+                onClick={() => { if (!isOpen) onOpenRecent(f.path) }}
+                style={btnStyle(false, isOpen)}
+                title={isOpen ? `${f.path} (already open)` : f.path}
+              >
+                <span style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: isOpen ? '#333' : '#555',
+                  flexShrink: 0,
+                }} />
+                <span style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {f.name}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* Bottom actions */}
-      <div style={{ padding: '6px 4px', borderTop: '1px solid #1e293b' }}>
+      <div style={{ padding: '6px 4px', borderTop: '1px solid #1e293b', flexShrink: 0 }}>
         <button onClick={onShowAll} style={btnStyle(viewMode.type === 'grid')} title="Show All">
           <span style={{ fontSize: '13px', lineHeight: 1 }}>&#9635;</span>
           {!collapsed && <span>Show All</span>}

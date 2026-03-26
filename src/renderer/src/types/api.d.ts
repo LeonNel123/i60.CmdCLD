@@ -27,6 +27,12 @@ export interface MultiWindowState {
   windows: WindowState[]
 }
 
+export interface RecentFolder {
+  path: string
+  name: string
+  lastOpened: number
+}
+
 export interface ElectronAPI {
   createTerminal: (id: string, cwd: string) => Promise<void>
   writeTerminal: (id: string, data: string) => Promise<void>
@@ -39,6 +45,8 @@ export interface ElectronAPI {
   saveState: (state: MultiWindowState) => Promise<void>
   windowCreate: () => Promise<string>
   windowList: () => Promise<WindowInfo[]>
+  recentList: () => Promise<RecentFolder[]>
+  recentAdd: (folderPath: string) => Promise<void>
   openInVscode: (folderPath: string) => Promise<void>
   onTerminalReceive: (callback: (data: TerminalTransfer) => void) => () => void
   onTerminalRemoved: (callback: (terminalId: string) => void) => () => void

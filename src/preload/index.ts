@@ -36,6 +36,13 @@ contextBridge.exposeInMainWorld('api', {
   saveState: (state: unknown): Promise<void> =>
     ipcRenderer.invoke('store:save', state),
 
+  // Recent folders
+  recentList: (): Promise<Array<{ path: string; name: string; lastOpened: number }>> =>
+    ipcRenderer.invoke('recent:list'),
+
+  recentAdd: (folderPath: string): Promise<void> =>
+    ipcRenderer.invoke('recent:add', folderPath),
+
   // Window management
   windowCreate: (): Promise<string> =>
     ipcRenderer.invoke('window:create'),
