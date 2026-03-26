@@ -2,11 +2,15 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { dirname } from 'path'
 
 export interface AppSettings {
-  editor: string  // editor command, e.g. 'code', 'cursor', 'devenv'
+  editor: string
+  claudeArgs: string
+  askBeforeLaunch: boolean
 }
 
 const DEFAULTS: AppSettings = {
   editor: 'code',
+  claudeArgs: '--dangerously-skip-permissions',
+  askBeforeLaunch: false,
 }
 
 export class Settings {

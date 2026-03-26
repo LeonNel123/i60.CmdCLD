@@ -5,6 +5,8 @@ import 'react-resizable/css/styles.css'
 import { Sidebar } from './components/Sidebar'
 import { TerminalPanel, killPty } from './components/TerminalPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
+import { SettingsDialog } from './components/SettingsDialog'
+import { LaunchDialog } from './components/LaunchDialog'
 import { assignColor } from './utils/colors'
 import { calculateLayout } from './utils/grid-layout'
 import type { MultiWindowState, RecentFolder } from './types/api'
@@ -16,6 +18,7 @@ interface TerminalEntry {
   path: string
   name: string
   color: string
+  claudeArgs?: string
 }
 
 type ViewMode = { type: 'grid' } | { type: 'focused'; terminalId: string }
@@ -27,10 +30,18 @@ export default function App() {
   const [loaded, setLoaded] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>({ type: 'grid' })
   const [recentFolders, setRecentFolders] = useState<RecentFolder[]>([])
+  const [showSettings, setShowSettings] = useState(false)
+  const [pendingLaunch, setPendingLaunch] = useState<{ path: string; name: string } | null>(null)
+  const [claudeArgs, setClaudeArgs] = useState('--dangerously-skip-permissions')
+  const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
 
-  // Load saved state + recent folders on mount
+  // Load settings + saved state + recent folders on mount
   useEffect(() => {
-    // Load recent folders once (frozen for session)
+    window.api.settingsGetAll().then((s) => {
+      setClaudeArgs(s.claudeArgs)
+      setAskBeforeLaunch(s.askBeforeLaunch)
+    }).catch(() => {})
+
     window.api.recentList().then(setRecentFolders).catch(() => {})
 
     const isEmptyWindow = new URLSearchParams(window.location.search).has('empty')
@@ -95,14 +106,15 @@ export default function App() {
     return () => clearTimeout(timer)
   }, [terminals, layouts, loaded, viewMode])
 
-  // Helper to add a folder as a new terminal
-  const addTerminalForPath = useCallback((folderPath: string) => {
+  // Actually create a terminal with specific args
+  const createTerminal = useCallback((folderPath: string, args: string) => {
     const usedColors = terminals.map((t) => t.color)
     const newEntry: TerminalEntry = {
       id: crypto.randomUUID(),
       path: folderPath,
       name: folderPath.split(/[\\/]/).pop() || folderPath,
       color: assignColor(usedColors),
+      claudeArgs: args,
     }
 
     const newTerminals = [...terminals, newEntry]
@@ -114,19 +126,34 @@ export default function App() {
     }))
     setLayouts(newLayouts)
 
-    // Track in recent DB (silently, don't update UI list)
     window.api.recentAdd(folderPath).catch(() => {})
   }, [terminals])
+
+  // Start the folder-open flow (may show dialog or launch directly)
+  const startAddFolder = useCallback((folderPath: string) => {
+    const name = folderPath.split(/[\\/]/).pop() || folderPath
+    if (askBeforeLaunch) {
+      setPendingLaunch({ path: folderPath, name })
+    } else {
+      createTerminal(folderPath, claudeArgs)
+    }
+  }, [askBeforeLaunch, claudeArgs, createTerminal])
 
   const handleAddFolder = useCallback(async () => {
     const folderPath = await window.api.selectFolder()
     if (!folderPath) return
-    addTerminalForPath(folderPath)
-  }, [addTerminalForPath])
+    startAddFolder(folderPath)
+  }, [startAddFolder])
 
   const handleOpenRecent = useCallback((path: string) => {
-    addTerminalForPath(path)
-  }, [addTerminalForPath])
+    startAddFolder(path)
+  }, [startAddFolder])
+
+  const handleLaunchConfirm = useCallback((args: string) => {
+    if (!pendingLaunch) return
+    createTerminal(pendingLaunch.path, args)
+    setPendingLaunch(null)
+  }, [pendingLaunch, createTerminal])
 
   const handleRequestClose = useCallback((id: string) => {
     setClosingId(id)
@@ -171,6 +198,15 @@ export default function App() {
     setViewMode({ type: 'grid' })
   }, [])
 
+  const handleSettingsClosed = useCallback(() => {
+    setShowSettings(false)
+    // Reload settings
+    window.api.settingsGetAll().then((s) => {
+      setClaudeArgs(s.claudeArgs)
+      setAskBeforeLaunch(s.askBeforeLaunch)
+    }).catch(() => {})
+  }, [])
+
   const gridRows = Math.ceil(Math.sqrt(terminals.length || 1))
   const rowHeight = Math.max(150, Math.floor(window.innerHeight / gridRows) - 4)
   const isFocused = viewMode.type === 'focused'
@@ -186,6 +222,7 @@ export default function App() {
         onNewWindow={handleNewWindow}
         recentFolders={recentFolders}
         onOpenRecent={handleOpenRecent}
+        onOpenSettings={() => setShowSettings(true)}
       />
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {terminals.length === 0 && (
@@ -215,6 +252,7 @@ export default function App() {
               folderPath={t.path}
               folderName={t.name}
               color={t.color}
+              claudeArgs={t.claudeArgs}
               onClose={() => handleRequestClose(t.id)}
             />
           </div>
@@ -238,6 +276,7 @@ export default function App() {
                   folderPath={t.path}
                   folderName={t.name}
                   color={t.color}
+                  claudeArgs={t.claudeArgs}
                   onClose={() => handleRequestClose(t.id)}
                 />
               </div>
@@ -245,11 +284,25 @@ export default function App() {
           </ResponsiveGridLayout>
         )}
       </div>
+
       {closingId && (
         <ConfirmDialog
           message={`Close terminal for "${terminals.find((t) => t.id === closingId)?.name}"?`}
           onConfirm={handleConfirmClose}
           onCancel={() => setClosingId(null)}
+        />
+      )}
+
+      {showSettings && (
+        <SettingsDialog onClose={handleSettingsClosed} />
+      )}
+
+      {pendingLaunch && (
+        <LaunchDialog
+          folderName={pendingLaunch.name}
+          defaultArgs={claudeArgs}
+          onLaunch={handleLaunchConfirm}
+          onCancel={() => setPendingLaunch(null)}
         />
       )}
     </div>

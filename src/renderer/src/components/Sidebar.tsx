@@ -19,6 +19,7 @@ interface SidebarProps {
   onNewWindow: () => void
   recentFolders: RecentFolder[]
   onOpenRecent: (path: string) => void
+  onOpenSettings: () => void
 }
 
 const EXPANDED_WIDTH = 180
@@ -33,6 +34,7 @@ export function Sidebar({
   onNewWindow,
   recentFolders,
   onOpenRecent,
+  onOpenSettings,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -187,6 +189,10 @@ export function Sidebar({
         <button onClick={onShowAll} style={btnStyle(viewMode.type === 'grid')} title="Show All">
           <span style={{ fontSize: '13px', lineHeight: 1 }}>&#9635;</span>
           {!collapsed && <span>Show All</span>}
+        </button>
+        <button onClick={onOpenSettings} style={btnStyle()} title="Settings">
+          <span style={{ fontSize: '13px', lineHeight: 1 }}>&#9881;</span>
+          {!collapsed && <span>Settings</span>}
         </button>
         <button onClick={toggleCollapsed} style={btnStyle()} title={collapsed ? 'Expand' : 'Collapse'}>
           <span style={{ fontSize: '12px', lineHeight: 1 }}>{collapsed ? '\u25B6' : '\u25C0'}</span>

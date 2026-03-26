@@ -17,6 +17,7 @@ interface TerminalPanelProps {
   folderPath: string
   folderName: string
   color: string
+  claudeArgs?: string
   onClose: () => void
 }
 
@@ -25,6 +26,7 @@ export function TerminalPanel({
   folderPath,
   folderName,
   color,
+  claudeArgs,
   onClose,
 }: TerminalPanelProps) {
   const termRef = useRef<HTMLDivElement>(null)
@@ -102,8 +104,9 @@ export function TerminalPanel({
           activePtys.delete(id)
         })
 
+        const launchCmd = claudeArgs ? `claude ${claudeArgs}\r` : 'claude\r'
         setTimeout(() => {
-          window.api.writeTerminal(id, 'claude --dangerously-skip-permissions\r')
+          window.api.writeTerminal(id, launchCmd)
         }, 1000)
       }
     })

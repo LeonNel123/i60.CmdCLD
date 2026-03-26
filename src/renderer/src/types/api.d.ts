@@ -40,6 +40,8 @@ export interface ElectronAPI {
   recentList: () => Promise<RecentFolder[]>
   recentAdd: (folderPath: string) => Promise<void>
   clipboardSaveImage: (cwd: string) => Promise<string | null>
+  settingsGetAll: () => Promise<{ editor: string; claudeArgs: string; askBeforeLaunch: boolean }>
+  settingsSet: (key: string, value: unknown) => Promise<void>
   openInEditor: (folderPath: string) => Promise<void>
   editorGetAvailable: () => Promise<Array<{ id: string; name: string; cmd: string }>>
   editorGetCurrent: () => Promise<string>

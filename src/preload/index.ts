@@ -47,6 +47,13 @@ contextBridge.exposeInMainWorld('api', {
   clipboardSaveImage: (cwd: string): Promise<string | null> =>
     ipcRenderer.invoke('clipboard:saveImage', cwd),
 
+  // Settings
+  settingsGetAll: (): Promise<{ editor: string; claudeArgs: string; askBeforeLaunch: boolean }> =>
+    ipcRenderer.invoke('settings:getAll'),
+
+  settingsSet: (key: string, value: unknown): Promise<void> =>
+    ipcRenderer.invoke('settings:set', key, value),
+
   // Window management
   windowCreate: (): Promise<string> =>
     ipcRenderer.invoke('window:create'),

@@ -217,6 +217,15 @@ ipcMain.handle('clipboard:saveImage', (_event, cwd: string) => {
   return filePath
 })
 
+// Settings
+ipcMain.handle('settings:getAll', () => {
+  return settings.getAll()
+})
+
+ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
+  settings.set(key as any, value as any)
+})
+
 // Dialog IPC handler
 ipcMain.handle('dialog:selectFolder', async (event) => {
   const windowId = getWindowIdFromEvent(event)
