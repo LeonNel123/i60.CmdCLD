@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('api', {
+  // Existing PTY methods
   createTerminal: (id: string, cwd: string): Promise<void> =>
     ipcRenderer.invoke('pty:create', id, cwd),
 
@@ -25,6 +26,7 @@ contextBridge.exposeInMainWorld('api', {
     return () => { ipcRenderer.removeListener(`pty:exit:${id}`, listener) }
   },
 
+  // Existing dialog/store
   selectFolder: (): Promise<string | null> =>
     ipcRenderer.invoke('dialog:selectFolder'),
 
@@ -33,4 +35,40 @@ contextBridge.exposeInMainWorld('api', {
 
   saveState: (state: unknown): Promise<void> =>
     ipcRenderer.invoke('store:save', state),
+
+  // New: window management
+  windowCreate: (): Promise<string> =>
+    ipcRenderer.invoke('window:create'),
+
+  windowList: (): Promise<Array<{ id: string; label: string }>> =>
+    ipcRenderer.invoke('window:list'),
+
+  // New: terminal move
+  moveTerminal: (terminalId: string, targetWindowId: string): Promise<void> =>
+    ipcRenderer.invoke('terminal:move', terminalId, targetWindowId),
+
+  // New: VS Code
+  openInVscode: (folderPath: string): Promise<void> =>
+    ipcRenderer.invoke('vscode:open', folderPath),
+
+  // New: receive events for multi-window
+  onTerminalReceive: (callback: (data: {
+    id: string; path: string; name: string; color: string; scrollback: string
+  }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, data: any): void => callback(data)
+    ipcRenderer.on('terminal:receive', listener)
+    return () => { ipcRenderer.removeListener('terminal:receive', listener) }
+  },
+
+  onTerminalRemoved: (callback: (terminalId: string) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, id: string): void => callback(id)
+    ipcRenderer.on('terminal:removed', listener)
+    return () => { ipcRenderer.removeListener('terminal:removed', listener) }
+  },
+
+  onWindowListUpdated: (callback: (windows: Array<{ id: string; label: string }>) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, windows: any): void => callback(windows)
+    ipcRenderer.on('window:list-updated', listener)
+    return () => { ipcRenderer.removeListener('window:list-updated', listener) }
+  },
 })
