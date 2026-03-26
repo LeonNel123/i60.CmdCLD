@@ -1,4 +1,4 @@
-import initSqlJs, { Database } from 'sql.js'
+import initSqlJs, { Database } from 'sql.js/dist/sql-asm.js'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { dirname } from 'path'
 

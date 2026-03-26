@@ -20,7 +20,8 @@
       "out/**/*"
     ],
     "win": {
-      "target": "portable"
+      "target": "portable",
+      "icon": "build/icon.ico"
     },
     "portable": {
       "artifactName": "CmdCLD.exe"
@@ -46,8 +47,10 @@
     "electron": "^33.0.0",
     "electron-builder": "^26.8.1",
     "electron-vite": "^2.3.0",
+    "png2icons": "^2.0.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
+    "sharp": "^0.34.5",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   }
