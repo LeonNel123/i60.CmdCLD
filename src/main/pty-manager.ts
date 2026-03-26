@@ -68,15 +68,19 @@ export class PtyManager {
 
     entry.dataDisposable = ptyProcess.onData((data) => {
       scrollback.push(data)
-      if (!entry.webContents.isDestroyed()) {
-        entry.webContents.send(`pty:data:${id}`, data)
-      }
+      try {
+        if (!entry.webContents.isDestroyed()) {
+          entry.webContents.send(`pty:data:${id}`, data)
+        }
+      } catch {}
     })
 
     entry.exitDisposable = ptyProcess.onExit(({ exitCode }) => {
-      if (!entry.webContents.isDestroyed()) {
-        entry.webContents.send(`pty:exit:${id}`, exitCode)
-      }
+      try {
+        if (!entry.webContents.isDestroyed()) {
+          entry.webContents.send(`pty:exit:${id}`, exitCode)
+        }
+      } catch {}
       this.ptys.delete(id)
     })
 
@@ -108,6 +112,8 @@ export class PtyManager {
   kill(id: string): void {
     const entry = this.ptys.get(id)
     if (entry) {
+      entry.dataDisposable?.dispose()
+      entry.exitDisposable?.dispose()
       entry.process.kill()
       this.ptys.delete(id)
     }

@@ -29,7 +29,10 @@ export function Sidebar({
   onNewWindow,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
-    try { return localStorage.getItem('sidebar-collapsed') === 'true' } catch { return false }
+    try {
+      const saved = localStorage.getItem('sidebar-collapsed')
+      return saved === null ? true : saved === 'true'
+    } catch { return true }
   })
 
   const toggleCollapsed = () => {

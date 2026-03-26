@@ -1,11 +1,16 @@
-// src/main/index.ts
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
-import { exec } from 'child_process'
+import { execFile } from 'child_process'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
 import { WindowRegistry } from './window-registry'
 import type { TerminalMeta } from './pty-manager'
+
+// Single instance lock — only one app process at a time
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+}
 
 const ptyManager = new PtyManager()
 const store = new Store(join(app.getPath('userData'), 'sessions.json'))
@@ -20,6 +25,8 @@ function createWindow(windowId?: string): { id: string; window: BrowserWindow } 
     height: bounds.height,
     x: bounds.x,
     y: bounds.y,
+    minWidth: 400,
+    minHeight: 300,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -28,7 +35,6 @@ function createWindow(windowId?: string): { id: string; window: BrowserWindow } 
     title: 'CmdCLD',
   })
 
-  win.maximize()
   win.setMenuBarVisibility(false)
 
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -38,12 +44,18 @@ function createWindow(windowId?: string): { id: string; window: BrowserWindow } 
   }
 
   registry.register(id, win)
-
-  // Broadcast updated window list to all renderers
   broadcastWindowList()
 
+  // Save window bounds on resize/move
+  const saveBounds = (): void => {
+    if (!win.isDestroyed()) {
+      store.saveWindowBounds(id, win.getBounds())
+    }
+  }
+  win.on('resize', saveBounds)
+  win.on('move', saveBounds)
+
   win.on('closed', () => {
-    // Kill all PTYs owned by this window
     const owned = ptyManager.listByWebContents(win.webContents)
     for (const meta of owned) {
       ptyManager.kill(meta.id)
@@ -64,7 +76,6 @@ function broadcastWindowList(): void {
   registry.broadcastAll('window:list-updated', list)
 }
 
-// Identify which window sent the IPC event
 function getWindowIdFromEvent(event: Electron.IpcMainInvokeEvent): string | undefined {
   const list = registry.list()
   for (const info of list) {
@@ -97,7 +108,7 @@ ipcMain.handle('pty:kill', (_event, id: string) => {
   ptyManager.kill(id)
 })
 
-// Window management
+// Window management — new windows always start empty
 ipcMain.handle('window:create', () => {
   const { id } = createWindow()
   return id
@@ -109,44 +120,9 @@ ipcMain.handle('window:list', (event) => {
   return registry.listExcluding(callerId)
 })
 
-// Terminal move
-ipcMain.handle('terminal:move', (event, terminalId: string, targetWindowId: string) => {
-  let targetId = targetWindowId
-  if (targetId === 'new') {
-    const { id } = createWindow()
-    targetId = id
-  }
-
-  const targetWc = registry.getWebContents(targetId)
-  if (!targetWc) return
-
-  const meta = ptyManager.getMeta(terminalId)
-  if (!meta) return
-
-  const scrollback = ptyManager.move(terminalId, targetWc)
-
-  // Tell target window to add the terminal
-  targetWc.send('terminal:receive', {
-    id: meta.id,
-    path: meta.path,
-    name: meta.name,
-    color: meta.color,
-    scrollback: scrollback || '',
-  })
-
-  // Tell source window to remove the terminal
-  const sourceId = getWindowIdFromEvent(event)
-  if (sourceId) {
-    const sourceWc = registry.getWebContents(sourceId)
-    if (sourceWc) {
-      sourceWc.send('terminal:removed', terminalId)
-    }
-  }
-})
-
 // VS Code
 ipcMain.handle('vscode:open', (_event, folderPath: string) => {
-  exec(`code "${folderPath}"`)
+  execFile('code', [folderPath], { shell: true }, () => {})
 })
 
 // Dialog IPC handler
@@ -170,6 +146,18 @@ ipcMain.handle('store:save', (_event, state) => {
 })
 
 app.whenReady().then(() => createWindow())
+
+// When second instance is launched, focus the existing window
+app.on('second-instance', () => {
+  const list = registry.list()
+  if (list.length > 0) {
+    const win = registry.get(list[0].id)
+    if (win) {
+      if (win.isMinimized()) win.restore()
+      win.focus()
+    }
+  }
+})
 
 app.on('window-all-closed', () => {
   ptyManager.killAll()

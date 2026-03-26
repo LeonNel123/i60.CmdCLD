@@ -1,10 +1,7 @@
-// src/renderer/src/components/TerminalPanel.tsx
 import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
-import { ContextMenu, buildTerminalMenuItems } from './ContextMenu'
-import type { WindowInfo } from '../types/api'
 
 interface TerminalPanelProps {
   id: string
@@ -12,8 +9,6 @@ interface TerminalPanelProps {
   folderName: string
   color: string
   onClose: () => void
-  windowList: WindowInfo[]
-  onMove: (terminalId: string, targetWindowId: string) => void
   initialScrollback?: string
   skipAutoLaunch?: boolean
 }
@@ -24,8 +19,6 @@ export function TerminalPanel({
   folderName,
   color,
   onClose,
-  windowList,
-  onMove,
   initialScrollback,
   skipAutoLaunch,
 }: TerminalPanelProps) {
@@ -33,8 +26,6 @@ export function TerminalPanel({
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
-  const [popoutOpen, setPopoutOpen] = useState(false)
-  const popoutRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!termRef.current) return
@@ -55,13 +46,13 @@ export function TerminalPanel({
     requestAnimationFrame(() => {
       fitAddon.fit()
 
-      // Write scrollback if this terminal was moved from another window
       if (initialScrollback) {
         term.write(initialScrollback)
       }
 
-      // Create PTY and connect
-      window.api.createTerminal(id, folderPath)
+      window.api.createTerminal(id, folderPath).catch(() => {
+        term.write('\r\n\x1b[31m[Failed to create terminal]\x1b[0m\r\n')
+      })
 
       const removeData = window.api.onTerminalData(id, (data) => {
         term.write(data)
@@ -75,22 +66,20 @@ export function TerminalPanel({
         window.api.writeTerminal(id, data)
       })
 
-      // Enable Ctrl+V paste from clipboard
       term.attachCustomKeyEventHandler((e) => {
         if (e.type === 'keydown' && e.ctrlKey && e.key === 'v') {
           navigator.clipboard.readText().then((text) => {
             if (text) window.api.writeTerminal(id, text)
-          })
+          }).catch(() => {})
           return false
         }
         if (e.type === 'keydown' && e.ctrlKey && e.key === 'c' && term.hasSelection()) {
-          navigator.clipboard.writeText(term.getSelection())
+          navigator.clipboard.writeText(term.getSelection()).catch(() => {})
           return false
         }
         return true
       })
 
-      // Auto-launch Claude after shell is ready
       if (!skipAutoLaunch) {
         setTimeout(() => {
           window.api.writeTerminal(id, 'claude --dangerously-skip-permissions\r')
@@ -121,29 +110,24 @@ export function TerminalPanel({
     }
   }, [id, folderPath])
 
-  // Close popout dropdown on outside click
+  // Close context menu on outside click / Escape
   useEffect(() => {
-    if (!popoutOpen) return
-    const handler = (e: MouseEvent) => {
-      if (popoutRef.current && !popoutRef.current.contains(e.target as Node)) {
-        setPopoutOpen(false)
-      }
+    if (!contextMenu) return
+    const handler = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof KeyboardEvent && e.key === 'Escape') { setContextMenu(null); return }
+      if (e instanceof MouseEvent) setContextMenu(null)
     }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [popoutOpen])
+    document.addEventListener('keydown', handler)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('keydown', handler)
+    }
+  }, [contextMenu])
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
     setContextMenu({ x: e.clientX, y: e.clientY })
-  }
-
-  const handlePopout = () => {
-    if (windowList.length === 0) {
-      onMove(id, 'new')
-    } else {
-      setPopoutOpen(!popoutOpen)
-    }
   }
 
   return (
@@ -180,97 +164,55 @@ export function TerminalPanel({
         }}>
           {folderName}
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
-          {/* Pop-out button */}
-          <button
-            onClick={handlePopout}
-            onMouseDown={(e) => e.stopPropagation()}
-            title="Move to another window"
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#666',
-              cursor: 'pointer',
-              fontSize: '13px',
-              padding: '0 4px',
-              lineHeight: 1,
-            }}
-          >
-            &#10697;
-          </button>
-          {/* Pop-out dropdown */}
-          {popoutOpen && (
-            <div ref={popoutRef} style={{
-              position: 'absolute',
-              top: '100%',
-              right: 0,
-              background: '#1a1a2e',
-              border: '1px solid #333',
-              borderRadius: '6px',
-              padding: '4px 0',
-              minWidth: '120px',
-              zIndex: 2000,
-              boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-            }}>
-              <button
-                onClick={() => { onMove(id, 'new'); setPopoutOpen(false) }}
-                style={{
-                  display: 'block', width: '100%', padding: '6px 12px',
-                  background: 'none', border: 'none', color: '#ccc',
-                  fontSize: '12px', fontFamily: 'monospace', cursor: 'pointer', textAlign: 'left',
-                }}
-              >
-                New Window
-              </button>
-              {windowList.map((w) => (
-                <button
-                  key={w.id}
-                  onClick={() => { onMove(id, w.id); setPopoutOpen(false) }}
-                  style={{
-                    display: 'block', width: '100%', padding: '6px 12px',
-                    background: 'none', border: 'none', color: '#ccc',
-                    fontSize: '12px', fontFamily: 'monospace', cursor: 'pointer', textAlign: 'left',
-                  }}
-                >
-                  {w.label}
-                </button>
-              ))}
-            </div>
-          )}
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            onMouseDown={(e) => e.stopPropagation()}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#666',
-              cursor: 'pointer',
-              fontSize: '14px',
-              padding: '0 4px',
-              lineHeight: 1,
-            }}
-          >
-            &#10005;
-          </button>
-        </div>
+        <button
+          onClick={onClose}
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#666',
+            cursor: 'pointer',
+            fontSize: '14px',
+            padding: '0 4px',
+            lineHeight: 1,
+          }}
+        >
+          &#10005;
+        </button>
       </div>
       <div ref={termRef} style={{ flex: 1, overflow: 'hidden' }} />
 
-      {/* Context menu */}
+      {/* Context menu — right-click on drag handle */}
       {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          items={buildTerminalMenuItems(
-            id,
-            folderPath,
-            windowList,
-            (tid, wid) => { onMove(tid, wid); setContextMenu(null) },
-            (path) => { window.api.openInVscode(path); setContextMenu(null) },
-          )}
-          onClose={() => setContextMenu(null)}
-        />
+        <div style={{
+          position: 'fixed',
+          left: contextMenu.x,
+          top: contextMenu.y,
+          background: '#1a1a2e',
+          border: '1px solid #333',
+          borderRadius: '6px',
+          padding: '4px 0',
+          minWidth: '160px',
+          zIndex: 2000,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+        }}>
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => {
+              window.api.openInVscode(folderPath)
+              setContextMenu(null)
+            }}
+            style={{
+              display: 'block', width: '100%', padding: '6px 12px',
+              background: 'none', border: 'none', color: '#ccc',
+              fontSize: '12px', fontFamily: 'monospace', cursor: 'pointer', textAlign: 'left',
+            }}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)' }}
+            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'none' }}
+          >
+            Open in VS Code
+          </button>
+        </div>
       )}
     </div>
   )

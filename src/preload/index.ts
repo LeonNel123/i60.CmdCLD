@@ -43,11 +43,7 @@ contextBridge.exposeInMainWorld('api', {
   windowList: (): Promise<Array<{ id: string; label: string }>> =>
     ipcRenderer.invoke('window:list'),
 
-  // New: terminal move
-  moveTerminal: (terminalId: string, targetWindowId: string): Promise<void> =>
-    ipcRenderer.invoke('terminal:move', terminalId, targetWindowId),
-
-  // New: VS Code
+  // VS Code
   openInVscode: (folderPath: string): Promise<void> =>
     ipcRenderer.invoke('vscode:open', folderPath),
 

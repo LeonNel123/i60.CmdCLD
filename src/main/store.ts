@@ -71,12 +71,30 @@ export class Store {
 
   save(state: MultiWindowState): void {
     this.state = state
-    mkdirSync(dirname(this.filePath), { recursive: true })
-    writeFileSync(this.filePath, JSON.stringify(state, null, 2))
+    try {
+      mkdirSync(dirname(this.filePath), { recursive: true })
+      writeFileSync(this.filePath, JSON.stringify(state, null, 2))
+    } catch {}
   }
 
   getWindowBounds(windowId?: string): { width: number; height: number; x: number; y: number } {
     const win = this.state.windows.find((w) => w.id === windowId)
     return win?.bounds || { width: 1200, height: 800, x: 100, y: 100 }
+  }
+
+  saveWindowBounds(windowId: string, bounds: { width: number; height: number; x: number; y: number }): void {
+    const win = this.state.windows.find((w) => w.id === windowId)
+    if (win) {
+      win.bounds = bounds
+    } else {
+      this.state.windows.push({
+        id: windowId,
+        bounds,
+        sidebarCollapsed: true,
+        viewMode: 'grid',
+        folders: [],
+      })
+    }
+    this.save(this.state)
   }
 }

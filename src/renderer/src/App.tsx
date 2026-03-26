@@ -1,4 +1,3 @@
-// src/renderer/src/App.tsx
 import { useState, useEffect, useCallback } from 'react'
 import { Responsive, WidthProvider, Layout } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
@@ -8,7 +7,7 @@ import { TerminalPanel } from './components/TerminalPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { assignColor } from './utils/colors'
 import { calculateLayout } from './utils/grid-layout'
-import type { MultiWindowState, WindowInfo, TerminalTransfer } from './types/api'
+import type { MultiWindowState } from './types/api'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
@@ -17,8 +16,6 @@ interface TerminalEntry {
   path: string
   name: string
   color: string
-  initialScrollback?: string
-  skipAutoLaunch?: boolean
 }
 
 type ViewMode = { type: 'grid' } | { type: 'focused'; terminalId: string }
@@ -29,13 +26,11 @@ export default function App() {
   const [closingId, setClosingId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>({ type: 'grid' })
-  const [windowList, setWindowList] = useState<WindowInfo[]>([])
 
   // Load saved state on mount
   useEffect(() => {
     window.api.loadState().then((state) => {
       if (state?.windows?.length) {
-        // For now, load the first window's state (multi-window restore is handled by main process)
         const win = state.windows[0]
         if (win?.folders?.length) {
           const entries: TerminalEntry[] = win.folders.map((f) => ({
@@ -62,57 +57,6 @@ export default function App() {
       }
       setLoaded(true)
     })
-
-    // Fetch initial window list
-    window.api.windowList().then(setWindowList)
-  }, [])
-
-  // Listen for multi-window events
-  useEffect(() => {
-    const removeReceive = window.api.onTerminalReceive((data: TerminalTransfer) => {
-      const newEntry: TerminalEntry = {
-        id: data.id,
-        path: data.path,
-        name: data.name,
-        color: data.color,
-        initialScrollback: data.scrollback,
-        skipAutoLaunch: true,
-      }
-      setTerminals((prev) => {
-        const next = [...prev, newEntry]
-        setLayouts(calculateLayout(next.length).map((pos, i) => ({
-          ...pos,
-          i: next[i].id,
-        })))
-        return next
-      })
-    })
-
-    const removeRemoved = window.api.onTerminalRemoved((terminalId: string) => {
-      setTerminals((prev) => {
-        const next = prev.filter((t) => t.id !== terminalId)
-        setLayouts(calculateLayout(next.length).map((pos, i) => ({
-          ...pos,
-          i: next[i].id,
-        })))
-        return next
-      })
-      setViewMode((prev) =>
-        prev.type === 'focused' && prev.terminalId === terminalId
-          ? { type: 'grid' }
-          : prev
-      )
-    })
-
-    const removeWindowList = window.api.onWindowListUpdated((windows: WindowInfo[]) => {
-      setWindowList(windows)
-    })
-
-    return () => {
-      removeReceive()
-      removeRemoved()
-      removeWindowList()
-    }
   }, [])
 
   // Save state whenever terminals or layouts change
@@ -187,10 +131,6 @@ export default function App() {
     setLayouts(layout)
   }, [])
 
-  const handleMove = useCallback((terminalId: string, targetWindowId: string) => {
-    window.api.moveTerminal(terminalId, targetWindowId)
-  }, [])
-
   const handleNewWindow = useCallback(() => {
     window.api.windowCreate()
   }, [])
@@ -237,7 +177,6 @@ export default function App() {
             Click "+ Add Folder" to start a Claude session
           </div>
         ) : focusedTerminal ? (
-          /* Focused mode: single terminal fills the space */
           <div style={{ height: '100%' }}>
             <TerminalPanel
               key={focusedTerminal.id}
@@ -246,14 +185,9 @@ export default function App() {
               folderName={focusedTerminal.name}
               color={focusedTerminal.color}
               onClose={() => handleRequestClose(focusedTerminal.id)}
-              windowList={windowList}
-              onMove={handleMove}
-              initialScrollback={focusedTerminal.initialScrollback}
-              skipAutoLaunch={focusedTerminal.skipAutoLaunch}
             />
           </div>
         ) : (
-          /* Grid mode */
           <ResponsiveGridLayout
             layouts={{ lg: layouts }}
             breakpoints={{ lg: 0 }}
@@ -272,10 +206,6 @@ export default function App() {
                   folderName={t.name}
                   color={t.color}
                   onClose={() => handleRequestClose(t.id)}
-                  windowList={windowList}
-                  onMove={handleMove}
-                  initialScrollback={t.initialScrollback}
-                  skipAutoLaunch={t.skipAutoLaunch}
                 />
               </div>
             ))}
