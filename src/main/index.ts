@@ -1,7 +1,7 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage } from 'electron'
 import { join } from 'path'
 import { execFile } from 'child_process'
-import { appendFileSync, existsSync, statSync } from 'fs'
+import { appendFileSync, existsSync, statSync, writeFileSync, mkdirSync } from 'fs'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
 import { WindowRegistry } from './window-registry'
@@ -174,6 +174,17 @@ ipcMain.handle('window:list', (event) => {
 // VS Code — no shell: true, prevents command injection
 ipcMain.handle('vscode:open', (_event, folderPath: string) => {
   execFile('code', [folderPath], () => {})
+})
+
+// Clipboard image paste — saves to temp file, returns path
+ipcMain.handle('clipboard:saveImage', () => {
+  const img = clipboard.readImage()
+  if (img.isEmpty()) return null
+  const tmpDir = join(app.getPath('temp'), 'cmdcld-images')
+  mkdirSync(tmpDir, { recursive: true })
+  const filePath = join(tmpDir, `clipboard-${Date.now()}.png`)
+  writeFileSync(filePath, img.toPNG())
+  return filePath
 })
 
 // Dialog IPC handler

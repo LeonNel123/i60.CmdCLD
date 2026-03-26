@@ -67,8 +67,17 @@ export function TerminalPanel({
 
     term.attachCustomKeyEventHandler((e) => {
       if (e.type === 'keydown' && e.ctrlKey && e.key === 'v') {
-        navigator.clipboard.readText().then((text) => {
-          if (text) window.api.writeTerminal(id, text)
+        // Try image first (for pasting screenshots into Claude CLI)
+        window.api.clipboardSaveImage().then((imgPath) => {
+          if (imgPath) {
+            // Paste the file path — Claude Code accepts image paths
+            window.api.writeTerminal(id, imgPath)
+          } else {
+            // No image, fall back to text paste
+            return navigator.clipboard.readText().then((text) => {
+              if (text) window.api.writeTerminal(id, text)
+            })
+          }
         }).catch(() => {})
         return false
       }

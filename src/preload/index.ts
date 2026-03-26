@@ -43,6 +43,10 @@ contextBridge.exposeInMainWorld('api', {
   recentAdd: (folderPath: string): Promise<void> =>
     ipcRenderer.invoke('recent:add', folderPath),
 
+  // Clipboard image — saves to temp file, returns path (or null if no image)
+  clipboardSaveImage: (): Promise<string | null> =>
+    ipcRenderer.invoke('clipboard:saveImage'),
+
   // Window management
   windowCreate: (): Promise<string> =>
     ipcRenderer.invoke('window:create'),
