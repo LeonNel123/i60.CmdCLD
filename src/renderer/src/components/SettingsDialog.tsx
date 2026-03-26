@@ -1,15 +1,5 @@
 import { useState, useEffect } from 'react'
-
-const PRESETS = [
-  { label: 'Skip Permissions', args: '--dangerously-skip-permissions' },
-  { label: 'Skip Permissions + Continue', args: '--dangerously-skip-permissions --continue' },
-  { label: 'Auto Mode', args: '--permission-mode auto' },
-  { label: 'Plan Mode', args: '--permission-mode plan' },
-  { label: 'Default (no flags)', args: '' },
-  { label: 'Opus + Skip Permissions', args: '--dangerously-skip-permissions --model opus' },
-  { label: 'Sonnet + High Effort', args: '--model sonnet --effort high' },
-  { label: 'Opus + Max Effort', args: '--model opus --effort max' },
-]
+import { CLAUDE_PRESETS } from '../utils/claude-presets'
 
 interface SettingsDialogProps {
   onClose: () => void
@@ -69,7 +59,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             Quick Presets
           </label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-            {PRESETS.map((p) => (
+            {CLAUDE_PRESETS.map((p) => (
               <button
                 key={p.label}
                 onClick={() => setClaudeArgs(p.args)}
@@ -95,24 +85,42 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
             Default Launch Arguments
           </label>
-          <input
-            type="text"
-            value={claudeArgs}
-            onChange={(e) => setClaudeArgs(e.target.value)}
-            placeholder="e.g. --dangerously-skip-permissions --continue"
-            style={{
-              width: '100%',
-              background: '#0d1117',
-              border: '1px solid #333',
-              borderRadius: '4px',
-              padding: '8px 10px',
-              color: '#e0e0e0',
-              fontSize: '12px',
-              fontFamily: 'Consolas, monospace',
-              outline: 'none',
-              boxSizing: 'border-box',
-            }}
-          />
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <input
+              type="text"
+              value={claudeArgs}
+              onChange={(e) => setClaudeArgs(e.target.value)}
+              placeholder="e.g. --dangerously-skip-permissions --continue"
+              style={{
+                flex: 1,
+                background: '#0d1117',
+                border: '1px solid #333',
+                borderRadius: '4px',
+                padding: '8px 10px',
+                color: '#e0e0e0',
+                fontSize: '12px',
+                fontFamily: 'Consolas, monospace',
+                outline: 'none',
+              }}
+            />
+            <button
+              onClick={() => setClaudeArgs('')}
+              title="Clear"
+              style={{
+                background: '#333',
+                border: '1px solid #444',
+                borderRadius: '4px',
+                padding: '0 10px',
+                color: '#999',
+                fontSize: '11px',
+                fontFamily: 'monospace',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              Clear
+            </button>
+          </div>
           <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginTop: '4px' }}>
             These flags are passed to `claude` when opening a new terminal
           </div>
