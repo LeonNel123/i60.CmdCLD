@@ -117,6 +117,7 @@ export function TerminalPanel({ id, folderPath, folderName, color, onClose }: Te
         </span>
         <button
           onClick={onClose}
+          onMouseDown={(e) => e.stopPropagation()}
           style={{
             background: 'none',
             border: 'none',
