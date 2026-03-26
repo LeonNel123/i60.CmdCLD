@@ -1,22 +1,62 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { execFile } from 'child_process'
+import { appendFileSync, mkdirSync } from 'fs'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
 import { WindowRegistry } from './window-registry'
 import { RecentDB } from './recent-db'
 import type { TerminalMeta } from './pty-manager'
 
+// File logger for debugging startup issues
+const logPath = join(app.getPath('userData'), 'cmdcld.log')
+function log(msg: string): void {
+  const line = `[${new Date().toISOString()}] ${msg}\n`
+  try { appendFileSync(logPath, line) } catch {}
+}
+
+log('=== App starting ===')
+log(`userData: ${app.getPath('userData')}`)
+log(`exe: ${process.execPath}`)
+log(`argv: ${process.argv.join(' ')}`)
+
 // Single instance lock — only one app process at a time
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
+  log('Single instance lock failed — another instance is running. Quitting.')
   app.quit()
 }
 
-const ptyManager = new PtyManager()
-const store = new Store(join(app.getPath('userData'), 'sessions.json'))
+log('Single instance lock acquired')
+
+let ptyManager: PtyManager
+let store: Store
+let recentDB: RecentDB
 const registry = new WindowRegistry()
-const recentDB = new RecentDB(join(app.getPath('userData'), 'recent.db'))
+
+try {
+  ptyManager = new PtyManager()
+  log('PtyManager created')
+} catch (e) {
+  log(`PtyManager FAILED: ${e}`)
+  throw e
+}
+
+try {
+  store = new Store(join(app.getPath('userData'), 'sessions.json'))
+  log('Store created')
+} catch (e) {
+  log(`Store FAILED: ${e}`)
+  throw e
+}
+
+try {
+  recentDB = new RecentDB(join(app.getPath('userData'), 'recent.db'))
+  log('RecentDB created')
+} catch (e) {
+  log(`RecentDB FAILED: ${e}`)
+  throw e
+}
 
 function createWindow(opts?: { empty?: boolean }): { id: string; window: BrowserWindow } {
   const id = crypto.randomUUID()
@@ -169,7 +209,15 @@ ipcMain.handle('store:save', (_event, state) => {
   store.save(state)
 })
 
-app.whenReady().then(() => createWindow())
+app.whenReady().then(() => {
+  log('App ready — creating first window')
+  try {
+    createWindow()
+    log('First window created successfully')
+  } catch (e) {
+    log(`createWindow FAILED: ${e}`)
+  }
+})
 
 // When second instance is launched, focus the existing window
 app.on('second-instance', () => {
@@ -184,6 +232,15 @@ app.on('second-instance', () => {
 })
 
 app.on('window-all-closed', () => {
+  log('All windows closed — quitting')
   ptyManager.killAll()
   app.quit()
+})
+
+process.on('uncaughtException', (e) => {
+  log(`UNCAUGHT EXCEPTION: ${e.stack || e}`)
+})
+
+process.on('unhandledRejection', (e) => {
+  log(`UNHANDLED REJECTION: ${e}`)
 })
