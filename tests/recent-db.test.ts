@@ -19,49 +19,45 @@ afterEach(() => {
 })
 
 describe('RecentDB', () => {
-  it('starts with empty list', () => {
-    expect(db.list()).toEqual([])
+  it('starts with empty list', async () => {
+    expect(await db.list()).toEqual([])
   })
 
-  it('adds and retrieves a folder', () => {
-    db.add('C:\\projects\\my-app')
-    const list = db.list()
+  it('adds and retrieves a folder', async () => {
+    await db.add('C:\\projects\\my-app')
+    const list = await db.list()
     expect(list).toHaveLength(1)
     expect(list[0].path).toBe('C:\\projects\\my-app')
     expect(list[0].name).toBe('my-app')
     expect(list[0].lastOpened).toBeGreaterThan(0)
   })
 
-  it('no duplicates — upserts on same path', () => {
-    db.add('C:\\projects\\my-app')
-    db.add('C:\\projects\\my-app')
-    expect(db.list()).toHaveLength(1)
+  it('no duplicates — upserts on same path', async () => {
+    await db.add('C:\\projects\\my-app')
+    await db.add('C:\\projects\\my-app')
+    expect(await db.list()).toHaveLength(1)
   })
 
-  it('most recently added appears first', () => {
-    db.add('C:\\older')
-    // Ensure different timestamp
-    const start = Date.now()
-    while (Date.now() === start) { /* spin */ }
-    db.add('C:\\newer')
-    const list = db.list()
+  it('most recently added appears first', async () => {
+    await db.add('C:\\older')
+    await db.add('C:\\newer')
+    const list = await db.list()
     expect(list[0].path).toBe('C:\\newer')
     expect(list[1].path).toBe('C:\\older')
   })
 
-  it('prunes to 20 entries', () => {
+  it('prunes to 20 entries', async () => {
     for (let i = 0; i < 25; i++) {
-      db.add(`C:\\folder-${i}`)
+      await db.add(`C:\\folder-${i}`)
     }
-    expect(db.list()).toHaveLength(20)
+    expect(await db.list()).toHaveLength(20)
   })
 
-  it('prune keeps most recent, drops oldest', () => {
+  it('prune keeps most recent, drops oldest', async () => {
     for (let i = 0; i < 25; i++) {
-      db.add(`C:\\folder-${String(i).padStart(2, '0')}`)
+      await db.add(`C:\\folder-${String(i).padStart(2, '0')}`)
     }
-    const list = db.list()
-    // folder-00 through folder-04 should be pruned (oldest)
+    const list = await db.list()
     const paths = list.map((f) => f.path)
     expect(paths).not.toContain('C:\\folder-00')
     expect(paths).toContain('C:\\folder-24')

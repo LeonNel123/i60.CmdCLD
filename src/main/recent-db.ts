@@ -1,4 +1,6 @@
-import Database from 'better-sqlite3'
+import initSqlJs, { Database } from 'sql.js'
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { dirname } from 'path'
 
 export interface RecentFolder {
   path: string
@@ -7,45 +9,94 @@ export interface RecentFolder {
 }
 
 export class RecentDB {
-  private db: Database.Database
+  private db: Database | null = null
+  private dbPath: string
+  private ready: Promise<void>
 
   constructor(dbPath: string) {
-    this.db = new Database(dbPath)
-    this.db.pragma('journal_mode = WAL')
-    this.db.exec(`
+    this.dbPath = dbPath
+    this.ready = this.init()
+  }
+
+  private async init(): Promise<void> {
+    const SQL = await initSqlJs()
+
+    try {
+      if (existsSync(this.dbPath)) {
+        const buffer = readFileSync(this.dbPath)
+        this.db = new SQL.Database(buffer)
+      } else {
+        this.db = new SQL.Database()
+      }
+    } catch {
+      this.db = new SQL.Database()
+    }
+
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS recent_folders (
         path TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         last_opened INTEGER NOT NULL
       )
     `)
+    this.save()
   }
 
-  add(folderPath: string): void {
-    const name = folderPath.split(/[\\/]/).pop() || folderPath
-    // Use max of current time and (latest entry + 1) to guarantee ordering
-    const latest = this.db.prepare(
-      'SELECT MAX(last_opened) as max FROM recent_folders'
-    ).get() as { max: number | null }
-    const now = Math.max(Date.now(), (latest?.max ?? 0) + 1)
+  private save(): void {
+    if (!this.db) return
+    try {
+      mkdirSync(dirname(this.dbPath), { recursive: true })
+      const data = this.db.export()
+      writeFileSync(this.dbPath, Buffer.from(data))
+    } catch {}
+  }
 
-    this.db.prepare(
-      'INSERT OR REPLACE INTO recent_folders (path, name, last_opened) VALUES (?, ?, ?)'
-    ).run(folderPath, name, now)
+  async add(folderPath: string): Promise<void> {
+    await this.ready
+    if (!this.db) return
+
+    // Use max of current time and (latest entry + 1) to guarantee ordering
+    const result = this.db.exec('SELECT MAX(last_opened) as max FROM recent_folders')
+    const maxTs = result.length > 0 && result[0].values[0][0] != null
+      ? (result[0].values[0][0] as number)
+      : 0
+    const now = Math.max(Date.now(), maxTs + 1)
+    const name = folderPath.split(/[\\/]/).pop() || folderPath
+
+    this.db.run(
+      'INSERT OR REPLACE INTO recent_folders (path, name, last_opened) VALUES (?, ?, ?)',
+      [folderPath, name, now]
+    )
 
     // Prune to 20 most recent
-    this.db.prepare(
+    this.db.run(
       'DELETE FROM recent_folders WHERE path NOT IN (SELECT path FROM recent_folders ORDER BY last_opened DESC LIMIT 20)'
-    ).run()
+    )
+
+    this.save()
   }
 
-  list(): RecentFolder[] {
-    return this.db.prepare(
-      'SELECT path, name, last_opened as lastOpened FROM recent_folders ORDER BY last_opened DESC LIMIT 20'
-    ).all() as RecentFolder[]
+  async list(): Promise<RecentFolder[]> {
+    await this.ready
+    if (!this.db) return []
+
+    const result = this.db.exec(
+      'SELECT path, name, last_opened FROM recent_folders ORDER BY last_opened DESC LIMIT 20'
+    )
+    if (result.length === 0) return []
+
+    return result[0].values.map((row) => ({
+      path: row[0] as string,
+      name: row[1] as string,
+      lastOpened: row[2] as number,
+    }))
   }
 
   close(): void {
-    this.db.close()
+    if (this.db) {
+      this.save()
+      this.db.close()
+      this.db = null
+    }
   }
 }

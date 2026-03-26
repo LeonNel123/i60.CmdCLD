@@ -152,12 +152,12 @@ ipcMain.handle('dialog:selectFolder', async (event) => {
 })
 
 // Recent folders
-ipcMain.handle('recent:list', () => {
+ipcMain.handle('recent:list', async () => {
   return recentDB.list()
 })
 
-ipcMain.handle('recent:add', (_event, folderPath: string) => {
-  recentDB.add(folderPath)
+ipcMain.handle('recent:add', async (_event, folderPath: string) => {
+  await recentDB.add(folderPath)
 })
 
 // Store IPC handlers
