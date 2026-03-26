@@ -7,6 +7,45 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { overflow: hidden; font-family: system-ui, sans-serif; }
+
+    /* Thin, auto-hide scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    ::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    /* xterm scrollbar override */
+    .xterm-viewport::-webkit-scrollbar {
+      width: 6px;
+    }
+    .xterm-viewport::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .xterm-viewport::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 3px;
+    }
+    .xterm-viewport::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    /* Hide scrollbar until hover/scroll */
+    .xterm-viewport {
+      scrollbar-gutter: stable;
+    }
   </style>
 </head>
 <body>
