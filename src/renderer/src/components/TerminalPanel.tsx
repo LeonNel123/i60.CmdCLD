@@ -68,7 +68,7 @@ export function TerminalPanel({
     term.attachCustomKeyEventHandler((e) => {
       if (e.type === 'keydown' && e.ctrlKey && e.key === 'v') {
         // Try image first (for pasting screenshots into Claude CLI)
-        window.api.clipboardSaveImage().then((imgPath) => {
+        window.api.clipboardSaveImage(folderPath).then((imgPath) => {
           if (imgPath) {
             // Paste the file path — Claude Code accepts image paths
             window.api.writeTerminal(id, imgPath)

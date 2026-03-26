@@ -176,13 +176,13 @@ ipcMain.handle('vscode:open', (_event, folderPath: string) => {
   execFile('code', [folderPath], () => {})
 })
 
-// Clipboard image paste — saves to temp file, returns path
-ipcMain.handle('clipboard:saveImage', () => {
+// Clipboard image paste — saves to .screenshots/ inside the project folder
+ipcMain.handle('clipboard:saveImage', (_event, cwd: string) => {
   const img = clipboard.readImage()
   if (img.isEmpty()) return null
-  const tmpDir = join(app.getPath('temp'), 'cmdcld-images')
-  mkdirSync(tmpDir, { recursive: true })
-  const filePath = join(tmpDir, `clipboard-${Date.now()}.png`)
+  const screenshotsDir = join(cwd, '.screenshots')
+  mkdirSync(screenshotsDir, { recursive: true })
+  const filePath = join(screenshotsDir, `clipboard-${Date.now()}.png`)
   writeFileSync(filePath, img.toPNG())
   return filePath
 })
