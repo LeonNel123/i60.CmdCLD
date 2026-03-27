@@ -20,7 +20,9 @@ interface TerminalPanelProps {
   folderName: string
   color: string
   claudeArgs?: string
+  isPlainShell?: boolean
   onClose: () => void
+  onSpawnShell?: () => void
 }
 
 export function TerminalPanel({
@@ -29,7 +31,9 @@ export function TerminalPanel({
   folderName,
   color,
   claudeArgs,
+  isPlainShell,
   onClose,
+  onSpawnShell,
 }: TerminalPanelProps) {
   const termRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -137,10 +141,12 @@ export function TerminalPanel({
           activePtys.delete(id)
         })
 
-        const launchCmd = claudeArgs ? `claude ${claudeArgs}\r` : 'claude\r'
-        setTimeout(() => {
-          window.api.writeTerminal(id, launchCmd)
-        }, 1000)
+        if (!isPlainShell) {
+          const launchCmd = claudeArgs ? `claude ${claudeArgs}\r` : 'claude\r'
+          setTimeout(() => {
+            window.api.writeTerminal(id, launchCmd)
+          }, 1000)
+        }
       }
     })
 
@@ -247,22 +253,49 @@ export function TerminalPanel({
           whiteSpace: 'nowrap',
         }}>
           {folderName}
+          {isPlainShell && (
+            <span style={{ color: '#888', fontSize: '10px', marginLeft: '6px', fontWeight: 400 }}>
+              shell
+            </span>
+          )}
         </span>
-        <button
-          onClick={onClose}
-          onMouseDown={(e) => e.stopPropagation()}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#666',
-            cursor: 'pointer',
-            fontSize: '14px',
-            padding: '0 4px',
-            lineHeight: 1,
-          }}
-        >
-          &#10005;
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+          {/* Spawn plain shell button — only show on Claude terminals */}
+          {!isPlainShell && onSpawnShell && (
+            <button
+              onClick={onSpawnShell}
+              onMouseDown={(e) => e.stopPropagation()}
+              title="Open shell for this folder"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#555',
+                cursor: 'pointer',
+                fontSize: '11px',
+                padding: '0 4px',
+                lineHeight: 1,
+                fontFamily: 'monospace',
+              }}
+            >
+              &gt;_
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#666',
+              cursor: 'pointer',
+              fontSize: '14px',
+              padding: '0 4px',
+              lineHeight: 1,
+            }}
+          >
+            &#10005;
+          </button>
+        </div>
       </div>
       <div ref={termRef} style={{ flex: 1, overflow: 'hidden' }} />
 

@@ -6,6 +6,7 @@ interface TerminalEntry {
   path: string
   name: string
   color: string
+  isPlainShell?: boolean
 }
 
 type ViewMode = { type: 'grid' } | { type: 'focused'; terminalId: string }
@@ -121,15 +122,26 @@ export function Sidebar({
               style={btnStyle(isActive)}
               title={t.name}
             >
-              <span style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: t.color,
-                flexShrink: 0,
-                boxShadow: busy ? `0 0 6px 2px ${t.color}80` : 'none',
-                animation: busy ? 'pulse 1.5s ease-in-out infinite' : 'none',
-              }} />
+              {t.isPlainShell ? (
+                <span style={{
+                  fontSize: '9px',
+                  fontFamily: 'monospace',
+                  color: t.color,
+                  flexShrink: 0,
+                  lineHeight: 1,
+                  opacity: busy ? 1 : 0.7,
+                }}>&gt;_</span>
+              ) : (
+                <span style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: t.color,
+                  flexShrink: 0,
+                  boxShadow: busy ? `0 0 6px 2px ${t.color}80` : 'none',
+                  animation: busy ? 'pulse 1.5s ease-in-out infinite' : 'none',
+                }} />
+              )}
               {!collapsed && (
                 <span style={{
                   overflow: 'hidden',

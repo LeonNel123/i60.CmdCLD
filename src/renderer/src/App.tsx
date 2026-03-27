@@ -20,6 +20,7 @@ interface TerminalEntry {
   name: string
   color: string
   claudeArgs?: string
+  isPlainShell?: boolean
 }
 
 type ViewMode = { type: 'grid' } | { type: 'focused'; terminalId: string }
@@ -153,6 +154,27 @@ export default function App() {
     }
   }, [askBeforeLaunch, claudeArgs, createTerminal])
 
+  // Spawn a plain shell for the same folder path as an existing terminal
+  const handleSpawnShell = useCallback((folderPath: string, parentColor: string) => {
+    const folderName = folderPath.split(/[\\/]/).pop() || folderPath
+    const newEntry: TerminalEntry = {
+      id: crypto.randomUUID(),
+      path: folderPath,
+      name: `${folderName} (shell)`,
+      color: parentColor,
+      isPlainShell: true,
+    }
+
+    const newTerminals = [...terminals, newEntry]
+    setTerminals(newTerminals)
+
+    const newLayouts = calculateLayout(newTerminals.length).map((pos, i) => ({
+      ...pos,
+      i: newTerminals[i].id,
+    }))
+    setLayouts(newLayouts)
+  }, [terminals])
+
   const handleAddFolder = useCallback(async () => {
     const folderPath = await window.api.selectFolder()
     if (!folderPath) return
@@ -268,7 +290,9 @@ export default function App() {
               folderName={t.name}
               color={t.color}
               claudeArgs={t.claudeArgs}
+              isPlainShell={t.isPlainShell}
               onClose={() => handleRequestClose(t.id)}
+              onSpawnShell={() => handleSpawnShell(t.path, t.color)}
             />
           </div>
         ))}
