@@ -124,23 +124,11 @@ export function TerminalPanel({
     fitAddonRef.current = fitAddon
     searchAddonRef.current = searchAddon
 
-    // Track if Claude was launched so we can clear after it exits
     let claudeLaunched = false
-    let waitingForPromptAfterExit = false
 
     const removeData = window.api.onTerminalData(id, (data) => {
       term.write(data)
       onTerminalDataReceived(id)
-
-      if (!isPlainShell && claudeLaunched && !waitingForPromptAfterExit) {
-        if (data.includes('Goodbye') || data.includes('See ya') || data.includes('Bye!') || data.includes('Catch you later')) {
-          waitingForPromptAfterExit = true
-          setTimeout(() => {
-            term.clear()
-            waitingForPromptAfterExit = false
-          }, 500)
-        }
-      }
     })
 
     const removeExit = window.api.onTerminalExit(id, (code) => {
