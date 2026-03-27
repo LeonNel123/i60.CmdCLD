@@ -323,7 +323,9 @@ export default function App() {
                   folderName={t.name}
                   color={t.color}
                   claudeArgs={t.claudeArgs}
+                  isPlainShell={t.isPlainShell}
                   onClose={() => handleRequestClose(t.id)}
+                  onSpawnShell={() => handleSpawnShell(t.path, t.color)}
                 />
               </div>
             ))}
