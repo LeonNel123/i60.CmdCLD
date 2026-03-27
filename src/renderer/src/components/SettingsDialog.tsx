@@ -8,12 +8,14 @@ interface SettingsDialogProps {
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [claudeArgs, setClaudeArgs] = useState('')
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
+  const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     window.api.settingsGetAll().then((s) => {
       setClaudeArgs(s.claudeArgs)
       setAskBeforeLaunch(s.askBeforeLaunch)
+      setDefaultViewMode(s.defaultViewMode)
       setLoaded(true)
     })
   }, [])
@@ -21,6 +23,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const save = () => {
     window.api.settingsSet('claudeArgs', claudeArgs)
     window.api.settingsSet('askBeforeLaunch', askBeforeLaunch)
+    window.api.settingsSet('defaultViewMode', defaultViewMode)
     onClose()
   }
 
@@ -145,6 +148,36 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             />
             Ask before launch (edit flags each time)
           </label>
+        </div>
+
+        {/* Default view mode */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
+            Default View
+          </label>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            {([
+              { value: 'grid' as const, label: 'Grid (all terminals visible)' },
+              { value: 'focused' as const, label: 'Focused (one at a time)' },
+            ]).map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setDefaultViewMode(opt.value)}
+                style={{
+                  background: defaultViewMode === opt.value ? '#22c55e20' : '#ffffff08',
+                  border: defaultViewMode === opt.value ? '1px solid #22c55e' : '1px solid #333',
+                  borderRadius: '4px',
+                  padding: '4px 10px',
+                  color: defaultViewMode === opt.value ? '#22c55e' : '#aaa',
+                  fontSize: '11px',
+                  fontFamily: 'monospace',
+                  cursor: 'pointer',
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Buttons */}

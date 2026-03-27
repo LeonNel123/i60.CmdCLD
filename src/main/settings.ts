@@ -5,12 +5,14 @@ export interface AppSettings {
   editor: string
   claudeArgs: string
   askBeforeLaunch: boolean
+  defaultViewMode: 'grid' | 'focused'
 }
 
 const DEFAULTS: AppSettings = {
   editor: 'code',
   claudeArgs: '--dangerously-skip-permissions',
   askBeforeLaunch: false,
+  defaultViewMode: 'grid',
 }
 
 export class Settings {

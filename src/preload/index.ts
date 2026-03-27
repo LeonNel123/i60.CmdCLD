@@ -48,7 +48,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('clipboard:saveImage', cwd),
 
   // Settings
-  settingsGetAll: (): Promise<{ editor: string; claudeArgs: string; askBeforeLaunch: boolean }> =>
+  settingsGetAll: (): Promise<{ editor: string; claudeArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused' }> =>
     ipcRenderer.invoke('settings:getAll'),
 
   settingsSet: (key: string, value: unknown): Promise<void> =>

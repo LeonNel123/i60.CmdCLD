@@ -52,10 +52,11 @@ export default function App() {
 
   // Load settings + saved state + recent folders on mount
   useEffect(() => {
-    window.api.settingsGetAll().then((s) => {
+    const settingsPromise = window.api.settingsGetAll().then((s) => {
       setClaudeArgs(s.claudeArgs)
       setAskBeforeLaunch(s.askBeforeLaunch)
-    }).catch(() => {})
+      return s
+    }).catch(() => null)
 
     window.api.recentList().then(setRecentFolders).catch(() => {})
 
@@ -64,7 +65,8 @@ export default function App() {
       setLoaded(true)
       return
     }
-    window.api.loadState().then((state) => {
+
+    Promise.all([settingsPromise, window.api.loadState()]).then(([s, state]) => {
       if (state?.windows?.length) {
         const win = state.windows[0]
         if (win?.folders?.length) {
@@ -87,6 +89,11 @@ export default function App() {
               ...pos,
               i: entries[i].id,
             })))
+          }
+
+          // Apply default view mode — focus first terminal if set to 'focused'
+          if (s?.defaultViewMode === 'focused' && entries.length > 0) {
+            setViewMode({ type: 'focused', terminalId: entries[0].id })
           }
         }
       }
