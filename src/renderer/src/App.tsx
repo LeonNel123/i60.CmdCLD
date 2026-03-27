@@ -31,6 +31,7 @@ export default function App() {
   const [terminals, setTerminals] = useState<TerminalEntry[]>([])
   const [layouts, setLayouts] = useState<Layout[]>([])
   const [closingId, setClosingId] = useState<string | null>(null)
+  const [showCloseAll, setShowCloseAll] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>({ type: 'grid' })
   const [recentFolders, setRecentFolders] = useState<RecentFolder[]>([])
@@ -165,12 +166,17 @@ export default function App() {
   }, [terminals])
 
   const handleCloseAll = useCallback(() => {
+    setShowCloseAll(true)
+  }, [])
+
+  const handleConfirmCloseAll = useCallback(() => {
     for (const t of terminals) {
       killPty(t.id)
     }
     setTerminals([])
     setLayouts([])
     setViewMode({ type: 'grid' })
+    setShowCloseAll(false)
   }, [terminals])
 
   const handleAddFolder = useCallback(async () => {
@@ -376,6 +382,14 @@ export default function App() {
           message={`Close terminal for "${terminals.find((t) => t.id === closingId)?.name}"?`}
           onConfirm={handleConfirmClose}
           onCancel={() => setClosingId(null)}
+        />
+      )}
+
+      {showCloseAll && (
+        <ConfirmDialog
+          message={`Close all ${terminals.length} terminal${terminals.length !== 1 ? 's' : ''}?`}
+          onConfirm={handleConfirmCloseAll}
+          onCancel={() => setShowCloseAll(false)}
         />
       )}
 
