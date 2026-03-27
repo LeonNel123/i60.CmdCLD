@@ -8,7 +8,10 @@
     "build": "electron-vite build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package": "electron-vite build && electron-builder --win nsis"
+    "package": "electron-vite build && electron-builder",
+    "package:win": "electron-vite build && electron-builder --win nsis",
+    "package:mac": "electron-vite build && electron-builder --mac dmg",
+    "package:linux": "electron-vite build && electron-builder --linux AppImage"
   },
   "build": {
     "appId": "com.i60.cmdcld",
@@ -22,6 +25,14 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": true,

@@ -2,8 +2,12 @@ import * as pty from 'node-pty'
 import { WebContents } from 'electron'
 import { execFileSync } from 'child_process'
 
-// Use pwsh (PowerShell 7+) if available, fall back to Windows PowerShell 5.1
+// Detect the best available shell for the platform
 function getShell(): string {
+  if (process.platform !== 'win32') {
+    return process.env.SHELL || '/bin/bash'
+  }
+  // Windows: prefer pwsh (PowerShell 7+), fall back to Windows PowerShell 5.1
   try {
     execFileSync('pwsh', ['-Version'], { stdio: 'ignore' })
     return 'pwsh.exe'

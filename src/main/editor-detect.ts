@@ -18,8 +18,9 @@ const KNOWN_EDITORS: EditorInfo[] = [
 ]
 
 function isAvailable(cmd: string): boolean {
+  const which = process.platform === 'win32' ? 'where' : 'which'
   try {
-    execFileSync('where', [cmd], { stdio: 'ignore', timeout: 3000 })
+    execFileSync(which, [cmd], { stdio: 'ignore', timeout: 3000 })
     return true
   } catch {
     return false

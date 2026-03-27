@@ -1,6 +1,42 @@
-.superpowers/
+# Dependencies
 node_modules/
+
+# Build output
 out/
 dist/
 dist2/
+
+# Logs
 *.log
+
+# Screenshots (user-generated)
+.screenshots/
+
+# Editor/OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# Superpowers
+.superpowers/
+docs/superpowers/
+
+# User data (generated at runtime)
+*.db
+
+# Environment
+.env
+.env.*
+
+# Claude settings (local only)
+.claude/
+
+# Temp
+*.tmp

@@ -184,12 +184,13 @@ ipcMain.handle('window:list', (event) => {
   return registry.listExcluding(callerId)
 })
 
-// Open folder in Windows Explorer
+// Open folder in file manager (cross-platform)
 ipcMain.handle('explorer:open', (_event, folderPath: string) => {
   try {
     if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) return
   } catch { return }
-  const child = spawn('explorer', [folderPath], { detached: true, stdio: 'ignore' })
+  const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open'
+  const child = spawn(cmd, [folderPath], { detached: true, stdio: 'ignore' })
   child.unref()
 })
 
