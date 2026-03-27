@@ -30,6 +30,7 @@ export interface ElectronAPI {
   writeTerminal: (id: string, data: string) => Promise<void>
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>
   killTerminal: (id: string) => Promise<void>
+  getScrollback: (id: string) => Promise<string>
   onTerminalData: (id: string, callback: (data: string) => void) => () => void
   onTerminalExit: (id: string, callback: (exitCode: number) => void) => () => void
   selectFolder: () => Promise<string | null>

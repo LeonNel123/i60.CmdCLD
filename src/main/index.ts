@@ -168,6 +168,10 @@ ipcMain.handle('pty:resize', (_event, id: string, cols: number, rows: number) =>
   ptyManager.resize(id, cols, rows)
 })
 
+ipcMain.handle('pty:scrollback', (_event, id: string) => {
+  return ptyManager.getScrollback(id)
+})
+
 ipcMain.handle('pty:kill', (_event, id: string) => {
   ptyManager.kill(id)
 })

@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld('api', {
   killTerminal: (id: string): Promise<void> =>
     ipcRenderer.invoke('pty:kill', id),
 
+  getScrollback: (id: string): Promise<string> =>
+    ipcRenderer.invoke('pty:scrollback', id),
+
   onTerminalData: (id: string, callback: (data: string) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, data: string): void => callback(data)
     ipcRenderer.on(`pty:data:${id}`, listener)

@@ -343,69 +343,59 @@ export default function App() {
           </div>
         )}
 
-        {/* Always render grid — hide with visibility when focused so terminals stay mounted */}
-        {terminals.length > 0 && (
-          <div style={{
-            height: '100%',
-            visibility: isFocused ? 'hidden' : 'visible',
-            position: isFocused ? 'absolute' : 'relative',
-            inset: 0,
-          }}>
-            <ResponsiveGridLayout
-              layouts={{ lg: layouts }}
-              breakpoints={{ lg: 0 }}
-              cols={{ lg: 12 }}
-              rowHeight={rowHeight}
-              draggableHandle=".drag-handle"
-              onLayoutChange={handleLayoutChange}
-              compactType="vertical"
-              margin={[2, 2]}
-            >
-              {terminals.map((t) => (
-                <div key={t.id}>
-                  <TerminalPanel
-                    id={t.id}
-                    folderPath={t.path}
-                    folderName={t.name}
-                    color={t.color}
-                    claudeArgs={t.claudeArgs}
-                    isPlainShell={t.isPlainShell}
-                    onClose={() => handleRequestClose(t.id)}
-                    onSpawnShell={() => handleSpawnShell(t.path, t.color)}
-                    onOpenMarkdown={setMarkdownFile}
-                  />
-                </div>
-              ))}
-            </ResponsiveGridLayout>
-          </div>
+        {/* Grid mode */}
+        {terminals.length > 0 && !isFocused && (
+          <ResponsiveGridLayout
+            layouts={{ lg: layouts }}
+            breakpoints={{ lg: 0 }}
+            cols={{ lg: 12 }}
+            rowHeight={rowHeight}
+            draggableHandle=".drag-handle"
+            onLayoutChange={handleLayoutChange}
+            compactType="vertical"
+            margin={[2, 2]}
+          >
+            {terminals.map((t) => (
+              <div key={t.id}>
+                <TerminalPanel
+                  id={t.id}
+                  folderPath={t.path}
+                  folderName={t.name}
+                  color={t.color}
+                  claudeArgs={t.claudeArgs}
+                  isPlainShell={t.isPlainShell}
+                  onClose={() => handleRequestClose(t.id)}
+                  onSpawnShell={() => handleSpawnShell(t.path, t.color)}
+                  onOpenMarkdown={setMarkdownFile}
+                />
+              </div>
+            ))}
+          </ResponsiveGridLayout>
         )}
 
-        {/* Focused overlay — just a full-screen wrapper that re-renders the focused terminal.
-            The grid terminals stay mounted underneath (hidden) to preserve PTY connections. */}
-        {isFocused && (() => {
-          const t = terminals.find((t) => viewMode.terminalId === t.id)
-          if (!t) return null
-          return (
-            <div style={{
+        {/* Focused mode — all terminals rendered, only focused one visible */}
+        {isFocused && terminals.map((t) => (
+          <div
+            key={t.id}
+            style={{
               position: 'absolute',
               inset: 0,
-              zIndex: 10,
-              background: '#1e1e1e',
-            }}>
-              <TerminalPanel
-                id={t.id}
-                folderPath={t.path}
-                folderName={t.name}
-                color={t.color}
-                claudeArgs={t.claudeArgs}
-                isPlainShell={t.isPlainShell}
-                onClose={() => handleRequestClose(t.id)}
-                onSpawnShell={() => handleSpawnShell(t.path, t.color)}
-                onOpenMarkdown={setMarkdownFile}
-              />
-            </div>
-          )
-        })()}
+              display: viewMode.terminalId === t.id ? 'block' : 'none',
+            }}
+          >
+            <TerminalPanel
+              id={t.id}
+              folderPath={t.path}
+              folderName={t.name}
+              color={t.color}
+              claudeArgs={t.claudeArgs}
+              isPlainShell={t.isPlainShell}
+              onClose={() => handleRequestClose(t.id)}
+              onSpawnShell={() => handleSpawnShell(t.path, t.color)}
+              onOpenMarkdown={setMarkdownFile}
+            />
+          </div>
+        ))}
       </div>
 
       {closingId && (

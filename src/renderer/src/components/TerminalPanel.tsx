@@ -220,6 +220,7 @@ export function TerminalPanel({
       fitAddon.fit()
 
       if (!activePtys.has(id)) {
+        // First mount — create PTY and launch Claude
         activePtys.add(id)
         window.api.createTerminal(id, folderPath).catch(() => {
           term.write('\r\n\x1b[31m[Failed to create terminal]\x1b[0m\r\n')
@@ -233,6 +234,12 @@ export function TerminalPanel({
             claudeLaunched = true
           }, 1000)
         }
+      } else {
+        // Remount — PTY exists, replay scrollback to restore terminal content
+        window.api.getScrollback(id).then((data) => {
+          if (data) term.write(data)
+        }).catch(() => {})
+        claudeLaunched = true
       }
     })
 
@@ -394,14 +401,14 @@ export function TerminalPanel({
         >
           {!isPlainShell && onSpawnShell && (
             <button onClick={onSpawnShell} onMouseDown={(e) => e.stopPropagation()} title="Open shell" style={actionBtnStyle}>
-              &gt;_
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3l5 4-5 4V3zm6 8h6v1H8v-1z"/></svg>
             </button>
           )}
           <button onClick={() => window.api.openInEditor(folderPath)} onMouseDown={(e) => e.stopPropagation()} title={`Open in ${editorName}`} style={actionBtnStyle}>
-            &#9998;
-          </button>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/></svg>
+            </button>
           <button onClick={() => window.api.openInExplorer(folderPath)} onMouseDown={(e) => e.stopPropagation()} title="Open in Explorer" style={actionBtnStyle}>
-            &#128193;
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 1h5l1 2H14.5l.5.5v10l-.5.5h-13l-.5-.5v-12l.5-.5zM2 13h12V4H7.06l-1-2H2v11z"/></svg>
           </button>
         </div>
 

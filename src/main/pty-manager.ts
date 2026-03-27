@@ -108,6 +108,10 @@ export class PtyManager {
     return this.ptys.get(id)?.meta
   }
 
+  getScrollback(id: string): string {
+    return this.ptys.get(id)?.scrollback.getAll() || ''
+  }
+
   write(id: string, data: string): void {
     this.ptys.get(id)?.process.write(data)
   }
