@@ -119,10 +119,28 @@ export function TerminalPanel({
     terminalRef.current = term
     fitAddonRef.current = fitAddon
 
+    // Track if Claude was launched so we can clear after it exits
+    let claudeLaunched = false
+    let waitingForPromptAfterExit = false
+
     // Register IPC listeners BEFORE creating PTY to avoid missing early data
     const removeData = window.api.onTerminalData(id, (data) => {
       term.write(data)
       onTerminalDataReceived(id)
+
+      // Detect Claude exit: when Claude quits, the shell prompt returns.
+      // Look for the PS prompt pattern after Claude was running.
+      if (!isPlainShell && claudeLaunched && !waitingForPromptAfterExit) {
+        // Claude outputs "Goodbye!" or similar on exit
+        if (data.includes('Goodbye') || data.includes('See ya') || data.includes('Bye!') || data.includes('Catch you later')) {
+          waitingForPromptAfterExit = true
+          // Wait briefly for shell prompt to appear, then clear
+          setTimeout(() => {
+            term.clear()
+            waitingForPromptAfterExit = false
+          }, 500)
+        }
+      }
     })
 
     const removeExit = window.api.onTerminalExit(id, (code) => {
@@ -192,6 +210,7 @@ export function TerminalPanel({
           const launchCmd = claudeArgs ? `claude ${claudeArgs}\r` : 'claude\r'
           setTimeout(() => {
             window.api.writeTerminal(id, launchCmd)
+            claudeLaunched = true
           }, 1000)
         }
       }
