@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { onTerminalDataReceived, removeTerminalActivity } from '../utils/terminal-activity'
 
@@ -75,8 +76,45 @@ export function TerminalPanel({
       fontSize: 13,
     })
     const fitAddon = new FitAddon()
+    const webLinksAddon = new WebLinksAddon()
     term.loadAddon(fitAddon)
+    term.loadAddon(webLinksAddon)
     term.open(termRef.current)
+
+    // Make file paths clickable — opens in configured editor
+    term.registerLinkProvider({
+      provideLinks(bufferLineNumber, callback) {
+        const line = term.buffer.active.getLine(bufferLineNumber - 1)
+        if (!line) { callback(undefined); return }
+        const text = line.translateToString()
+        const links: Array<{ startIndex: number; length: number; text: string }> = []
+
+        // Match Windows paths like C:\foo\bar.ts or C:\foo\bar.ts:42
+        // Match relative paths like src/main/index.ts or ./foo/bar.js:10:5
+        const pathRegex = /(?:[A-Z]:\\[\w\\.-]+(?::\d+)?|(?:\.\/|\.\.\/|[\w][\w/.-]*\/[\w.-]+)(?::\d+(?::\d+)?)?)/gi
+        let match
+        while ((match = pathRegex.exec(text)) !== null) {
+          links.push({
+            startIndex: match.index,
+            length: match[0].length,
+            text: match[0],
+          })
+        }
+
+        callback(links.map((l) => ({
+          range: {
+            start: { x: l.startIndex + 1, y: bufferLineNumber },
+            end: { x: l.startIndex + l.length + 1, y: bufferLineNumber },
+          },
+          text: l.text,
+          activate() {
+            // Strip line:col suffix for the editor open
+            const filePart = l.text.replace(/:\d+(:\d+)?$/, '')
+            window.api.openInEditor(filePart)
+          },
+        })))
+      },
+    })
 
     terminalRef.current = term
     fitAddonRef.current = fitAddon
