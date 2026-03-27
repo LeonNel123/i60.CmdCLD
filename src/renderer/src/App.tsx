@@ -8,7 +8,7 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { SettingsDialog } from './components/SettingsDialog'
 import { LaunchDialog } from './components/LaunchDialog'
 import { assignColor } from './utils/colors'
-import { calculateLayout } from './utils/grid-layout'
+import { calculateLayout, getRowCount } from './utils/grid-layout'
 import { onActivityChange } from './utils/terminal-activity'
 import type { MultiWindowState, RecentFolder } from './types/api'
 
@@ -243,7 +243,7 @@ export default function App() {
     }).catch(() => {})
   }, [])
 
-  const gridRows = Math.ceil(Math.sqrt(terminals.length || 1))
+  const gridRows = getRowCount(terminals.length)
   const rowHeight = Math.max(150, Math.floor(window.innerHeight / gridRows) - 4)
   const isFocused = viewMode.type === 'focused'
 

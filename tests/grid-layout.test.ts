@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculateLayout } from '../src/renderer/src/utils/grid-layout'
+import { calculateLayout, getRowCount } from '../src/renderer/src/utils/grid-layout'
 
 describe('calculateLayout', () => {
   it('returns empty array for 0 terminals', () => {
@@ -20,6 +20,15 @@ describe('calculateLayout', () => {
     ])
   })
 
+  it('returns 3-column single row for 3 terminals', () => {
+    const layout = calculateLayout(3)
+    expect(layout).toEqual([
+      { i: '0', x: 0, y: 0, w: 4, h: 1 },
+      { i: '1', x: 4, y: 0, w: 4, h: 1 },
+      { i: '2', x: 8, y: 0, w: 4, h: 1 }
+    ])
+  })
+
   it('returns 2x2 grid for 4 terminals', () => {
     const layout = calculateLayout(4)
     expect(layout).toEqual([
@@ -30,7 +39,7 @@ describe('calculateLayout', () => {
     ])
   })
 
-  it('returns 3-column grid for 6 terminals', () => {
+  it('returns 3-column 2-row grid for 6 terminals', () => {
     const layout = calculateLayout(6)
     expect(layout[0]).toEqual({ i: '0', x: 0, y: 0, w: 4, h: 1 })
     expect(layout[3]).toEqual({ i: '3', x: 0, y: 1, w: 4, h: 1 })
@@ -51,5 +60,25 @@ describe('calculateLayout', () => {
         expect(item.h).toBeGreaterThan(0)
       }
     }
+  })
+})
+
+describe('getRowCount', () => {
+  it('1-3 terminals use 1 row', () => {
+    expect(getRowCount(1)).toBe(1)
+    expect(getRowCount(2)).toBe(1)
+    expect(getRowCount(3)).toBe(1)
+  })
+
+  it('4-6 terminals use 2 rows', () => {
+    expect(getRowCount(4)).toBe(2)
+    expect(getRowCount(5)).toBe(2)
+    expect(getRowCount(6)).toBe(2)
+  })
+
+  it('7+ terminals use 3+ rows', () => {
+    expect(getRowCount(7)).toBe(3)
+    expect(getRowCount(9)).toBe(3)
+    expect(getRowCount(10)).toBe(4)
   })
 })
