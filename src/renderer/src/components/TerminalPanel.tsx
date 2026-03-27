@@ -73,8 +73,6 @@ export function TerminalPanel({
       },
       fontFamily: 'Cascadia Code, Consolas, "Courier New", monospace',
       fontSize: 13,
-      lineHeight: 1.2,
-      letterSpacing: 0,
     })
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
