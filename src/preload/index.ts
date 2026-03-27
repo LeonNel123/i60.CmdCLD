@@ -61,6 +61,10 @@ contextBridge.exposeInMainWorld('api', {
   windowList: (): Promise<Array<{ id: string; label: string }>> =>
     ipcRenderer.invoke('window:list'),
 
+  // Explorer
+  openInExplorer: (folderPath: string): Promise<void> =>
+    ipcRenderer.invoke('explorer:open', folderPath),
+
   // Editor
   openInEditor: (folderPath: string): Promise<void> =>
     ipcRenderer.invoke('editor:open', folderPath),

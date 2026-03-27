@@ -184,6 +184,15 @@ ipcMain.handle('window:list', (event) => {
   return registry.listExcluding(callerId)
 })
 
+// Open folder in Windows Explorer
+ipcMain.handle('explorer:open', (_event, folderPath: string) => {
+  try {
+    if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) return
+  } catch { return }
+  const child = spawn('explorer', [folderPath], { detached: true, stdio: 'ignore' })
+  child.unref()
+})
+
 // Open in editor — uses configured editor
 // spawn with shell:true is needed because editors like 'code' are .cmd batch files on Windows
 // folderPath is validated as a directory before use, cmd comes from settings

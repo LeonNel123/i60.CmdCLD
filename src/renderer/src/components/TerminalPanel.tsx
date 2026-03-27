@@ -220,6 +220,18 @@ export function TerminalPanel({
     setShowEditorPicker(false)
   }
 
+  const actionBtnStyle: React.CSSProperties = {
+    background: 'none',
+    border: 'none',
+    color: '#999',
+    cursor: 'pointer',
+    fontSize: '13px',
+    padding: '2px 6px',
+    lineHeight: 1,
+    fontFamily: 'monospace',
+    borderRadius: '3px',
+  }
+
   const menuItemStyle: React.CSSProperties = {
     display: 'block', width: '100%', padding: '6px 12px',
     background: 'none', border: 'none', color: '#ccc',
@@ -238,81 +250,106 @@ export function TerminalPanel({
       overflow: 'hidden',
       background: '#1e1e1e',
     }}>
-      <div
-        className="drag-handle"
-        onContextMenu={handleContextMenu}
-        style={{
-          background: '#252526',
-          padding: '3px 10px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          borderBottom: `1px solid ${color}60`,
-          borderLeft: `2px solid ${color}`,
-          cursor: 'grab',
-          flexShrink: 0,
-        }}
-      >
-        <span style={{
-          color,
-          fontSize: '12px',
-          fontFamily: 'monospace',
-          fontWeight: 600,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}>
-          {folderName}
-          {isPlainShell && (
-            <span style={{ color: '#888', fontSize: '10px', marginLeft: '6px', fontWeight: 400 }}>
-              shell
-            </span>
-          )}
-        </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-          {/* Spawn plain shell button — only show on Claude terminals */}
+      <div style={{
+        background: '#252526',
+        display: 'flex',
+        alignItems: 'center',
+        borderBottom: `1px solid ${color}60`,
+        borderLeft: `2px solid ${color}`,
+        flexShrink: 0,
+        height: '28px',
+      }}>
+        {/* Col 1: Folder name — drag handle */}
+        <div
+          className="drag-handle"
+          style={{
+            flex: 1,
+            padding: '0 10px',
+            cursor: 'grab',
+            overflow: 'hidden',
+          }}
+        >
+          <span style={{
+            color,
+            fontSize: '12px',
+            fontFamily: 'monospace',
+            fontWeight: 600,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {folderName}
+            {isPlainShell && (
+              <span style={{ color: '#888', fontSize: '10px', marginLeft: '6px', fontWeight: 400 }}>
+                shell
+              </span>
+            )}
+          </span>
+        </div>
+
+        {/* Col 2: Quick actions — click to execute, right-click for context menu */}
+        <div
+          onContextMenu={handleContextMenu}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1px',
+            padding: '0 4px',
+            borderLeft: '1px solid #333',
+            borderRight: '1px solid #333',
+            height: '100%',
+          }}
+        >
           {!isPlainShell && onSpawnShell && (
             <button
               onClick={onSpawnShell}
               onMouseDown={(e) => e.stopPropagation()}
-              title="Open shell for this folder"
-              style={{
-                background: '#ffffff12',
-                border: '1px solid #ffffff25',
-                borderRadius: '3px',
-                color: '#ccc',
-                cursor: 'pointer',
-                fontSize: '12px',
-                padding: '2px 8px',
-                lineHeight: 1,
-                fontFamily: 'monospace',
-                fontWeight: 600,
-                marginRight: '4px',
-              }}
+              title="Open shell"
+              style={actionBtnStyle}
             >
               &gt;_
             </button>
           )}
           <button
-            onClick={onClose}
+            onClick={() => window.api.openInEditor(folderPath)}
             onMouseDown={(e) => e.stopPropagation()}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#666',
-              cursor: 'pointer',
-              fontSize: '14px',
-              padding: '0 4px',
-              lineHeight: 1,
-            }}
+            title={`Open in ${editorName}`}
+            style={actionBtnStyle}
           >
-            &#10005;
+            &#9998;
+          </button>
+          <button
+            onClick={() => window.api.openInExplorer(folderPath)}
+            onMouseDown={(e) => e.stopPropagation()}
+            title="Open in Explorer"
+            style={actionBtnStyle}
+          >
+            &#128193;
           </button>
         </div>
+
+        {/* Col 3: Close */}
+        <button
+          onClick={onClose}
+          onMouseDown={(e) => e.stopPropagation()}
+          title="Close terminal"
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#666',
+            cursor: 'pointer',
+            fontSize: '13px',
+            padding: '0 8px',
+            lineHeight: 1,
+            height: '100%',
+          }}
+        >
+          &#10005;
+        </button>
       </div>
       <div ref={termRef} style={{ flex: 1, overflow: 'hidden' }} />
 
-      {contextMenu && (
+      {contextMenu && availableEditors.length > 1 && (
         <div
           onMouseDown={(e) => e.stopPropagation()}
           style={{
@@ -323,84 +360,26 @@ export function TerminalPanel({
             border: '1px solid #333',
             borderRadius: '6px',
             padding: '4px 0',
-            minWidth: '180px',
+            minWidth: '150px',
             zIndex: 2000,
             boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
           }}
         >
-          {!isPlainShell && onSpawnShell && (
+          {availableEditors.map((e) => (
             <button
+              key={e.id}
               onClick={() => {
-                onSpawnShell()
+                window.api.editorSetCurrent(e.cmd)
+                setEditorName(e.name)
                 setContextMenu(null)
               }}
               style={menuItemStyle}
               onMouseEnter={menuHoverIn}
               onMouseLeave={menuHoverOut}
             >
-              Open Shell
+              {e.name} {e.cmd === editorName ? '' : ''}
             </button>
-          )}
-          <button
-            onClick={() => {
-              window.api.openInEditor(folderPath)
-              setContextMenu(null)
-            }}
-            style={menuItemStyle}
-            onMouseEnter={menuHoverIn}
-            onMouseLeave={menuHoverOut}
-          >
-            Open in {editorName}
-          </button>
-          {availableEditors.length > 1 && (
-            <>
-              <div style={{ height: '1px', background: '#333', margin: '4px 0' }} />
-              <div
-                style={{ position: 'relative' }}
-                onMouseEnter={() => setShowEditorPicker(true)}
-                onMouseLeave={() => setShowEditorPicker(false)}
-              >
-                <button
-                  style={{ ...menuItemStyle, display: 'flex', justifyContent: 'space-between' }}
-                  onMouseEnter={menuHoverIn}
-                  onMouseLeave={menuHoverOut}
-                >
-                  <span>Change Editor</span>
-                  <span style={{ fontSize: '10px' }}>{'\u25B6'}</span>
-                </button>
-                {showEditorPicker && (
-                  <div style={{
-                    position: 'absolute',
-                    left: '100%',
-                    top: 0,
-                    background: '#1a1a2e',
-                    border: '1px solid #333',
-                    borderRadius: '6px',
-                    padding: '4px 0',
-                    minWidth: '150px',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-                  }}>
-                    {availableEditors.map((e) => (
-                      <button
-                        key={e.id}
-                        onClick={() => {
-                          window.api.editorSetCurrent(e.cmd)
-                          setEditorName(e.name)
-                          setContextMenu(null)
-                          setShowEditorPicker(false)
-                        }}
-                        style={menuItemStyle}
-                        onMouseEnter={menuHoverIn}
-                        onMouseLeave={menuHoverOut}
-                      >
-                        {e.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
+          ))}
         </div>
       )}
     </div>
