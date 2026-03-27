@@ -277,15 +277,17 @@ export function TerminalPanel({
               onMouseDown={(e) => e.stopPropagation()}
               title="Open shell for this folder"
               style={{
-                background: '#ffffff10',
-                border: '1px solid #ffffff20',
+                background: '#ffffff12',
+                border: '1px solid #ffffff25',
                 borderRadius: '3px',
-                color: '#aaa',
+                color: '#ccc',
                 cursor: 'pointer',
-                fontSize: '11px',
-                padding: '1px 5px',
+                fontSize: '12px',
+                padding: '2px 8px',
                 lineHeight: 1,
                 fontFamily: 'monospace',
+                fontWeight: 600,
+                marginRight: '4px',
               }}
             >
               &gt;_
@@ -326,6 +328,19 @@ export function TerminalPanel({
             boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
           }}
         >
+          {!isPlainShell && onSpawnShell && (
+            <button
+              onClick={() => {
+                onSpawnShell()
+                setContextMenu(null)
+              }}
+              style={menuItemStyle}
+              onMouseEnter={menuHoverIn}
+              onMouseLeave={menuHoverOut}
+            >
+              Open Shell
+            </button>
+          )}
           <button
             onClick={() => {
               window.api.openInEditor(folderPath)
