@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage } from 'electron'
 import { join } from 'path'
 import { spawn } from 'child_process'
-import { appendFileSync, existsSync, statSync, writeFileSync, mkdirSync } from 'fs'
+import { appendFileSync, existsSync, statSync, writeFileSync, readFileSync, mkdirSync } from 'fs'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
 import { WindowRegistry } from './window-registry'
@@ -239,6 +239,16 @@ ipcMain.handle('settings:getAll', () => {
 
 ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
   settings.set(key as any, value as any)
+})
+
+// Read file contents (for markdown viewer)
+ipcMain.handle('file:read', (_event, filePath: string) => {
+  try {
+    if (!existsSync(filePath) || statSync(filePath).isDirectory()) return null
+    return readFileSync(filePath, 'utf-8')
+  } catch {
+    return null
+  }
 })
 
 // Create new project folder

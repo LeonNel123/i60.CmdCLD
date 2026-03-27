@@ -25,6 +25,7 @@ interface TerminalPanelProps {
   isPlainShell?: boolean
   onClose: () => void
   onSpawnShell?: () => void
+  onOpenMarkdown?: (filePath: string) => void
 }
 
 export function TerminalPanel({
@@ -36,6 +37,7 @@ export function TerminalPanel({
   isPlainShell,
   onClose,
   onSpawnShell,
+  onOpenMarkdown,
 }: TerminalPanelProps) {
   const termRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -108,7 +110,11 @@ export function TerminalPanel({
           text: l.text,
           activate() {
             const filePart = l.text.replace(/:\d+(:\d+)?$/, '')
-            window.api.openInEditor(filePart)
+            if (filePart.toLowerCase().endsWith('.md') && onOpenMarkdown) {
+              onOpenMarkdown(filePart)
+            } else {
+              window.api.openInEditor(filePart)
+            }
           },
         })))
       },

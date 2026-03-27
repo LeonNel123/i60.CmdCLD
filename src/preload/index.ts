@@ -47,6 +47,10 @@ contextBridge.exposeInMainWorld('api', {
   clipboardSaveImage: (cwd: string): Promise<string | null> =>
     ipcRenderer.invoke('clipboard:saveImage', cwd),
 
+  // File reading (for markdown viewer)
+  readFile: (filePath: string): Promise<string | null> =>
+    ipcRenderer.invoke('file:read', filePath),
+
   // Settings
   projectCreate: (folderName: string): Promise<string | null> =>
     ipcRenderer.invoke('project:create', folderName),

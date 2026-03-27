@@ -7,6 +7,7 @@ import { TerminalPanel, killPty } from './components/TerminalPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { SettingsDialog } from './components/SettingsDialog'
 import { LaunchDialog } from './components/LaunchDialog'
+import { MarkdownViewer } from './components/MarkdownViewer'
 import { assignColor } from './utils/colors'
 import { calculateLayout, getRowCount } from './utils/grid-layout'
 import { onActivityChange } from './utils/terminal-activity'
@@ -42,6 +43,7 @@ export default function App() {
   const [projectsRoot, setProjectsRoot] = useState('')
   const [showNewProject, setShowNewProject] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
+  const [markdownFile, setMarkdownFile] = useState<string | null>(null)
 
   // Track terminal busy/idle state + notification sound
   const notifyRef = useRef(false)
@@ -359,6 +361,7 @@ export default function App() {
               isPlainShell={t.isPlainShell}
               onClose={() => handleRequestClose(t.id)}
               onSpawnShell={() => handleSpawnShell(t.path, t.color)}
+              onOpenMarkdown={setMarkdownFile}
             />
           </div>
         ))}
@@ -385,6 +388,7 @@ export default function App() {
                   isPlainShell={t.isPlainShell}
                   onClose={() => handleRequestClose(t.id)}
                   onSpawnShell={() => handleSpawnShell(t.path, t.color)}
+              onOpenMarkdown={setMarkdownFile}
                 />
               </div>
             ))}
@@ -410,6 +414,13 @@ export default function App() {
           defaultArgs={claudeArgs}
           onLaunch={handleLaunchConfirm}
           onCancel={() => setPendingLaunch(null)}
+        />
+      )}
+
+      {markdownFile && (
+        <MarkdownViewer
+          filePath={markdownFile}
+          onClose={() => setMarkdownFile(null)}
         />
       )}
 
