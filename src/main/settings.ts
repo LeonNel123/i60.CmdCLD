@@ -6,6 +6,8 @@ export interface AppSettings {
   claudeArgs: string
   askBeforeLaunch: boolean
   defaultViewMode: 'grid' | 'focused'
+  notifyOnIdle: boolean
+  projectsRoot: string
 }
 
 const DEFAULTS: AppSettings = {
@@ -13,6 +15,8 @@ const DEFAULTS: AppSettings = {
   claudeArgs: '--dangerously-skip-permissions',
   askBeforeLaunch: false,
   defaultViewMode: 'grid',
+  notifyOnIdle: false,
+  projectsRoot: '',
 }
 
 export class Settings {

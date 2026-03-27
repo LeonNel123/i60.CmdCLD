@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import { onTerminalDataReceived, removeTerminalActivity } from '../utils/terminal-activity'
 
@@ -39,11 +40,15 @@ export function TerminalPanel({
   const termRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const searchAddonRef = useRef<SearchAddon | null>(null)
   const cleanupRef = useRef<{ removeData: () => void; removeExit: () => void; removePaste: () => void } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [editorName, setEditorName] = useState('Editor')
   const [availableEditors, setAvailableEditors] = useState<Array<{ id: string; name: string; cmd: string }>>([])
   const [showEditorPicker, setShowEditorPicker] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!termRef.current) return
@@ -77,8 +82,10 @@ export function TerminalPanel({
     })
     const fitAddon = new FitAddon()
     const webLinksAddon = new WebLinksAddon()
+    const searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
     term.loadAddon(webLinksAddon)
+    term.loadAddon(searchAddon)
     term.open(termRef.current)
 
     // Make file paths clickable — opens in configured editor
@@ -88,19 +95,11 @@ export function TerminalPanel({
         if (!line) { callback(undefined); return }
         const text = line.translateToString()
         const links: Array<{ startIndex: number; length: number; text: string }> = []
-
-        // Match Windows paths like C:\foo\bar.ts or C:\foo\bar.ts:42
-        // Match relative paths like src/main/index.ts or ./foo/bar.js:10:5
         const pathRegex = /(?:[A-Z]:\\[\w\\.-]+(?::\d+)?|(?:\.\/|\.\.\/|[\w][\w/.-]*\/[\w.-]+)(?::\d+(?::\d+)?)?)/gi
         let match
         while ((match = pathRegex.exec(text)) !== null) {
-          links.push({
-            startIndex: match.index,
-            length: match[0].length,
-            text: match[0],
-          })
+          links.push({ startIndex: match.index, length: match[0].length, text: match[0] })
         }
-
         callback(links.map((l) => ({
           range: {
             start: { x: l.startIndex + 1, y: bufferLineNumber },
@@ -108,7 +107,6 @@ export function TerminalPanel({
           },
           text: l.text,
           activate() {
-            // Strip line:col suffix for the editor open
             const filePart = l.text.replace(/:\d+(:\d+)?$/, '')
             window.api.openInEditor(filePart)
           },
@@ -118,23 +116,19 @@ export function TerminalPanel({
 
     terminalRef.current = term
     fitAddonRef.current = fitAddon
+    searchAddonRef.current = searchAddon
 
     // Track if Claude was launched so we can clear after it exits
     let claudeLaunched = false
     let waitingForPromptAfterExit = false
 
-    // Register IPC listeners BEFORE creating PTY to avoid missing early data
     const removeData = window.api.onTerminalData(id, (data) => {
       term.write(data)
       onTerminalDataReceived(id)
 
-      // Detect Claude exit: when Claude quits, the shell prompt returns.
-      // Look for the PS prompt pattern after Claude was running.
       if (!isPlainShell && claudeLaunched && !waitingForPromptAfterExit) {
-        // Claude outputs "Goodbye!" or similar on exit
         if (data.includes('Goodbye') || data.includes('See ya') || data.includes('Bye!') || data.includes('Catch you later')) {
           waitingForPromptAfterExit = true
-          // Wait briefly for shell prompt to appear, then clear
           setTimeout(() => {
             term.clear()
             waitingForPromptAfterExit = false
@@ -157,9 +151,7 @@ export function TerminalPanel({
       window.api.writeTerminal(id, data)
     })
 
-    // Block xterm's internal paste handler on its hidden textarea
-    // This is the root cause of double-paste: our key handler writes text,
-    // AND xterm's native paste listener on its textarea also writes text via onData
+    // Block xterm's internal paste handler
     const xtermTextarea = termRef.current!.querySelector('textarea')
     const blockNativePaste = (e: Event) => {
       e.preventDefault()
@@ -170,12 +162,10 @@ export function TerminalPanel({
     }
 
     term.attachCustomKeyEventHandler((e) => {
-      // Ctrl+C: copy selection
       if (e.type === 'keydown' && e.ctrlKey && e.key === 'c' && term.hasSelection()) {
         navigator.clipboard.writeText(term.getSelection()).catch(() => {})
         return false
       }
-      // Ctrl+V: custom paste with image support
       if (e.type === 'keydown' && e.ctrlKey && e.key === 'v') {
         window.api.clipboardSaveImage(folderPath).then((imgPath) => {
           if (imgPath) {
@@ -188,8 +178,32 @@ export function TerminalPanel({
         }).catch(() => {})
         return false
       }
-      // Block keyup for Ctrl+V too
       if (e.type === 'keyup' && e.ctrlKey && e.key === 'v') {
+        return false
+      }
+      // Ctrl+F: open search
+      if (e.type === 'keydown' && e.ctrlKey && e.key === 'f') {
+        setSearchOpen(true)
+        setTimeout(() => searchInputRef.current?.focus(), 50)
+        return false
+      }
+      // Ctrl+= / Ctrl+-: font zoom
+      if (e.type === 'keydown' && e.ctrlKey && (e.key === '=' || e.key === '+')) {
+        const newSize = Math.min(term.options.fontSize! + 1, 28)
+        term.options.fontSize = newSize
+        fitAddon.fit()
+        return false
+      }
+      if (e.type === 'keydown' && e.ctrlKey && e.key === '-') {
+        const newSize = Math.max(term.options.fontSize! - 1, 8)
+        term.options.fontSize = newSize
+        fitAddon.fit()
+        return false
+      }
+      // Ctrl+0: reset font size
+      if (e.type === 'keydown' && e.ctrlKey && e.key === '0') {
+        term.options.fontSize = 13
+        fitAddon.fit()
         return false
       }
       return true
@@ -240,7 +254,6 @@ export function TerminalPanel({
         cleanupRef.current = null
       }
       term.dispose()
-      // Do NOT kill PTY here — only kill on explicit close via killPty()
     }
   }, [id, folderPath])
 
@@ -275,6 +288,22 @@ export function TerminalPanel({
     e.preventDefault()
     setContextMenu({ x: e.clientX, y: e.clientY })
     setShowEditorPicker(false)
+  }
+
+  const handleSearch = (query: string, direction: 'next' | 'prev' = 'next') => {
+    if (!searchAddonRef.current || !query) return
+    if (direction === 'next') {
+      searchAddonRef.current.findNext(query)
+    } else {
+      searchAddonRef.current.findPrevious(query)
+    }
+  }
+
+  const closeSearch = () => {
+    setSearchOpen(false)
+    setSearchQuery('')
+    searchAddonRef.current?.clearDecorations()
+    terminalRef.current?.focus()
   }
 
   const actionBtnStyle: React.CSSProperties = {
@@ -344,7 +373,7 @@ export function TerminalPanel({
           </span>
         </div>
 
-        {/* Col 2: Quick actions — click to execute, right-click for context menu */}
+        {/* Col 2: Quick actions */}
         <div
           onContextMenu={handleContextMenu}
           style={{
@@ -358,29 +387,14 @@ export function TerminalPanel({
           }}
         >
           {!isPlainShell && onSpawnShell && (
-            <button
-              onClick={onSpawnShell}
-              onMouseDown={(e) => e.stopPropagation()}
-              title="Open shell"
-              style={actionBtnStyle}
-            >
+            <button onClick={onSpawnShell} onMouseDown={(e) => e.stopPropagation()} title="Open shell" style={actionBtnStyle}>
               &gt;_
             </button>
           )}
-          <button
-            onClick={() => window.api.openInEditor(folderPath)}
-            onMouseDown={(e) => e.stopPropagation()}
-            title={`Open in ${editorName}`}
-            style={actionBtnStyle}
-          >
+          <button onClick={() => window.api.openInEditor(folderPath)} onMouseDown={(e) => e.stopPropagation()} title={`Open in ${editorName}`} style={actionBtnStyle}>
             &#9998;
           </button>
-          <button
-            onClick={() => window.api.openInExplorer(folderPath)}
-            onMouseDown={(e) => e.stopPropagation()}
-            title="Open in Explorer"
-            style={actionBtnStyle}
-          >
+          <button onClick={() => window.api.openInExplorer(folderPath)} onMouseDown={(e) => e.stopPropagation()} title="Open in Explorer" style={actionBtnStyle}>
             &#128193;
           </button>
         </div>
@@ -391,50 +405,65 @@ export function TerminalPanel({
           onMouseDown={(e) => e.stopPropagation()}
           title="Close terminal"
           style={{
-            background: 'none',
-            border: 'none',
-            color: '#666',
-            cursor: 'pointer',
-            fontSize: '13px',
-            padding: '0 8px',
-            lineHeight: 1,
-            height: '100%',
+            background: 'none', border: 'none', color: '#666',
+            cursor: 'pointer', fontSize: '13px', padding: '0 8px',
+            lineHeight: 1, height: '100%',
           }}
         >
           &#10005;
         </button>
       </div>
+
+      {/* Search bar */}
+      {searchOpen && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '4px',
+          padding: '3px 8px', background: '#252526',
+          borderBottom: '1px solid #333', flexShrink: 0,
+        }}>
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); handleSearch(e.target.value) }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSearch(searchQuery, e.shiftKey ? 'prev' : 'next')
+              if (e.key === 'Escape') closeSearch()
+            }}
+            placeholder="Search..."
+            style={{
+              flex: 1, background: '#1e1e1e', border: '1px solid #444',
+              borderRadius: '3px', padding: '2px 6px', color: '#ccc',
+              fontSize: '12px', fontFamily: 'monospace', outline: 'none',
+            }}
+          />
+          <button onClick={() => handleSearch(searchQuery, 'prev')} style={{ ...actionBtnStyle, fontSize: '11px' }} title="Previous (Shift+Enter)">&#9650;</button>
+          <button onClick={() => handleSearch(searchQuery, 'next')} style={{ ...actionBtnStyle, fontSize: '11px' }} title="Next (Enter)">&#9660;</button>
+          <button onClick={closeSearch} style={{ ...actionBtnStyle, fontSize: '11px' }} title="Close (Esc)">&#10005;</button>
+        </div>
+      )}
+
       <div ref={termRef} style={{ flex: 1, overflow: 'hidden' }} />
 
       {contextMenu && availableEditors.length > 1 && (
         <div
           onMouseDown={(e) => e.stopPropagation()}
           style={{
-            position: 'fixed',
-            left: contextMenu.x,
-            top: contextMenu.y,
-            background: '#1a1a2e',
-            border: '1px solid #333',
-            borderRadius: '6px',
-            padding: '4px 0',
-            minWidth: '150px',
-            zIndex: 2000,
+            position: 'fixed', left: contextMenu.x, top: contextMenu.y,
+            background: '#1a1a2e', border: '1px solid #333', borderRadius: '6px',
+            padding: '4px 0', minWidth: '150px', zIndex: 2000,
             boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
           }}
         >
           {availableEditors.map((e) => (
             <button
               key={e.id}
-              onClick={() => {
-                window.api.editorSetCurrent(e.cmd)
-                setEditorName(e.name)
-                setContextMenu(null)
-              }}
+              onClick={() => { window.api.editorSetCurrent(e.cmd); setEditorName(e.name); setContextMenu(null) }}
               style={menuItemStyle}
               onMouseEnter={menuHoverIn}
               onMouseLeave={menuHoverOut}
             >
-              {e.name} {e.cmd === editorName ? '' : ''}
+              {e.name}
             </button>
           ))}
         </div>

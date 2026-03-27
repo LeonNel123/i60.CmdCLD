@@ -9,6 +9,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [claudeArgs, setClaudeArgs] = useState('')
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
+  const [notifyOnIdle, setNotifyOnIdle] = useState(false)
+  const [projectsRoot, setProjectsRoot] = useState('')
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
@@ -16,6 +18,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       setClaudeArgs(s.claudeArgs)
       setAskBeforeLaunch(s.askBeforeLaunch)
       setDefaultViewMode(s.defaultViewMode)
+      setNotifyOnIdle(s.notifyOnIdle)
+      setProjectsRoot(s.projectsRoot)
       setLoaded(true)
     })
   }, [])
@@ -24,6 +28,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     window.api.settingsSet('claudeArgs', claudeArgs)
     window.api.settingsSet('askBeforeLaunch', askBeforeLaunch)
     window.api.settingsSet('defaultViewMode', defaultViewMode)
+    window.api.settingsSet('notifyOnIdle', notifyOnIdle)
+    window.api.settingsSet('projectsRoot', projectsRoot)
     onClose()
   }
 
@@ -177,6 +183,58 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 {opt.label}
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Notification on idle */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            cursor: 'pointer', color: '#ccc', fontSize: '12px', fontFamily: 'monospace',
+          }}>
+            <input
+              type="checkbox"
+              checked={notifyOnIdle}
+              onChange={(e) => setNotifyOnIdle(e.target.checked)}
+              style={{ accentColor: '#22c55e' }}
+            />
+            Play sound when terminal finishes work
+          </label>
+        </div>
+
+        {/* Projects root */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
+            Projects Root (for "New Project")
+          </label>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <input
+              type="text"
+              value={projectsRoot}
+              onChange={(e) => setProjectsRoot(e.target.value)}
+              placeholder="e.g. I:\Projects"
+              style={{
+                flex: 1, background: '#0d1117', border: '1px solid #333',
+                borderRadius: '4px', padding: '8px 10px', color: '#e0e0e0',
+                fontSize: '12px', fontFamily: 'Consolas, monospace', outline: 'none',
+              }}
+            />
+            <button
+              onClick={async () => {
+                const p = await window.api.selectFolder()
+                if (p) setProjectsRoot(p)
+              }}
+              style={{
+                background: '#333', border: '1px solid #444', borderRadius: '4px',
+                padding: '0 10px', color: '#999', fontSize: '11px', fontFamily: 'monospace',
+                cursor: 'pointer', flexShrink: 0,
+              }}
+            >
+              Browse
+            </button>
+          </div>
+          <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginTop: '4px' }}>
+            "New Project" creates a folder here and opens it in the app
           </div>
         </div>
 

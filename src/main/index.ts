@@ -241,6 +241,20 @@ ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
   settings.set(key as any, value as any)
 })
 
+// Create new project folder
+ipcMain.handle('project:create', (_event, folderName: string) => {
+  const root = settings.get('projectsRoot')
+  if (!root) return null
+  const fullPath = join(root, folderName)
+  try {
+    if (existsSync(fullPath)) return null // already exists
+    mkdirSync(fullPath, { recursive: true })
+    return fullPath
+  } catch {
+    return null
+  }
+})
+
 // Dialog IPC handler
 ipcMain.handle('dialog:selectFolder', async (event) => {
   const windowId = getWindowIdFromEvent(event)

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Responsive, WidthProvider, Layout } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
@@ -10,6 +10,7 @@ import { LaunchDialog } from './components/LaunchDialog'
 import { assignColor } from './utils/colors'
 import { calculateLayout, getRowCount } from './utils/grid-layout'
 import { onActivityChange } from './utils/terminal-activity'
+import notificationSound from './assets/notification.wav'
 import type { MultiWindowState, RecentFolder } from './types/api'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
@@ -37,9 +38,18 @@ export default function App() {
   const [busyTerminals, setBusyTerminals] = useState<Set<string>>(new Set())
   const [claudeArgs, setClaudeArgs] = useState('--dangerously-skip-permissions')
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
+  const [notifyOnIdle, setNotifyOnIdle] = useState(false)
+  const [projectsRoot, setProjectsRoot] = useState('')
+  const [showNewProject, setShowNewProject] = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
 
-  // Track terminal busy/idle state
+  // Track terminal busy/idle state + notification sound
+  const notifyRef = useRef(false)
+  useEffect(() => { notifyRef.current = notifyOnIdle }, [notifyOnIdle])
+
   useEffect(() => {
+    const audio = new Audio(notificationSound)
+    audio.volume = 0.3
     return onActivityChange((id, busy) => {
       setBusyTerminals((prev) => {
         const next = new Set(prev)
@@ -47,6 +57,11 @@ export default function App() {
         else next.delete(id)
         return next
       })
+      // Play notification when terminal goes idle (was busy, now idle)
+      if (!busy && notifyRef.current) {
+        audio.currentTime = 0
+        audio.play().catch(() => {})
+      }
     })
   }, [])
 
@@ -55,6 +70,8 @@ export default function App() {
     const settingsPromise = window.api.settingsGetAll().then((s) => {
       setClaudeArgs(s.claudeArgs)
       setAskBeforeLaunch(s.askBeforeLaunch)
+      setNotifyOnIdle(s.notifyOnIdle)
+      setProjectsRoot(s.projectsRoot)
       return s
     }).catch(() => null)
 
@@ -243,12 +260,52 @@ export default function App() {
 
   const handleSettingsClosed = useCallback(() => {
     setShowSettings(false)
-    // Reload settings
     window.api.settingsGetAll().then((s) => {
       setClaudeArgs(s.claudeArgs)
       setAskBeforeLaunch(s.askBeforeLaunch)
+      setNotifyOnIdle(s.notifyOnIdle)
+      setProjectsRoot(s.projectsRoot)
     }).catch(() => {})
   }, [])
+
+  const handleNewProject = useCallback(async () => {
+    if (!newProjectName.trim()) return
+    const path = await window.api.projectCreate(newProjectName.trim())
+    if (path) {
+      setShowNewProject(false)
+      setNewProjectName('')
+      startAddFolder(path)
+    }
+  }, [newProjectName, startAddFolder])
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Ctrl+1-9: switch to terminal by index
+      if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
+        const idx = parseInt(e.key) - 1
+        if (idx < terminals.length) {
+          setViewMode({ type: 'focused', terminalId: terminals[idx].id })
+          e.preventDefault()
+        }
+        return
+      }
+      // Ctrl+T: add folder
+      if (e.ctrlKey && e.key === 't') {
+        e.preventDefault()
+        handleAddFolder()
+        return
+      }
+      // Ctrl+`: show all (grid view)
+      if (e.ctrlKey && e.key === '`') {
+        e.preventDefault()
+        setViewMode({ type: 'grid' })
+        return
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [terminals, handleAddFolder])
 
   const gridRows = getRowCount(terminals.length)
   const rowHeight = Math.max(150, Math.floor(window.innerHeight / gridRows) - 4)
@@ -267,6 +324,8 @@ export default function App() {
         recentFolders={recentFolders}
         onOpenRecent={handleOpenRecent}
         onOpenSettings={() => setShowSettings(true)}
+        onNewProject={() => setShowNewProject(true)}
+        hasProjectsRoot={!!projectsRoot}
       />
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {terminals.length === 0 && (
@@ -352,6 +411,49 @@ export default function App() {
           onLaunch={handleLaunchConfirm}
           onCancel={() => setPendingLaunch(null)}
         />
+      )}
+
+      {showNewProject && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000,
+        }} onClick={() => setShowNewProject(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: '#1a1a2e', borderRadius: '8px', padding: '20px',
+            maxWidth: '420px', width: '90%', border: '1px solid #333',
+          }}>
+            <h3 style={{ color: '#e0e0e0', margin: '0 0 12px', fontSize: '14px', fontFamily: 'monospace' }}>
+              New Project
+            </h3>
+            <div style={{ color: '#666', fontSize: '10px', fontFamily: 'monospace', marginBottom: '8px' }}>
+              Creates folder in: {projectsRoot}
+            </div>
+            <input
+              type="text"
+              value={newProjectName}
+              onChange={(e) => setNewProjectName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleNewProject() }}
+              autoFocus
+              placeholder="project-name"
+              style={{
+                width: '100%', background: '#0d1117', border: '1px solid #333',
+                borderRadius: '4px', padding: '8px 10px', color: '#e0e0e0',
+                fontSize: '12px', fontFamily: 'Consolas, monospace', outline: 'none',
+                boxSizing: 'border-box', marginBottom: '12px',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowNewProject(false)} style={{
+                background: '#333', color: '#ccc', border: 'none', borderRadius: '4px',
+                padding: '6px 14px', cursor: 'pointer', fontSize: '12px', fontFamily: 'monospace',
+              }}>Cancel</button>
+              <button onClick={handleNewProject} style={{
+                background: '#22c55e', color: '#000', border: 'none', borderRadius: '4px',
+                padding: '6px 14px', cursor: 'pointer', fontSize: '12px', fontFamily: 'monospace', fontWeight: 600,
+              }}>Create</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

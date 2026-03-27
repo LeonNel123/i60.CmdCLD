@@ -22,6 +22,8 @@ interface SidebarProps {
   recentFolders: RecentFolder[]
   onOpenRecent: (path: string) => void
   onOpenSettings: () => void
+  onNewProject: () => void
+  hasProjectsRoot: boolean
 }
 
 const EXPANDED_WIDTH = 180
@@ -38,6 +40,8 @@ export function Sidebar({
   busyTerminals,
   onOpenRecent,
   onOpenSettings,
+  onNewProject,
+  hasProjectsRoot,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -108,6 +112,12 @@ export function Sidebar({
           <span style={{ fontSize: '13px', lineHeight: 1 }}>&#8862;</span>
           {!collapsed && <span>New Window</span>}
         </button>
+        {hasProjectsRoot && (
+          <button onClick={onNewProject} style={btnStyle()} title="New Project">
+            <span style={{ color: '#38bdf8', fontSize: '14px', lineHeight: 1 }}>&#9733;</span>
+            {!collapsed && <span>New Project</span>}
+          </button>
+        )}
       </div>
 
       {/* Active terminals */}
