@@ -23,6 +23,7 @@ interface SidebarProps {
   onOpenRecent: (path: string) => void
   onOpenSettings: () => void
   onNewProject: () => void
+  onCloseAll: () => void
   hasProjectsRoot: boolean
 }
 
@@ -41,6 +42,7 @@ export function Sidebar({
   onOpenRecent,
   onOpenSettings,
   onNewProject,
+  onCloseAll,
   hasProjectsRoot,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
@@ -217,6 +219,12 @@ export function Sidebar({
           <span style={{ fontSize: '13px', lineHeight: 1 }}>&#9635;</span>
           {!collapsed && <span>Show All</span>}
         </button>
+        {terminals.length > 0 && (
+          <button onClick={onCloseAll} style={btnStyle()} title="Close All">
+            <span style={{ fontSize: '13px', lineHeight: 1, color: '#f14c4c' }}>&#10005;</span>
+            {!collapsed && <span>Close All</span>}
+          </button>
+        )}
         <button onClick={onOpenSettings} style={btnStyle()} title="Settings">
           <span style={{ fontSize: '13px', lineHeight: 1 }}>&#9881;</span>
           {!collapsed && <span>Settings</span>}

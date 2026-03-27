@@ -79,45 +79,8 @@ export default function App() {
 
     window.api.recentList().then(setRecentFolders).catch(() => {})
 
-    const isEmptyWindow = new URLSearchParams(window.location.search).has('empty')
-    if (isEmptyWindow) {
-      setLoaded(true)
-      return
-    }
-
-    Promise.all([settingsPromise, window.api.loadState()]).then(([s, state]) => {
-      if (state?.windows?.length) {
-        const win = state.windows[0]
-        if (win?.folders?.length) {
-          const entries: TerminalEntry[] = win.folders.map((f) => ({
-            id: crypto.randomUUID(),
-            path: f.path,
-            name: f.path.split(/[\\/]/).pop() || f.path,
-            color: f.color,
-          }))
-          setTerminals(entries)
-
-          const hasLayouts = win.folders.every((f) => f.layout)
-          if (hasLayouts) {
-            setLayouts(entries.map((e, i) => ({
-              ...win.folders[i].layout,
-              i: e.id,
-            })))
-          } else {
-            setLayouts(calculateLayout(entries.length).map((pos, i) => ({
-              ...pos,
-              i: entries[i].id,
-            })))
-          }
-
-          // Apply default view mode — focus first terminal if set to 'focused'
-          if (s?.defaultViewMode === 'focused' && entries.length > 0) {
-            setViewMode({ type: 'focused', terminalId: entries[0].id })
-          }
-        }
-      }
-      setLoaded(true)
-    })
+    // Always start with a blank slate
+    setLoaded(true)
   }, [])
 
   // Save state whenever terminals or layouts change (debounced)
@@ -199,6 +162,15 @@ export default function App() {
       i: newTerminals[i].id,
     }))
     setLayouts(newLayouts)
+  }, [terminals])
+
+  const handleCloseAll = useCallback(() => {
+    for (const t of terminals) {
+      killPty(t.id)
+    }
+    setTerminals([])
+    setLayouts([])
+    setViewMode({ type: 'grid' })
   }, [terminals])
 
   const handleAddFolder = useCallback(async () => {
@@ -327,6 +299,7 @@ export default function App() {
         onOpenRecent={handleOpenRecent}
         onOpenSettings={() => setShowSettings(true)}
         onNewProject={() => setShowNewProject(true)}
+        onCloseAll={handleCloseAll}
         hasProjectsRoot={!!projectsRoot}
       />
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
