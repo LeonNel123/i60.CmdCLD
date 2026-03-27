@@ -279,12 +279,13 @@ export function TerminalPanel({
               onMouseDown={(e) => e.stopPropagation()}
               title="Open shell for this folder"
               style={{
-                background: 'none',
-                border: 'none',
-                color: '#555',
+                background: '#ffffff10',
+                border: '1px solid #ffffff20',
+                borderRadius: '3px',
+                color: '#aaa',
                 cursor: 'pointer',
                 fontSize: '11px',
-                padding: '0 4px',
+                padding: '1px 5px',
                 lineHeight: 1,
                 fontFamily: 'monospace',
               }}
