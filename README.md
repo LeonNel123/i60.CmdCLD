@@ -55,28 +55,30 @@ Open multiple project folders, each running its own Claude CLI instance in a res
 - Multi-window support (new windows start empty)
 - Recent folders remembered across sessions (last 20)
 - PowerShell 7 (`pwsh`) used when available, falls back to Windows PowerShell
+- Cross-platform shell detection (bash/zsh on Mac/Linux)
 - Window bounds saved and restored
 
-## Requirements
-
-- Windows 10/11
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
-- Node.js 18+ (for building from source)
-
-## Install
-
-Download the latest `CmdCLD-Setup.exe` from [Releases](../../releases) and run it. One-click install, no admin required.
-
-## Build from Source
+## Getting Started
 
 ```bash
-git clone https://github.com/user/cmdcld.git
-cd cmdcld
+git clone https://github.com/LeonNel123/i60.CmdCLD.git
+cd i60.CmdCLD
 npm install
-npm run dev        # development with hot reload
-npm run build      # production build
-npm run test       # run tests
-npm run package    # create installer (dist/CmdCLD-Setup.exe)
+npm run dev
+```
+
+### Build Installer
+
+```bash
+npm run package:win      # Windows (NSIS installer)
+npm run package:mac      # macOS (DMG)
+npm run package:linux    # Linux (AppImage)
+```
+
+### Run Tests
+
+```bash
+npm test
 ```
 
 ## Tech Stack
