@@ -38,7 +38,7 @@ export function TerminalPanel({
   const termRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
-  const cleanupRef = useRef<{ removeData: () => void; removeExit: () => void } | null>(null)
+  const cleanupRef = useRef<{ removeData: () => void; removeExit: () => void; removePaste: () => void } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [editorName, setEditorName] = useState('Editor')
   const [availableEditors, setAvailableEditors] = useState<Array<{ id: string; name: string; cmd: string }>>([])
@@ -94,14 +94,26 @@ export function TerminalPanel({
       activePtys.delete(id)
     })
 
-    cleanupRef.current = { removeData, removeExit }
+    const removePaste = () => {
+      if (xtermTextarea) xtermTextarea.removeEventListener('paste', blockNativePaste, true)
+    }
+    cleanupRef.current = { removeData, removeExit, removePaste }
 
     term.onData((data) => {
       window.api.writeTerminal(id, data)
     })
 
-    // Paste flag to prevent double-paste
-    let pasteHandled = false
+    // Block xterm's internal paste handler on its hidden textarea
+    // This is the root cause of double-paste: our key handler writes text,
+    // AND xterm's native paste listener on its textarea also writes text via onData
+    const xtermTextarea = termRef.current!.querySelector('textarea')
+    const blockNativePaste = (e: Event) => {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    if (xtermTextarea) {
+      xtermTextarea.addEventListener('paste', blockNativePaste, true)
+    }
 
     term.attachCustomKeyEventHandler((e) => {
       // Ctrl+C: copy selection
@@ -110,22 +122,21 @@ export function TerminalPanel({
         return false
       }
       // Ctrl+V: custom paste with image support
-      if (e.ctrlKey && e.key === 'v') {
-        if (e.type === 'keydown' && !pasteHandled) {
-          pasteHandled = true
-          window.api.clipboardSaveImage(folderPath).then((imgPath) => {
-            if (imgPath) {
-              window.api.writeTerminal(id, imgPath)
-            } else {
-              return navigator.clipboard.readText().then((text) => {
-                if (text) window.api.writeTerminal(id, text)
-              })
-            }
-          }).catch(() => {}).finally(() => {
-            setTimeout(() => { pasteHandled = false }, 100)
-          })
-        }
-        return false // block xterm on both keydown and keyup
+      if (e.type === 'keydown' && e.ctrlKey && e.key === 'v') {
+        window.api.clipboardSaveImage(folderPath).then((imgPath) => {
+          if (imgPath) {
+            window.api.writeTerminal(id, imgPath)
+          } else {
+            return navigator.clipboard.readText().then((text) => {
+              if (text) window.api.writeTerminal(id, text)
+            })
+          }
+        }).catch(() => {})
+        return false
+      }
+      // Block keyup for Ctrl+V too
+      if (e.type === 'keyup' && e.ctrlKey && e.key === 'v') {
+        return false
       }
       return true
     })
@@ -170,6 +181,7 @@ export function TerminalPanel({
       if (cleanupRef.current) {
         cleanupRef.current.removeData()
         cleanupRef.current.removeExit()
+        cleanupRef.current.removePaste()
         cleanupRef.current = null
       }
       term.dispose()
