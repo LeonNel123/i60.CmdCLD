@@ -23,7 +23,6 @@ Open multiple project folders, each running its own Claude CLI instance in a res
 - Ctrl+=/- font zoom (Ctrl+0 to reset)
 - Clickable URLs (open in browser) and file paths (open in editor)
 - Clickable `.md` files open in a built-in rendered markdown viewer
-- Auto-clear terminal when Claude CLI exits
 - VS Code Dark+ color theme
 
 **Quick Actions (Terminal Header)**
@@ -51,6 +50,8 @@ Open multiple project folders, each running its own Claude CLI instance in a res
 | Ctrl+0 | Reset zoom |
 
 **Other**
+- Always starts with a blank slate (no session restore)
+- Close All button to kill all terminals at once
 - Single instance lock (second launch focuses existing window)
 - Multi-window support (new windows start empty)
 - Recent folders remembered across sessions (last 20)
