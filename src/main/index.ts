@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell } from 'electron'
 import { join } from 'path'
 import { spawn } from 'child_process'
 import { appendFileSync, existsSync, statSync, writeFileSync, readFileSync, mkdirSync } from 'fs'
@@ -76,6 +76,12 @@ function createWindow(opts?: { empty?: boolean }): { id: string; window: Browser
   })
 
   win.setMenuBarVisibility(false)
+
+  // Open external URLs in the system browser, not in Electron
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
 
   if (process.env.ELECTRON_RENDERER_URL) {
     const url = new URL(process.env.ELECTRON_RENDERER_URL)
