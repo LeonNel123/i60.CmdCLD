@@ -9,6 +9,24 @@ import { onTerminalDataReceived, removeTerminalActivity } from '../utils/termina
 // Global set of PTY IDs that have been created — prevents duplicates on remount
 const activePtys = new Set<string>()
 
+// Write text to PTY in chunks to avoid overwhelming the buffer
+function writeChunked(id: string, text: string): void {
+  const CHUNK_SIZE = 256
+  if (text.length <= CHUNK_SIZE) {
+    window.api.writeTerminal(id, text)
+    return
+  }
+  let offset = 0
+  const writeNext = () => {
+    if (offset >= text.length) return
+    const chunk = text.slice(offset, offset + CHUNK_SIZE)
+    window.api.writeTerminal(id, chunk)
+    offset += CHUNK_SIZE
+    setTimeout(writeNext, 5)
+  }
+  writeNext()
+}
+
 // Kill a PTY explicitly (called from App.tsx on confirmed close)
 export function killPty(id: string): void {
   activePtys.delete(id)
@@ -175,7 +193,7 @@ export function TerminalPanel({
             window.api.writeTerminal(id, imgPath)
           } else {
             return navigator.clipboard.readText().then((text) => {
-              if (text) window.api.writeTerminal(id, text)
+              if (text) writeChunked(id, text)
             })
           }
         }).catch(() => {})
