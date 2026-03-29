@@ -185,6 +185,11 @@ export default function App() {
     startAddFolder(folderPath)
   }, [startAddFolder])
 
+  const handleQuickClaude = useCallback(async () => {
+    const homeDir = await window.api.getHomeDir()
+    startAddFolder(homeDir)
+  }, [startAddFolder])
+
   const handleOpenRecent = useCallback((path: string) => {
     startAddFolder(path)
   }, [startAddFolder])
@@ -303,6 +308,7 @@ export default function App() {
         onNewWindow={handleNewWindow}
         recentFolders={recentFolders}
         onOpenRecent={handleOpenRecent}
+        onQuickClaude={handleQuickClaude}
         onOpenSettings={() => setShowSettings(true)}
         onNewProject={() => setShowNewProject(true)}
         onCloseAll={handleCloseAll}

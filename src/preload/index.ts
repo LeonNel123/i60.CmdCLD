@@ -54,6 +54,10 @@ contextBridge.exposeInMainWorld('api', {
   readFile: (filePath: string): Promise<string | null> =>
     ipcRenderer.invoke('file:read', filePath),
 
+  // App info
+  getHomeDir: (): Promise<string> =>
+    ipcRenderer.invoke('app:getHomeDir'),
+
   // Settings
   projectCreate: (folderName: string): Promise<string | null> =>
     ipcRenderer.invoke('project:create', folderName),

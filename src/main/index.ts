@@ -259,6 +259,11 @@ ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
   settings.set(key as any, value as any)
 })
 
+// Get home directory for quick Claude sessions
+ipcMain.handle('app:getHomeDir', () => {
+  return app.getPath('home')
+})
+
 // Read file contents (for markdown viewer)
 ipcMain.handle('file:read', (_event, filePath: string) => {
   try {
