@@ -57,10 +57,12 @@ export function TerminalPanel({
 
     const term = new Terminal({
       cursorBlink: true,
+      cursorStyle: 'bar',
+      cursorWidth: 2,
       theme: {
         background: '#1e1e1e',
         foreground: '#cccccc',
-        cursor: '#aeafad',
+        cursor: '#ffffff',
         selectionBackground: '#264f78',
         black: '#000000',
         red: '#cd3131',
