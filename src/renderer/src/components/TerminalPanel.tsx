@@ -99,7 +99,8 @@ export function TerminalPanel({
         if (!line) { callback(undefined); return }
         const text = line.translateToString()
         const links: Array<{ startIndex: number; length: number; text: string }> = []
-        const pathRegex = /(?:[A-Z]:\\[\w\\.-]+(?::\d+)?|(?:\.\/|\.\.\/|[\w][\w/.-]*\/[\w.-]+)(?::\d+(?::\d+)?)?)/gi
+        // Match: Windows absolute paths, relative paths with / or \, and bare filenames with extensions
+        const pathRegex = /(?:[A-Z]:\\[\w\\.-]+(?::\d+)?|(?:\.[\\/]|\.\.[\\/]|[\w][\w/\\.-]*[\\/][\w.-]+)(?::\d+(?::\d+)?)?|[\w.-]+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|toml|css|html|py|rs|go|java|sh|sql|xml|csv|txt|log|env|cfg|ini|conf)(?::\d+(?::\d+)?)?)/gi
         let match
         while ((match = pathRegex.exec(text)) !== null) {
           links.push({ startIndex: match.index, length: match[0].length, text: match[0] })
@@ -111,7 +112,11 @@ export function TerminalPanel({
           },
           text: l.text,
           activate() {
-            const filePart = l.text.replace(/:\d+(:\d+)?$/, '')
+            let filePart = l.text.replace(/:\d+(:\d+)?$/, '')
+            // Resolve bare filenames relative to the terminal's folder
+            if (!filePart.includes('/') && !filePart.includes('\\')) {
+              filePart = folderPath + '\\' + filePart
+            }
             if (filePart.toLowerCase().endsWith('.md') && onOpenMarkdown) {
               onOpenMarkdown(filePart)
             } else {
