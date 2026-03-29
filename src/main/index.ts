@@ -194,6 +194,13 @@ ipcMain.handle('window:list', (event) => {
   return registry.listExcluding(callerId)
 })
 
+// Open URL in system browser
+ipcMain.handle('shell:openExternal', (_event, url: string) => {
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    shell.openExternal(url)
+  }
+})
+
 // Open folder in file manager (cross-platform)
 ipcMain.handle('explorer:open', (_event, folderPath: string) => {
   try {

@@ -45,6 +45,7 @@ export interface ElectronAPI {
   projectCreate: (folderName: string) => Promise<string | null>
   settingsGetAll: () => Promise<{ editor: string; claudeArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string }>
   settingsSet: (key: string, value: unknown) => Promise<void>
+  openExternal: (url: string) => Promise<void>
   openInExplorer: (folderPath: string) => Promise<void>
   openInEditor: (folderPath: string) => Promise<void>
   editorGetAvailable: () => Promise<Array<{ id: string; name: string; cmd: string }>>

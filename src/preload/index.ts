@@ -71,6 +71,10 @@ contextBridge.exposeInMainWorld('api', {
   windowList: (): Promise<Array<{ id: string; label: string }>> =>
     ipcRenderer.invoke('window:list'),
 
+  // Open URL in system browser
+  openExternal: (url: string): Promise<void> =>
+    ipcRenderer.invoke('shell:openExternal', url),
+
   // Explorer
   openInExplorer: (folderPath: string): Promise<void> =>
     ipcRenderer.invoke('explorer:open', folderPath),

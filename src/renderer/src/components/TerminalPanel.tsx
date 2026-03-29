@@ -83,7 +83,9 @@ export function TerminalPanel({
       fontSize: 13,
     })
     const fitAddon = new FitAddon()
-    const webLinksAddon = new WebLinksAddon()
+    const webLinksAddon = new WebLinksAddon((_event, uri) => {
+      window.api.openExternal(uri)
+    })
     const searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
     term.loadAddon(webLinksAddon)
