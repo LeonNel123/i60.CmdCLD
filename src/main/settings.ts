@@ -8,6 +8,9 @@ export interface AppSettings {
   defaultViewMode: 'grid' | 'focused'
   notifyOnIdle: boolean
   projectsRoot: string
+  remoteAccess: boolean
+  remotePort: number
+  favoriteFolders: string[]
 }
 
 const DEFAULTS: AppSettings = {
@@ -17,6 +20,9 @@ const DEFAULTS: AppSettings = {
   defaultViewMode: 'grid',
   notifyOnIdle: false,
   projectsRoot: '',
+  remoteAccess: false,
+  remotePort: 3456,
+  favoriteFolders: [],
 }
 
 export class Settings {
