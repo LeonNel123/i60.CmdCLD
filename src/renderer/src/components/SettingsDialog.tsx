@@ -12,17 +12,63 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [notifyOnIdle, setNotifyOnIdle] = useState(false)
   const [projectsRoot, setProjectsRoot] = useState('')
   const [loaded, setLoaded] = useState(false)
+  const [remoteAccess, setRemoteAccess] = useState(false)
+  const [remotePort, setRemotePort] = useState(3456)
+  const [remoteUrls, setRemoteUrls] = useState<string[]>([])
+  const [remoteError, setRemoteError] = useState('')
+  const [favoriteFolders, setFavoriteFolders] = useState<string[]>([])
 
   useEffect(() => {
-    window.api.settingsGetAll().then((s) => {
+    window.api.settingsGetAll().then((s: any) => {
       setClaudeArgs(s.claudeArgs)
       setAskBeforeLaunch(s.askBeforeLaunch)
       setDefaultViewMode(s.defaultViewMode)
       setNotifyOnIdle(s.notifyOnIdle)
       setProjectsRoot(s.projectsRoot)
+      setRemoteAccess(s.remoteAccess ?? false)
+      setRemotePort(s.remotePort ?? 3456)
+      setFavoriteFolders(s.favoriteFolders ?? [])
       setLoaded(true)
     })
+    window.api.remoteStatus().then((status) => {
+      if (status.running) {
+        setRemoteAccess(true)
+      }
+    }).catch(() => {})
   }, [])
+
+  const handleRemoteToggle = async (enabled: boolean) => {
+    setRemoteError('')
+    if (enabled) {
+      window.api.settingsSet('remoteAccess', true)
+      window.api.settingsSet('remotePort', remotePort)
+      const result = await window.api.remoteToggle(true)
+      if (result.ok) {
+        setRemoteAccess(true)
+        setRemoteUrls(result.urls || [])
+      } else {
+        setRemoteAccess(false)
+        setRemoteError(result.error || 'Failed to start')
+        window.api.settingsSet('remoteAccess', false)
+      }
+    } else {
+      await window.api.remoteToggle(false)
+      setRemoteAccess(false)
+      setRemoteUrls([])
+      window.api.settingsSet('remoteAccess', false)
+    }
+  }
+
+  const handleAddFavorite = async () => {
+    const folder = await window.api.selectFolder()
+    if (folder && !favoriteFolders.includes(folder)) {
+      setFavoriteFolders((prev) => [...prev, folder])
+    }
+  }
+
+  const handleRemoveFavorite = (path: string) => {
+    setFavoriteFolders((prev) => prev.filter((f) => f !== path))
+  }
 
   const save = () => {
     window.api.settingsSet('claudeArgs', claudeArgs)
@@ -30,6 +76,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     window.api.settingsSet('defaultViewMode', defaultViewMode)
     window.api.settingsSet('notifyOnIdle', notifyOnIdle)
     window.api.settingsSet('projectsRoot', projectsRoot)
+    window.api.settingsSet('remotePort', remotePort)
+    window.api.settingsSet('favoriteFolders', favoriteFolders)
     onClose()
   }
 
@@ -235,6 +283,102 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           </div>
           <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginTop: '4px' }}>
             "New Project" creates a folder here and opens it in the app
+          </div>
+        </div>
+
+        {/* Remote Access */}
+        <div style={{ borderTop: '1px solid #333', paddingTop: '16px', marginTop: '16px' }}>
+          <h4 style={{ color: '#e0e0e0', margin: '0 0 12px', fontSize: '13px', fontFamily: 'monospace' }}>
+            Remote Access
+          </h4>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              cursor: 'pointer', color: '#ccc', fontSize: '12px', fontFamily: 'monospace',
+            }}>
+              <input
+                type="checkbox"
+                checked={remoteAccess}
+                onChange={(e) => handleRemoteToggle(e.target.checked)}
+                style={{ accentColor: '#22c55e' }}
+              />
+              Enable Remote Access
+            </label>
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
+              Port
+            </label>
+            <input
+              type="number"
+              value={remotePort}
+              onChange={(e) => setRemotePort(parseInt(e.target.value) || 3456)}
+              disabled={remoteAccess}
+              style={{
+                width: '100px', background: '#0d1117', border: '1px solid #333',
+                borderRadius: '4px', padding: '6px 10px', color: '#e0e0e0',
+                fontSize: '12px', fontFamily: 'Consolas, monospace', outline: 'none',
+                opacity: remoteAccess ? 0.5 : 1,
+              }}
+            />
+            {remoteAccess && (
+              <span style={{ color: '#666', fontSize: '10px', fontFamily: 'monospace', marginLeft: '8px' }}>
+                Disable to change port
+              </span>
+            )}
+          </div>
+
+          {remoteAccess && remoteUrls.length > 0 && (
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
+                Connect from
+              </label>
+              {remoteUrls.map((url) => (
+                <div key={url} style={{
+                  color: '#22c55e', fontSize: '12px', fontFamily: 'Consolas, monospace',
+                  padding: '2px 0', cursor: 'pointer',
+                }} onClick={() => navigator.clipboard.writeText(url)} title="Click to copy">
+                  {url}
+                </div>
+              ))}
+              <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginTop: '4px' }}>
+                Click to copy. Open in any browser on your network.
+              </div>
+            </div>
+          )}
+
+          {remoteError && (
+            <div style={{ color: '#ef4444', fontSize: '11px', fontFamily: 'monospace', marginBottom: '12px' }}>
+              {remoteError}
+            </div>
+          )}
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
+              Favorite Folders (for remote session creation)
+            </label>
+            {favoriteFolders.map((f) => (
+              <div key={f} style={{
+                display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 0',
+              }}>
+                <span style={{ color: '#ccc', fontSize: '11px', fontFamily: 'Consolas, monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {f}
+                </span>
+                <button onClick={() => handleRemoveFavorite(f)} style={{
+                  background: 'none', border: 'none', color: '#666', cursor: 'pointer',
+                  fontSize: '14px', padding: '0 4px', flexShrink: 0,
+                }}>×</button>
+              </div>
+            ))}
+            <button onClick={handleAddFavorite} style={{
+              background: '#ffffff08', border: '1px solid #333', borderRadius: '4px',
+              padding: '4px 10px', color: '#888', fontSize: '11px', fontFamily: 'monospace',
+              cursor: 'pointer', marginTop: '4px',
+            }}>
+              + Add Folder
+            </button>
           </div>
         </div>
 
