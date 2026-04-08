@@ -84,6 +84,30 @@ export default function App() {
     setLoaded(true)
   }, [])
 
+  // Listen for sessions created remotely
+  useEffect(() => {
+    const unsub = window.api.onRemoteSessionCreated((session) => {
+      setTerminals((prev) => {
+        if (prev.find((t) => t.id === session.id)) return prev
+        const usedColors = prev.map((t) => t.color)
+        const newEntry: TerminalEntry = {
+          id: session.id,
+          path: session.path,
+          name: session.name,
+          color: session.color || assignColor(usedColors),
+          claudeArgs: session.claudeArgs,
+        }
+        const next = [...prev, newEntry]
+        setLayouts(calculateLayout(next.length).map((pos, i) => ({
+          ...pos,
+          i: next[i].id,
+        })))
+        return next
+      })
+    })
+    return unsub
+  }, [])
+
   // Save state whenever terminals or layouts change (debounced)
   useEffect(() => {
     if (!loaded) return
