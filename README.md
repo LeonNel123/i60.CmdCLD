@@ -31,6 +31,16 @@ Open multiple project folders, each running its own Claude CLI instance in a res
 - Folder icon: Open in file explorer
 - Right-click to switch between installed editors
 
+**Remote Access**
+- Access your Claude sessions from any device on your network (phone, tablet, another PC)
+- Enable from Settings — starts an Express + Socket.IO server on a configurable port
+- Dashboard shows all active sessions with busy/idle status
+- Create new sessions from favorite or recent folders remotely
+- Full terminal on desktop browsers, read-only output + quick buttons on mobile
+- Paste or upload images from remote devices
+- Auto-discovers local network IPs and Tailscale addresses
+- Includes a setup guide for Tailscale-based access from anywhere
+
 **Settings**
 - Configurable Claude CLI launch arguments with quick presets (Skip Permissions, Auto Mode, Plan Mode, etc.)
 - "Ask before launch" mode: edit flags each time you open a folder
@@ -38,6 +48,7 @@ Open multiple project folders, each running its own Claude CLI instance in a res
 - Notification sound when terminal finishes work (toggle on/off)
 - Auto-detect installed editors (VS Code, Cursor, Windsurf, Visual Studio, IntelliJ, etc.)
 - Projects root for one-click new project creation
+- App version displayed in settings dialog
 
 **Keyboard Shortcuts**
 | Shortcut | Action |
@@ -91,6 +102,8 @@ npm test
 - **react-grid-layout** — draggable/resizable grid
 - **sql.js** — SQLite for recent folders (pure JS, no native build needed)
 - **marked** — markdown rendering
+- **Express** — remote access HTTP server
+- **Socket.IO** — real-time terminal streaming for remote clients
 - **electron-builder** — packaging and installer
 
 ## Project Structure
@@ -105,6 +118,7 @@ src/
     settings.ts     # User settings
     window-registry.ts  # Multi-window tracking
     editor-detect.ts    # Auto-detect installed editors
+    remote-server.ts    # Express + Socket.IO remote access server
   preload/        # IPC bridge (context isolation)
     index.ts
   renderer/       # React frontend
@@ -122,6 +136,12 @@ src/
         grid-layout.ts       # Grid layout calculator
         claude-presets.ts     # CLI argument presets
         colors.ts             # Terminal color assignment
+  remote-ui/      # Browser-based remote client
+    index.html        # Dashboard (session cards, new session modal)
+    app.js            # Socket.IO connection, session management
+    terminal-view.js  # xterm.js terminal + mobile fallback
+    style.css         # Responsive styling
+    setup.html        # Tailscale setup guide
 tests/            # Unit tests (vitest)
 ```
 

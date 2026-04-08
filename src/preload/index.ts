@@ -58,6 +58,9 @@ contextBridge.exposeInMainWorld('api', {
   getHomeDir: (): Promise<string> =>
     ipcRenderer.invoke('app:getHomeDir'),
 
+  getVersion: (): Promise<string> =>
+    ipcRenderer.invoke('app:getVersion'),
+
   // Settings
   projectCreate: (folderName: string): Promise<string | null> =>
     ipcRenderer.invoke('project:create', folderName),

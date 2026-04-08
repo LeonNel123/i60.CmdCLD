@@ -299,6 +299,11 @@ ipcMain.handle('app:getHomeDir', () => {
   return app.getPath('home')
 })
 
+// Get app version
+ipcMain.handle('app:getVersion', () => {
+  return app.getVersion()
+})
+
 // Read file contents (for markdown viewer)
 ipcMain.handle('file:read', (_event, filePath: string) => {
   try {

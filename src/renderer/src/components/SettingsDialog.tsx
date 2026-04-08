@@ -17,8 +17,10 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [remoteUrls, setRemoteUrls] = useState<string[]>([])
   const [remoteError, setRemoteError] = useState('')
   const [favoriteFolders, setFavoriteFolders] = useState<string[]>([])
+  const [appVersion, setAppVersion] = useState('')
 
   useEffect(() => {
+    window.api.getVersion().then(setAppVersion).catch(() => {})
     window.api.settingsGetAll().then((s) => {
       setClaudeArgs(s.claudeArgs)
       setAskBeforeLaunch(s.askBeforeLaunch)
@@ -103,12 +105,21 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           padding: '20px',
           maxWidth: '520px',
           width: '90%',
+          maxHeight: '85vh',
+          overflowY: 'auto',
           border: '1px solid #333',
         }}
       >
-        <h3 style={{ color: '#e0e0e0', margin: '0 0 16px 0', fontSize: '14px', fontFamily: 'monospace' }}>
-          Claude CLI Settings
-        </h3>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '0 0 16px 0' }}>
+          <h3 style={{ color: '#e0e0e0', margin: 0, fontSize: '14px', fontFamily: 'monospace' }}>
+            Claude CLI Settings
+          </h3>
+          {appVersion && (
+            <span style={{ color: '#555', fontSize: '11px', fontFamily: 'monospace' }}>
+              v{appVersion}
+            </span>
+          )}
+        </div>
 
         {/* Presets */}
         <div style={{ marginBottom: '12px' }}>
