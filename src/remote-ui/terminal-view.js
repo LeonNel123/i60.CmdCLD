@@ -70,29 +70,17 @@
       }
     })
 
-    // Handle paste — use DOM paste event (works on HTTP, unlike clipboard API)
-    terminalContainer.addEventListener('paste', function (ev) {
-      ev.preventDefault()
+    // Intercept paste for image support — let xterm handle text paste natively
+    term.textarea.addEventListener('paste', function (ev) {
       var items = (ev.clipboardData || {}).items || []
       for (var i = 0; i < items.length; i++) {
         if (items[i].type.indexOf('image/') === 0) {
+          ev.preventDefault()
           uploadImage(items[i].getAsFile())
           return
         }
       }
-      // Text paste
-      var text = (ev.clipboardData || {}).getData('text/plain')
-      if (text && currentSocket && currentId) {
-        currentSocket.emit('session:input', { id: currentId, data: text })
-      }
-    })
-
-    // Let Ctrl+V reach the DOM paste handler
-    term.attachCustomKeyEventHandler(function (ev) {
-      if (ev.ctrlKey && ev.key === 'v' && ev.type === 'keydown') {
-        return false
-      }
-      return true
+      // Text paste: don't preventDefault — let xterm handle it via onData
     })
 
     // No resize observer — remote uses PTY dimensions from the main terminal
