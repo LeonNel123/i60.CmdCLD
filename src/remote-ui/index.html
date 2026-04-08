@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CmdCLD Remote</title>
+  <link rel="stylesheet" href="/vendor/xterm/css/xterm.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Dashboard View -->
+    <div id="dashboard-view">
+      <header id="status-bar">
+        <span id="connection-status" class="status-dot disconnected">Connecting...</span>
+        <span id="session-count">0 sessions</span>
+      </header>
+
+      <div id="session-cards"></div>
+
+      <div id="new-session-bar">
+        <button id="new-session-btn" class="btn-primary">+ New Session</button>
+      </div>
+
+      <!-- New session modal -->
+      <div id="new-session-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+          <h3>New Session</h3>
+          <div id="folder-sections"></div>
+          <div class="modal-footer">
+            <button id="cancel-new-session" class="btn-secondary">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Terminal View -->
+    <div id="terminal-view" class="hidden">
+      <header id="terminal-header">
+        <div class="terminal-header-left">
+          <button id="back-btn" class="btn-icon">← Back</button>
+          <span id="terminal-name"></span>
+          <span id="terminal-status"></span>
+        </div>
+        <div class="terminal-header-right">
+          <button id="ctrl-c-btn" class="btn-small">Ctrl+C</button>
+          <button id="kill-btn" class="btn-small btn-danger">Kill</button>
+        </div>
+      </header>
+
+      <!-- Desktop: full xterm.js terminal -->
+      <div id="terminal-container"></div>
+
+      <!-- Mobile: read-only output + quick actions + input -->
+      <div id="mobile-terminal">
+        <div id="mobile-output"></div>
+        <div id="quick-actions">
+          <button class="quick-btn" data-input="yes&#10;">yes</button>
+          <button class="quick-btn" data-input="no&#10;">no</button>
+          <button class="quick-btn" data-input="\x03">Ctrl+C</button>
+          <button class="quick-btn" data-input="/compact&#10;">/compact</button>
+          <button class="quick-btn" data-input="/clear&#10;">/clear</button>
+        </div>
+        <div id="mobile-input-bar">
+          <input type="text" id="mobile-input" placeholder="Type a message...">
+          <button id="mobile-send-btn" class="btn-primary">Send</button>
+          <label id="mobile-image-btn" class="btn-icon" title="Upload image">
+            <input type="file" accept="image/*" id="mobile-image-input" hidden>
+            📷
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/vendor/xterm/lib/xterm.js"></script>
+  <script src="/vendor/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+  <script src="/app.js"></script>
+  <script src="/terminal-view.js"></script>
+</body>
+</html>
