@@ -106,18 +106,26 @@ export class RemoteServer {
   private setupStaticFiles(): void {
     if (!this.app) return
 
-    // Serve xterm.js and socket.io client from node_modules
-    const nodeModules = join(__dirname, '../../node_modules')
-    const prodNodeModules = join(__dirname, '../../../node_modules')
-    const nmPath = existsSync(nodeModules) ? nodeModules : prodNodeModules
-
-    this.app.use('/vendor/xterm', express.static(join(nmPath, '@xterm/xterm')))
-    this.app.use('/vendor/xterm-addon-fit', express.static(join(nmPath, '@xterm/addon-fit')))
-
     // Serve remote UI files
     const devUiPath = join(__dirname, '../../src/remote-ui')
     const prodUiPath = join(__dirname, '../remote-ui')
     const uiPath = existsSync(devUiPath) ? devUiPath : prodUiPath
+
+    // Serve xterm vendor files — bundled in remote-ui/vendor (production) or from node_modules (dev)
+    const bundledVendor = join(uiPath, 'vendor/xterm')
+    if (existsSync(bundledVendor)) {
+      this.app.use('/vendor/xterm', express.static(join(uiPath, 'vendor/xterm')))
+      this.app.use('/vendor/xterm-addon-fit', express.static(join(uiPath, 'vendor/xterm-addon-fit')))
+    } else {
+      const nodeModules = join(__dirname, '../../node_modules')
+      const prodNodeModules = join(__dirname, '../../../node_modules')
+      const nmPath = existsSync(nodeModules) ? nodeModules : prodNodeModules
+      this.app.use('/vendor/xterm', express.static(join(nmPath, '@xterm/xterm')))
+      // Map xterm-addon-fit.js -> addon-fit.js (package renamed the file)
+      this.app.get('/vendor/xterm-addon-fit/lib/xterm-addon-fit.js', (_req: any, res: any) => {
+        res.sendFile(join(nmPath, '@xterm/addon-fit/lib/addon-fit.js'))
+      })
+    }
 
     this.app.use(express.static(uiPath))
     this.app.get('/', (_req: any, res: any) => {
