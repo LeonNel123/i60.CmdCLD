@@ -62,7 +62,7 @@ contextBridge.exposeInMainWorld('api', {
   projectCreate: (folderName: string): Promise<string | null> =>
     ipcRenderer.invoke('project:create', folderName),
 
-  settingsGetAll: (): Promise<{ editor: string; claudeArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string }> =>
+  settingsGetAll: (): Promise<{ editor: string; claudeArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; favoriteFolders: string[] }> =>
     ipcRenderer.invoke('settings:getAll'),
 
   settingsSet: (key: string, value: unknown): Promise<void> =>

@@ -8,6 +8,8 @@ import { PtyManager, TerminalMeta } from './pty-manager'
 import { Settings } from './settings'
 import { RecentDB } from './recent-db'
 
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024 // 10MB
+
 export class RemoteServer {
   private app: ReturnType<typeof express> | null = null
   private httpServer: HttpServer | null = null
@@ -17,6 +19,7 @@ export class RemoteServer {
   private recentDB: RecentDB
   private getWebContents: () => Electron.WebContents | null
   private startTime: number = 0
+  private boundListeners: { event: string; fn: (...args: any[]) => void }[] = []
 
   constructor(opts: {
     ptyManager: PtyManager
@@ -41,9 +44,7 @@ export class RemoteServer {
       this.app = express()
       this.app.use(express.json())
       this.httpServer = createServer(this.app)
-      this.io = new SocketServer(this.httpServer, {
-        cors: { origin: '*' },
-      })
+      this.io = new SocketServer(this.httpServer)
 
       this.setupStaticFiles()
       this.setupRestApi()
@@ -80,7 +81,10 @@ export class RemoteServer {
       this.httpServer = null
     }
     this.app = null
-    this.ptyManager.removeAllListeners()
+    for (const { event, fn } of this.boundListeners) {
+      this.ptyManager.off(event, fn)
+    }
+    this.boundListeners = []
   }
 
   private getLocalUrls(port: number): string[] {
@@ -127,7 +131,10 @@ export class RemoteServer {
 
     // Status
     app.get('/api/status', (_req: any, res: any) => {
+      let version = 'unknown'
+      try { version = require('../../package.json').version } catch {}
       res.json({
+        version,
         uptime: Date.now() - this.startTime,
         sessions: this.ptyManager.listAll().length,
       })
@@ -236,8 +243,18 @@ export class RemoteServer {
       }
 
       const chunks: Buffer[] = []
-      req.on('data', (chunk: Buffer) => chunks.push(chunk))
+      let totalSize = 0
+      req.on('data', (chunk: Buffer) => {
+        totalSize += chunk.length
+        if (totalSize > MAX_UPLOAD_SIZE) {
+          res.status(413).json({ error: 'Upload too large (max 10MB)' })
+          req.destroy()
+          return
+        }
+        chunks.push(chunk)
+      })
       req.on('end', () => {
+        if (totalSize > MAX_UPLOAD_SIZE) return
         const buffer = Buffer.concat(chunks)
         const screenshotsDir = join(meta.path, '.screenshots')
         mkdirSync(screenshotsDir, { recursive: true })
@@ -273,21 +290,26 @@ export class RemoteServer {
     })
   }
 
+  private addPtyListener(event: string, fn: (...args: any[]) => void): void {
+    this.ptyManager.on(event, fn)
+    this.boundListeners.push({ event, fn })
+  }
+
   private setupPtyListeners(): void {
-    this.ptyManager.on('data', ({ id, data }: { id: string; data: string }) => {
+    this.addPtyListener('data', ({ id, data }: { id: string; data: string }) => {
       if (this.io) {
         this.io.emit('session:output', { id, data })
       }
     })
 
-    this.ptyManager.on('exit', ({ id, exitCode }: { id: string; exitCode: number }) => {
+    this.addPtyListener('exit', ({ id, exitCode }: { id: string; exitCode: number }) => {
       if (this.io) {
         this.io.emit('session:exit', { id, exitCode })
         this.io.emit('sessions:changed', this.ptyManager.listAll())
       }
     })
 
-    this.ptyManager.on('created', ({ id, meta }: { id: string; meta: TerminalMeta }) => {
+    this.addPtyListener('created', ({ id, meta }: { id: string; meta: TerminalMeta }) => {
       if (this.io) {
         this.io.emit('session:created', meta)
         this.io.emit('sessions:changed', this.ptyManager.listAll())

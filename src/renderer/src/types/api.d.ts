@@ -44,7 +44,7 @@ export interface ElectronAPI {
   clipboardSaveImage: (cwd: string) => Promise<string | null>
   getHomeDir: () => Promise<string>
   projectCreate: (folderName: string) => Promise<string | null>
-  settingsGetAll: () => Promise<{ editor: string; claudeArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string }>
+  settingsGetAll: () => Promise<{ editor: string; claudeArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; favoriteFolders: string[] }>
   settingsSet: (key: string, value: unknown) => Promise<void>
   openExternal: (url: string) => Promise<void>
   openInExplorer: (folderPath: string) => Promise<void>

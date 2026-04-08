@@ -19,7 +19,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [favoriteFolders, setFavoriteFolders] = useState<string[]>([])
 
   useEffect(() => {
-    window.api.settingsGetAll().then((s: any) => {
+    window.api.settingsGetAll().then((s) => {
       setClaudeArgs(s.claudeArgs)
       setAskBeforeLaunch(s.askBeforeLaunch)
       setDefaultViewMode(s.defaultViewMode)
