@@ -66,10 +66,26 @@
       }
     })
 
-    // Handle paste with image support
+    // Handle paste — use DOM paste event (works on HTTP, unlike clipboard API)
+    terminalContainer.addEventListener('paste', function (ev) {
+      ev.preventDefault()
+      var items = (ev.clipboardData || {}).items || []
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image/') === 0) {
+          uploadImage(items[i].getAsFile())
+          return
+        }
+      }
+      // Text paste
+      var text = (ev.clipboardData || {}).getData('text/plain')
+      if (text && currentSocket && currentId) {
+        currentSocket.emit('session:input', { id: currentId, data: text })
+      }
+    })
+
+    // Let Ctrl+V reach the DOM paste handler
     term.attachCustomKeyEventHandler(function (ev) {
       if (ev.ctrlKey && ev.key === 'v' && ev.type === 'keydown') {
-        handlePaste()
         return false
       }
       return true
@@ -140,53 +156,6 @@
     mobileBuffer = ''
     currentId = null
     currentSocket = null
-  }
-
-  function handlePaste() {
-    if (navigator.clipboard && navigator.clipboard.read) {
-      navigator.clipboard.read().then(function (items) {
-        for (var i = 0; i < items.length; i++) {
-          var item = items[i]
-          var imageType = null
-          for (var j = 0; j < item.types.length; j++) {
-            if (item.types[j].indexOf('image/') === 0) {
-              imageType = item.types[j]
-              break
-            }
-          }
-          if (imageType) {
-            item.getType(imageType).then(function (blob) {
-              uploadImage(blob)
-            })
-            return
-          }
-          if (item.types.indexOf('text/plain') !== -1) {
-            item.getType('text/plain').then(function (blob) {
-              blob.text().then(function (text) {
-                if (currentSocket && currentId) {
-                  currentSocket.emit('session:input', { id: currentId, data: text })
-                }
-              })
-            })
-            return
-          }
-        }
-      }).catch(function () {
-        // Fallback: text-only paste
-        navigator.clipboard.readText().then(function (text) {
-          if (text && currentSocket && currentId) {
-            currentSocket.emit('session:input', { id: currentId, data: text })
-          }
-        }).catch(function () {})
-      })
-    } else {
-      // Fallback for browsers without clipboard.read()
-      navigator.clipboard.readText().then(function (text) {
-        if (text && currentSocket && currentId) {
-          currentSocket.emit('session:input', { id: currentId, data: text })
-        }
-      }).catch(function () {})
-    }
   }
 
   function uploadImage(blob) {
