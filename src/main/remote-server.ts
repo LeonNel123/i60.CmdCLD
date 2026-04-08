@@ -290,11 +290,9 @@ export class RemoteServer {
         }
       })
 
-      socket.on('session:resize', ({ id, cols, rows }: { id: string; cols: number; rows: number }) => {
-        if (this.ptyManager.has(id)) {
-          this.ptyManager.resize(id, cols, rows)
-        }
-      })
+      // Ignore remote resize — the main Electron terminal owns the PTY size.
+      // Remote xterm.js adapts via its own fit addon without resizing the PTY.
+      socket.on('session:resize', () => {})
     })
   }
 

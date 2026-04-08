@@ -70,17 +70,28 @@
     })
   }
 
-  // Activity tracking
+  // Activity tracking — only update the status label, don't rebuild the DOM
   function trackBusy(id, dataReceived) {
     if (dataReceived) {
+      var wasBusy = busyState[id]
       busyState[id] = true
       clearTimeout(busyTimers[id])
       busyTimers[id] = setTimeout(function () {
         busyState[id] = false
-        renderDashboard()
+        updateCardStatus(id)
       }, 2000)
-      renderDashboard()
+      if (!wasBusy) updateCardStatus(id)
     }
+  }
+
+  function updateCardStatus(id) {
+    var card = sessionCards.querySelector('.session-card[data-id="' + id + '"]')
+    if (!card) return
+    var label = card.querySelector('.status-label')
+    if (!label) return
+    var busy = busyState[id]
+    label.className = 'status-label ' + (busy ? 'busy' : 'idle')
+    label.textContent = busy ? '⟳ Working...' : '● Idle'
   }
 
   // Fetch sessions via REST
@@ -146,7 +157,7 @@
     dashboardView.style.display = 'none'
     terminalView.classList.remove('hidden')
 
-    // Fetch scrollback and init terminal
+    // Fetch full scrollback from server (includes everything since session started)
     fetch('/api/sessions/' + id + '/scrollback')
       .then(function (r) { return r.json() })
       .then(function (data) {
