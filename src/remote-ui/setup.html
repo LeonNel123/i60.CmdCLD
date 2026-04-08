@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CmdCLD Remote — Setup Guide</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #111;
+      color: #e0e0e0;
+      line-height: 1.7;
+      padding: 20px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    h1 { color: #6366f1; font-size: 22px; margin-bottom: 8px; }
+    h2 { color: #c4b5fd; font-size: 16px; margin: 28px 0 12px; border-bottom: 1px solid #333; padding-bottom: 6px; }
+    h3 { color: #a78bfa; font-size: 14px; margin: 20px 0 8px; }
+    p { margin-bottom: 12px; font-size: 14px; color: #ccc; }
+    a { color: #6366f1; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      background: #1e1e2e; padding: 2px 6px; border-radius: 3px;
+      font-family: 'Consolas', monospace; font-size: 13px; color: #10b981;
+    }
+    pre {
+      background: #1e1e2e; border: 1px solid #333; border-radius: 6px;
+      padding: 14px; margin: 10px 0 16px; overflow-x: auto;
+      font-family: 'Consolas', monospace; font-size: 13px; color: #d4d4d4;
+      line-height: 1.5;
+    }
+    .step {
+      background: #1a1a2e; border-left: 3px solid #6366f1;
+      border-radius: 4px; padding: 14px 16px; margin: 12px 0;
+    }
+    .step-num {
+      color: #6366f1; font-weight: 700; font-size: 13px;
+      font-family: monospace; margin-bottom: 6px;
+    }
+    .note {
+      background: #1a1a2e; border-left: 3px solid #f59e0b;
+      border-radius: 4px; padding: 10px 14px; margin: 12px 0;
+      font-size: 13px; color: #fbbf24;
+    }
+    .diagram {
+      background: #0d0d0d; border: 1px solid #333; border-radius: 6px;
+      padding: 16px; margin: 12px 0; font-family: monospace;
+      font-size: 12px; white-space: pre; overflow-x: auto;
+      color: #888; line-height: 1.4;
+    }
+    .back-link { display: inline-block; margin-bottom: 16px; font-size: 13px; }
+    ul { margin: 8px 0 12px 20px; font-size: 14px; color: #ccc; }
+    li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-link">← Back to Dashboard</a>
+
+  <h1>CmdCLD Remote Access — Setup Guide</h1>
+  <p>Control your Claude sessions from any device on your network — phone, tablet, or another PC.</p>
+
+  <div class="diagram">
+┌──────────────┐    Tailscale     ┌──────────────┐
+│  Your Phone  │◄── encrypted ──►│   Home PC    │
+│  or Laptop   │    tunnel        │  (CmdCLD)    │
+└──────────────┘                  └──────────────┘
+   Browser ──► http://100.x.x.x:3456 ──► Remote UI
+  </div>
+
+  <h2>How It Works</h2>
+  <p>CmdCLD runs a lightweight web server on your home PC. You access it from any browser on your network. <a href="https://tailscale.com">Tailscale</a> creates a secure, encrypted tunnel between your devices — no port forwarding, no cloud relay, no accounts to manage.</p>
+
+  <h2>Step 1: Set Up Tailscale on Your Home PC</h2>
+
+  <div class="step">
+    <div class="step-num">1.1 — Install Tailscale</div>
+    <p>Download and install Tailscale from <a href="https://tailscale.com/download" target="_blank">tailscale.com/download</a></p>
+    <p>Choose the <strong>Windows</strong> installer. Run it and sign in with your Google, Microsoft, or GitHub account.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">1.2 — Verify Tailscale is running</div>
+    <p>After installing, you should see the Tailscale icon in your system tray (bottom-right). Click it and verify it says <strong>Connected</strong>.</p>
+    <p>Your PC now has a Tailscale IP address (starts with <code>100.x.x.x</code>). You can find it by clicking the tray icon or running:</p>
+    <pre>tailscale ip</pre>
+  </div>
+
+  <h2>Step 2: Set Up Tailscale on Your Remote Device</h2>
+
+  <div class="step">
+    <div class="step-num">2.1 — Phone / Tablet</div>
+    <p>Install the <strong>Tailscale</strong> app from the App Store (iOS) or Google Play (Android). Sign in with the <strong>same account</strong> you used on your PC.</p>
+    <p>Toggle the connection on. Your phone is now on the same private network as your PC.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2.2 — Another PC / Laptop</div>
+    <p>Install Tailscale on the other machine (same download page). Sign in with the same account.</p>
+    <p>Both machines are now on the same Tailscale network and can reach each other directly.</p>
+  </div>
+
+  <div class="note">
+    <strong>No Tailscale?</strong> If both devices are on the same local network (same WiFi/LAN), you can skip Tailscale entirely. Just use the local IP address shown in CmdCLD settings.
+  </div>
+
+  <h2>Step 3: Enable Remote Access in CmdCLD</h2>
+
+  <div class="step">
+    <div class="step-num">3.1 — Open Settings</div>
+    <p>In CmdCLD on your home PC, click the <strong>gear icon</strong> in the sidebar to open Settings.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3.2 — Enable Remote Access</div>
+    <p>Scroll down to the <strong>Remote Access</strong> section. Check the <strong>Enable Remote Access</strong> checkbox.</p>
+    <p>The default port is <code>3456</code>. You can change it if needed (disable first, change, re-enable).</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3.3 — Note the URLs</div>
+    <p>Once enabled, CmdCLD shows the URLs you can use to connect:</p>
+    <pre>http://192.168.1.42:3456    ← local network
+http://100.84.23.15:3456    ← Tailscale</pre>
+    <p>Click any URL to copy it to your clipboard.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3.4 — Add Favorite Folders (recommended)</div>
+    <p>Still in Settings, add your project folders to the <strong>Favorite Folders</strong> list. These folders appear in the remote UI when you create a new session, so you don't have to type paths on your phone.</p>
+  </div>
+
+  <h2>Step 4: Connect from Your Remote Device</h2>
+
+  <div class="step">
+    <div class="step-num">4.1 — Open the URL</div>
+    <p>On your phone, tablet, or other PC, open a browser and navigate to the URL from step 3.3.</p>
+    <p>If using Tailscale, use the <code>100.x.x.x</code> URL. If on the same LAN, use the <code>192.168.x.x</code> URL.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4.2 — You're connected!</div>
+    <p>You should see the CmdCLD Remote dashboard showing all active sessions. From here you can:</p>
+    <ul>
+      <li><strong>View sessions</strong> — see which are busy or idle</li>
+      <li><strong>Open a session</strong> — tap a card to see live terminal output</li>
+      <li><strong>Send input</strong> — type messages to Claude (full terminal on desktop, quick actions on mobile)</li>
+      <li><strong>Create sessions</strong> — start new Claude sessions in your favorite folders</li>
+      <li><strong>Kill sessions</strong> — stop sessions you no longer need</li>
+    </ul>
+  </div>
+
+  <h2>Tips</h2>
+
+  <h3>Desktop vs Mobile</h3>
+  <p>On a desktop browser (wider than 768px), you get a full interactive terminal with xterm.js — same experience as the CmdCLD app itself. On mobile, you get a read-only output view plus quick action buttons (yes, no, Ctrl+C, /compact, /clear) and a text input field.</p>
+
+  <h3>Multiple Devices</h3>
+  <p>Multiple devices can connect at the same time. Everyone sees the same sessions and output. Input from any device goes to the same terminal.</p>
+
+  <h3>Reconnection</h3>
+  <p>If your connection drops (phone goes to sleep, network switches), the remote UI automatically reconnects. You won't lose any session output — it's all buffered on the home PC.</p>
+
+  <h3>Security</h3>
+  <p>There's no authentication on the remote UI. Security is provided by your network:</p>
+  <ul>
+    <li><strong>Tailscale</strong> — encrypted WireGuard tunnel, only your devices can connect</li>
+    <li><strong>LAN</strong> — only devices on your local network can reach it</li>
+  </ul>
+  <p>Don't expose port 3456 to the public internet.</p>
+
+  <h3>When You Return to the PC</h3>
+  <p>Everything done remotely is fully visible on the local CmdCLD app. Sessions created remotely appear in the grid. All terminal output is preserved. It's as if you were sitting at the PC the whole time.</p>
+
+  <h2>Troubleshooting</h2>
+
+  <h3>Can't connect?</h3>
+  <ul>
+    <li>Make sure Remote Access is enabled in CmdCLD Settings</li>
+    <li>Check that Tailscale is connected on both devices (look for the green dot)</li>
+    <li>Try the LAN IP if Tailscale IP doesn't work</li>
+    <li>Make sure the port isn't blocked by Windows Firewall — you may need to allow it</li>
+  </ul>
+
+  <h3>Port already in use?</h3>
+  <p>If you see an error when enabling, another app is using port 3456. Disable remote access, change the port number, and re-enable.</p>
+
+  <h3>Windows Firewall</h3>
+  <p>Windows may prompt you to allow CmdCLD through the firewall the first time. Click <strong>Allow</strong>. If you missed the prompt, open Windows Firewall settings and add an inbound rule for port 3456 (or your custom port).</p>
+</body>
+</html>
