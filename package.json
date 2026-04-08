@@ -42,7 +42,12 @@
     },
     "npmRebuild": false,
     "asarUnpack": [
-      "node_modules/node-pty/**"
+      "node_modules/node-pty/**",
+      "node_modules/express/**",
+      "node_modules/socket.io/**"
+    ],
+    "extraResources": [
+      { "from": "out/remote-ui", "to": "remote-ui" }
     ]
   },
   "dependencies": {
