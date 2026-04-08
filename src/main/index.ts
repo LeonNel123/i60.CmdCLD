@@ -8,6 +8,7 @@ import { WindowRegistry } from './window-registry'
 import { RecentDB } from './recent-db'
 import { Settings } from './settings'
 import { detectEditors, getDefaultEditor } from './editor-detect'
+import { RemoteServer } from './remote-server'
 import type { TerminalMeta } from './pty-manager'
 
 // File logger for debugging startup issues
@@ -33,6 +34,7 @@ let store: Store
 let recentDB: RecentDB
 let settings: Settings
 const registry = new WindowRegistry()
+let remoteServer: RemoteServer
 const newWindowIds = new Set<string>()
 
 try {
@@ -40,6 +42,16 @@ try {
   store = new Store(join(app.getPath('userData'), 'sessions.json'))
   recentDB = new RecentDB(join(app.getPath('userData'), 'recent.db'))
   settings = new Settings(join(app.getPath('userData'), 'settings.json'))
+  remoteServer = new RemoteServer({
+    ptyManager,
+    settings,
+    recentDB,
+    getWebContents: () => {
+      const list = registry.list()
+      if (list.length === 0) return null
+      return registry.getWebContents(list[0].id) || null
+    },
+  })
 
   // Auto-detect editors and set default if not configured
   const availableEditors = detectEditors()
@@ -259,6 +271,29 @@ ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
   settings.set(key as any, value as any)
 })
 
+// Remote access
+ipcMain.handle('remote:toggle', async (_event, enabled: boolean) => {
+  if (enabled) {
+    const port = settings.get('remotePort')
+    try {
+      const result = await remoteServer.start(port)
+      return { ok: true, urls: result.urls, port: result.port }
+    } catch (err: any) {
+      return { ok: false, error: err.message || 'Failed to start server' }
+    }
+  } else {
+    remoteServer.stop()
+    return { ok: true }
+  }
+})
+
+ipcMain.handle('remote:status', () => {
+  return {
+    running: remoteServer.isRunning(),
+    port: settings.get('remotePort'),
+  }
+})
+
 // Get home directory for quick Claude sessions
 ipcMain.handle('app:getHomeDir', () => {
   return app.getPath('home')
@@ -325,6 +360,16 @@ app.whenReady().then(() => {
   try {
     createWindow()
     log('First window created successfully')
+
+    // Auto-start remote server if enabled
+    if (settings.get('remoteAccess')) {
+      const port = settings.get('remotePort')
+      remoteServer.start(port).then((result) => {
+        log(`Remote server started on port ${result.port}: ${result.urls.join(', ')}`)
+      }).catch((err) => {
+        log(`Remote server failed to start: ${err.message}`)
+      })
+    }
   } catch (e) {
     log(`createWindow FAILED: ${e}`)
   }
@@ -344,6 +389,7 @@ app.on('second-instance', () => {
 app.on('window-all-closed', () => {
   log('All windows closed — quitting')
   ptyManager.killAll()
+  remoteServer.stop()
   recentDB.close()
   app.quit()
 })
