@@ -1,6 +1,7 @@
 import * as pty from 'node-pty'
 import { WebContents } from 'electron'
 import { execFileSync } from 'child_process'
+import { EventEmitter } from 'events'
 
 // Detect the best available shell for the platform
 function getShell(): string {
@@ -61,8 +62,12 @@ interface PtyEntry {
 
 const SCROLLBACK_SIZE = 200_000
 
-export class PtyManager {
+export class PtyManager extends EventEmitter {
   private ptys = new Map<string, PtyEntry>()
+
+  constructor() {
+    super()
+  }
 
   create(id: string, cwd: string, webContents: WebContents, meta: TerminalMeta): void {
     const ptyProcess = pty.spawn(SHELL, [], {
@@ -85,6 +90,7 @@ export class PtyManager {
 
     entry.dataDisposable = ptyProcess.onData((data) => {
       scrollback.push(data)
+      this.emit('data', { id, data })
       try {
         if (!entry.webContents.isDestroyed()) {
           entry.webContents.send(`pty:data:${id}`, data)
@@ -93,6 +99,7 @@ export class PtyManager {
     })
 
     entry.exitDisposable = ptyProcess.onExit(({ exitCode }) => {
+      this.emit('exit', { id, exitCode })
       try {
         if (!entry.webContents.isDestroyed()) {
           entry.webContents.send(`pty:exit:${id}`, exitCode)
@@ -102,6 +109,7 @@ export class PtyManager {
     })
 
     this.ptys.set(id, entry)
+    this.emit('created', { id, meta })
   }
 
   getMeta(id: string): TerminalMeta | undefined {
@@ -145,5 +153,13 @@ export class PtyManager {
       }
     }
     return result
+  }
+
+  listAll(): TerminalMeta[] {
+    return Array.from(this.ptys.values()).map((e) => e.meta)
+  }
+
+  has(id: string): boolean {
+    return this.ptys.has(id)
   }
 }
