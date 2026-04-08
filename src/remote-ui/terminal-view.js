@@ -21,10 +21,15 @@
     return window.innerWidth <= 768
   }
 
-  function open(id, scrollback, socket) {
+  var ptyCols = 80
+  var ptyRows = 24
+
+  function open(id, scrollback, socket, cols, rows) {
     close()
     currentId = id
     currentSocket = socket
+    if (cols) ptyCols = cols
+    if (rows) ptyRows = rows
 
     if (!isMobile()) {
       openDesktop(scrollback)
@@ -46,6 +51,8 @@
       cursorBlink: true,
       cursorStyle: 'bar',
       scrollback: 5000,
+      cols: ptyCols,
+      rows: ptyRows,
     })
 
     fitAddon = new FitAddon.FitAddon()
@@ -55,9 +62,6 @@
     if (scrollback) {
       term.write(scrollback)
     }
-
-    fitAddon.fit()
-    sendResize()
 
     // Handle user input
     term.onData(function (data) {
@@ -91,14 +95,7 @@
       return true
     })
 
-    // Resize observer
-    resizeObserver = new ResizeObserver(function () {
-      if (fitAddon && term) {
-        fitAddon.fit()
-        sendResize()
-      }
-    })
-    resizeObserver.observe(terminalContainer)
+    // No resize observer — remote uses PTY dimensions from the main terminal
   }
 
   function openMobile(scrollback) {
@@ -116,11 +113,7 @@
     mobileOutput.scrollTop = mobileOutput.scrollHeight
   }
 
-  function sendResize() {
-    if (term && currentSocket && currentId) {
-      currentSocket.emit('session:resize', { id: currentId, cols: term.cols, rows: term.rows })
-    }
-  }
+
 
   function onData(data) {
     if (!isMobile() && term) {

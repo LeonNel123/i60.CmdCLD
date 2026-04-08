@@ -212,7 +212,8 @@ export class RemoteServer {
     app.get('/api/sessions/:id/scrollback', (req: any, res: any) => {
       const { id } = req.params
       const scrollback = this.ptyManager.getScrollback(id)
-      res.json({ scrollback })
+      const size = this.ptyManager.getSize(id)
+      res.json({ scrollback, cols: size.cols, rows: size.rows })
     })
 
     // Folders

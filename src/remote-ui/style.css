@@ -267,7 +267,7 @@ body {
 #terminal-container {
   flex: 1;
   background: #0d0d0d;
-  overflow: hidden;
+  overflow: auto;
 }
 
 /* Mobile terminal */

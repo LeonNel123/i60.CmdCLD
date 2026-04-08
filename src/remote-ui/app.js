@@ -161,7 +161,7 @@
     fetch('/api/sessions/' + id + '/scrollback')
       .then(function (r) { return r.json() })
       .then(function (data) {
-        window.CmdCLD_Terminal.open(id, data.scrollback || '', socket)
+        window.CmdCLD_Terminal.open(id, data.scrollback || '', socket, data.cols, data.rows)
       })
       .catch(function () {
         window.CmdCLD_Terminal.open(id, '', socket)

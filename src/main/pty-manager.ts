@@ -56,6 +56,8 @@ interface PtyEntry {
   webContents: WebContents
   scrollback: ScrollbackBuffer
   meta: TerminalMeta
+  cols: number
+  rows: number
   dataDisposable: { dispose: () => void } | null
   exitDisposable: { dispose: () => void } | null
 }
@@ -84,6 +86,8 @@ export class PtyManager extends EventEmitter {
       webContents,
       scrollback,
       meta,
+      cols: 80,
+      rows: 24,
       dataDisposable: null,
       exitDisposable: null,
     }
@@ -125,7 +129,17 @@ export class PtyManager extends EventEmitter {
   }
 
   resize(id: string, cols: number, rows: number): void {
-    this.ptys.get(id)?.process.resize(cols, rows)
+    const entry = this.ptys.get(id)
+    if (entry) {
+      entry.process.resize(cols, rows)
+      entry.cols = cols
+      entry.rows = rows
+    }
+  }
+
+  getSize(id: string): { cols: number; rows: number } {
+    const entry = this.ptys.get(id)
+    return { cols: entry?.cols || 80, rows: entry?.rows || 24 }
   }
 
   kill(id: string): void {
