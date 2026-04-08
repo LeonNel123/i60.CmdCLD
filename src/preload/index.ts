@@ -101,4 +101,17 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('window:list-updated', listener)
     return () => { ipcRenderer.removeListener('window:list-updated', listener) }
   },
+
+  // Remote access
+  remoteToggle: (enabled: boolean): Promise<{ ok: boolean; urls?: string[]; port?: number; error?: string }> =>
+    ipcRenderer.invoke('remote:toggle', enabled),
+
+  remoteStatus: (): Promise<{ running: boolean; port: number }> =>
+    ipcRenderer.invoke('remote:status'),
+
+  onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, session: any): void => callback(session)
+    ipcRenderer.on('remote:session-created', listener)
+    return () => { ipcRenderer.removeListener('remote:session-created', listener) }
+  },
 })
