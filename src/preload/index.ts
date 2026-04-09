@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('api', {
+  // Platform info (synchronous — available immediately)
+  platform: process.platform as 'win32' | 'darwin' | 'linux',
+
   // Existing PTY methods
   createTerminal: (id: string, cwd: string): Promise<void> =>
     ipcRenderer.invoke('pty:create', id, cwd),
@@ -86,9 +89,9 @@ contextBridge.exposeInMainWorld('api', {
   openInExplorer: (folderPath: string): Promise<void> =>
     ipcRenderer.invoke('explorer:open', folderPath),
 
-  // Editor
-  openInEditor: (folderPath: string): Promise<void> =>
-    ipcRenderer.invoke('editor:open', folderPath),
+  // Editor (accepts files or directories)
+  openInEditor: (targetPath: string): Promise<void> =>
+    ipcRenderer.invoke('editor:open', targetPath),
 
   editorGetAvailable: (): Promise<Array<{ id: string; name: string; cmd: string }>> =>
     ipcRenderer.invoke('editor:getAvailable'),

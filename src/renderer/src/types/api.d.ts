@@ -26,6 +26,7 @@ export interface RecentFolder {
 }
 
 export interface ElectronAPI {
+  platform: 'win32' | 'darwin' | 'linux'
   createTerminal: (id: string, cwd: string) => Promise<void>
   writeTerminal: (id: string, data: string) => Promise<void>
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>
@@ -49,7 +50,7 @@ export interface ElectronAPI {
   settingsSet: (key: string, value: unknown) => Promise<void>
   openExternal: (url: string) => Promise<void>
   openInExplorer: (folderPath: string) => Promise<void>
-  openInEditor: (folderPath: string) => Promise<void>
+  openInEditor: (targetPath: string) => Promise<void>
   editorGetAvailable: () => Promise<Array<{ id: string; name: string; cmd: string }>>
   editorGetCurrent: () => Promise<string>
   editorSetCurrent: (cmd: string) => Promise<void>

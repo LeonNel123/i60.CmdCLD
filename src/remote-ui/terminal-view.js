@@ -47,7 +47,7 @@
         selectionBackground: '#264f78',
       },
       fontSize: 14,
-      fontFamily: "'Cascadia Code', 'Consolas', 'Courier New', monospace",
+      fontFamily: "'Cascadia Code', 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace",
       cursorBlink: true,
       cursorStyle: 'bar',
       scrollback: 5000,

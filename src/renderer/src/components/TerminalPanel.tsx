@@ -99,7 +99,7 @@ export function TerminalPanel({
         brightCyan: '#29b8db',
         brightWhite: '#e5e5e5',
       },
-      fontFamily: 'Cascadia Code, Consolas, "Courier New", monospace',
+      fontFamily: 'Cascadia Code, Menlo, Monaco, Consolas, "Courier New", monospace',
       fontSize: 13,
     })
     const fitAddon = new FitAddon()
@@ -119,8 +119,8 @@ export function TerminalPanel({
         if (!line) { callback(undefined); return }
         const text = line.translateToString()
         const links: Array<{ startIndex: number; length: number; text: string }> = []
-        // Match: Windows absolute paths, relative paths with / or \, and bare filenames with extensions
-        const pathRegex = /(?:[A-Z]:\\[\w\\.-]+(?::\d+)?|(?:\.[\\/]|\.\.[\\/]|[\w][\w/\\.-]*[\\/][\w.-]+)(?::\d+(?::\d+)?)?|[\w.-]+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|toml|css|html|py|rs|go|java|sh|sql|xml|csv|txt|log|env|cfg|ini|conf)(?::\d+(?::\d+)?)?)/gi
+        // Match: Windows absolute paths, Unix absolute paths (not inside URLs), relative paths with / or \, and bare filenames with extensions
+        const pathRegex = /(?:[A-Z]:\\[\w\\.-]+(?::\d+)?|(?<!\/)\/[\w./-]+(?::\d+(?::\d+)?)?|(?:\.[\\/]|\.\.[\\/]|[\w][\w/\\.-]*[\\/][\w.-]+)(?::\d+(?::\d+)?)?|[\w.-]+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|toml|css|html|py|rs|go|java|sh|sql|xml|csv|txt|log|env|cfg|ini|conf)(?::\d+(?::\d+)?)?)/gi
         let match
         while ((match = pathRegex.exec(text)) !== null) {
           links.push({ startIndex: match.index, length: match[0].length, text: match[0] })
@@ -135,7 +135,8 @@ export function TerminalPanel({
             let filePart = l.text.replace(/:\d+(:\d+)?$/, '')
             // Resolve bare filenames relative to the terminal's folder
             if (!filePart.includes('/') && !filePart.includes('\\')) {
-              filePart = folderPath + '\\' + filePart
+              const sep = window.api.platform === 'win32' ? '\\' : '/'
+              filePart = folderPath + sep + filePart
             }
             if (filePart.toLowerCase().endsWith('.md') && onOpenMarkdown) {
               onOpenMarkdown(filePart)
@@ -182,12 +183,16 @@ export function TerminalPanel({
       xtermTextarea.addEventListener('paste', blockNativePaste, true)
     }
 
+    // Use Cmd on macOS, Ctrl on Windows/Linux for terminal shortcuts
+    const isMac = window.api.platform === 'darwin'
+    const modKey = (e: KeyboardEvent) => isMac ? e.metaKey : e.ctrlKey
+
     term.attachCustomKeyEventHandler((e) => {
-      if (e.type === 'keydown' && e.ctrlKey && e.key === 'c' && term.hasSelection()) {
+      if (e.type === 'keydown' && modKey(e) && e.key === 'c' && term.hasSelection()) {
         navigator.clipboard.writeText(term.getSelection()).catch(() => {})
         return false
       }
-      if (e.type === 'keydown' && e.ctrlKey && e.key === 'v') {
+      if (e.type === 'keydown' && modKey(e) && e.key === 'v') {
         window.api.clipboardSaveImage(folderPath).then((imgPath) => {
           if (imgPath) {
             window.api.writeTerminal(id, imgPath)
@@ -199,30 +204,30 @@ export function TerminalPanel({
         }).catch(() => {})
         return false
       }
-      if (e.type === 'keyup' && e.ctrlKey && e.key === 'v') {
+      if (e.type === 'keyup' && modKey(e) && e.key === 'v') {
         return false
       }
-      // Ctrl+F: open search
-      if (e.type === 'keydown' && e.ctrlKey && e.key === 'f') {
+      // Mod+F: open search
+      if (e.type === 'keydown' && modKey(e) && e.key === 'f') {
         setSearchOpen(true)
         setTimeout(() => searchInputRef.current?.focus(), 50)
         return false
       }
-      // Ctrl+= / Ctrl+-: font zoom
-      if (e.type === 'keydown' && e.ctrlKey && (e.key === '=' || e.key === '+')) {
+      // Mod+= / Mod+-: font zoom
+      if (e.type === 'keydown' && modKey(e) && (e.key === '=' || e.key === '+')) {
         const newSize = Math.min(term.options.fontSize! + 1, 28)
         term.options.fontSize = newSize
         fitAddon.fit()
         return false
       }
-      if (e.type === 'keydown' && e.ctrlKey && e.key === '-') {
+      if (e.type === 'keydown' && modKey(e) && e.key === '-') {
         const newSize = Math.max(term.options.fontSize! - 1, 8)
         term.options.fontSize = newSize
         fitAddon.fit()
         return false
       }
-      // Ctrl+0: reset font size
-      if (e.type === 'keydown' && e.ctrlKey && e.key === '0') {
+      // Mod+0: reset font size
+      if (e.type === 'keydown' && modKey(e) && e.key === '0') {
         term.options.fontSize = 13
         fitAddon.fit()
         return false
@@ -422,7 +427,7 @@ export function TerminalPanel({
           <button onClick={() => window.api.openInEditor(folderPath)} onMouseDown={(e) => e.stopPropagation()} title={`Open in ${editorName}`} style={actionBtnStyle}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/></svg>
             </button>
-          <button onClick={() => window.api.openInExplorer(folderPath)} onMouseDown={(e) => e.stopPropagation()} title="Open in Explorer" style={actionBtnStyle}>
+          <button onClick={() => window.api.openInExplorer(folderPath)} onMouseDown={(e) => e.stopPropagation()} title={window.api.platform === 'darwin' ? 'Open in Finder' : 'Open in Explorer'} style={actionBtnStyle}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 1h5l1 2H14.5l.5.5v10l-.5.5h-13l-.5-.5v-12l.5-.5zM2 13h12V4H7.06l-1-2H2v11z"/></svg>
           </button>
         </div>

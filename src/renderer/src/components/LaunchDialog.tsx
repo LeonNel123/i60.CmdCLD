@@ -88,7 +88,7 @@ export function LaunchDialog({ folderName, defaultArgs, onLaunch, onCancel }: La
                 padding: '8px 10px',
                 color: '#e0e0e0',
                 fontSize: '12px',
-                fontFamily: 'Consolas, monospace',
+                fontFamily: 'Menlo, Consolas, monospace',
                 outline: 'none',
               }}
             />

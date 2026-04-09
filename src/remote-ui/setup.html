@@ -23,12 +23,12 @@
     a:hover { text-decoration: underline; }
     code {
       background: #1e1e2e; padding: 2px 6px; border-radius: 3px;
-      font-family: 'Consolas', monospace; font-size: 13px; color: #10b981;
+      font-family: 'Menlo', 'Consolas', monospace; font-size: 13px; color: #10b981;
     }
     pre {
       background: #1e1e2e; border: 1px solid #333; border-radius: 6px;
       padding: 14px; margin: 10px 0 16px; overflow-x: auto;
-      font-family: 'Consolas', monospace; font-size: 13px; color: #d4d4d4;
+      font-family: 'Menlo', 'Consolas', monospace; font-size: 13px; color: #d4d4d4;
       line-height: 1.5;
     }
     .step {
@@ -77,12 +77,12 @@
   <div class="step">
     <div class="step-num">1.1 — Install Tailscale</div>
     <p>Download and install Tailscale from <a href="https://tailscale.com/download" target="_blank">tailscale.com/download</a></p>
-    <p>Choose the <strong>Windows</strong> installer. Run it and sign in with your Google, Microsoft, or GitHub account.</p>
+    <p>Choose the installer for your OS (Windows, macOS, or Linux). Run it and sign in with your Google, Microsoft, or GitHub account.</p>
   </div>
 
   <div class="step">
     <div class="step-num">1.2 — Verify Tailscale is running</div>
-    <p>After installing, you should see the Tailscale icon in your system tray (bottom-right). Click it and verify it says <strong>Connected</strong>.</p>
+    <p>After installing, you should see the Tailscale icon in your system tray (Windows) or menu bar (macOS). Click it and verify it says <strong>Connected</strong>.</p>
     <p>Your PC now has a Tailscale IP address (starts with <code>100.x.x.x</code>). You can find it by clicking the tray icon or running:</p>
     <pre>tailscale ip</pre>
   </div>
@@ -180,13 +180,13 @@ http://100.84.23.15:3456    ← Tailscale</pre>
     <li>Make sure Remote Access is enabled in CmdCLD Settings</li>
     <li>Check that Tailscale is connected on both devices (look for the green dot)</li>
     <li>Try the LAN IP if Tailscale IP doesn't work</li>
-    <li>Make sure the port isn't blocked by Windows Firewall — you may need to allow it</li>
+    <li>Make sure the port isn't blocked by your firewall — you may need to allow it</li>
   </ul>
 
   <h3>Port already in use?</h3>
   <p>If you see an error when enabling, another app is using port 3456. Disable remote access, change the port number, and re-enable.</p>
 
-  <h3>Windows Firewall</h3>
-  <p>Windows may prompt you to allow CmdCLD through the firewall the first time. Click <strong>Allow</strong>. If you missed the prompt, open Windows Firewall settings and add an inbound rule for port 3456 (or your custom port).</p>
+  <h3>Firewall</h3>
+  <p>Your OS may prompt you to allow CmdCLD through the firewall the first time. Click <strong>Allow</strong>. If you missed the prompt, open your firewall settings and add an inbound rule for port 3456 (or your custom port).</p>
 </body>
 </html>

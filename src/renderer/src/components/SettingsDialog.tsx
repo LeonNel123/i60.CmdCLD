@@ -168,7 +168,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 padding: '8px 10px',
                 color: '#e0e0e0',
                 fontSize: '12px',
-                fontFamily: 'Consolas, monospace',
+                fontFamily: 'Menlo, Consolas, monospace',
                 outline: 'none',
               }}
             />
@@ -272,11 +272,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               type="text"
               value={projectsRoot}
               onChange={(e) => setProjectsRoot(e.target.value)}
-              placeholder="e.g. I:\Projects"
+              placeholder={window.api.platform === 'win32' ? 'e.g. D:\\Projects' : 'e.g. ~/Projects'}
               style={{
                 flex: 1, background: '#0d1117', border: '1px solid #333',
                 borderRadius: '4px', padding: '8px 10px', color: '#e0e0e0',
-                fontSize: '12px', fontFamily: 'Consolas, monospace', outline: 'none',
+                fontSize: '12px', fontFamily: 'Menlo, Consolas, monospace', outline: 'none',
               }}
             />
             <button
@@ -331,7 +331,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               style={{
                 width: '100px', background: '#0d1117', border: '1px solid #333',
                 borderRadius: '4px', padding: '6px 10px', color: '#e0e0e0',
-                fontSize: '12px', fontFamily: 'Consolas, monospace', outline: 'none',
+                fontSize: '12px', fontFamily: 'Menlo, Consolas, monospace', outline: 'none',
                 opacity: remoteAccess ? 0.5 : 1,
               }}
             />
@@ -349,7 +349,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               </label>
               {remoteUrls.map((url) => (
                 <div key={url} style={{
-                  color: '#22c55e', fontSize: '12px', fontFamily: 'Consolas, monospace',
+                  color: '#22c55e', fontSize: '12px', fontFamily: 'Menlo, Consolas, monospace',
                   padding: '2px 0', cursor: 'pointer',
                 }} onClick={() => navigator.clipboard.writeText(url)} title="Click to copy">
                   {url}
@@ -375,7 +375,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               <div key={f} style={{
                 display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 0',
               }}>
-                <span style={{ color: '#ccc', fontSize: '11px', fontFamily: 'Consolas, monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ color: '#ccc', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {f}
                 </span>
                 <button onClick={() => handleRemoveFavorite(f)} style={{

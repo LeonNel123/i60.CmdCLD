@@ -287,11 +287,13 @@ export default function App() {
     }
   }, [newProjectName, startAddFolder])
 
-  // Global keyboard shortcuts
+  // Global keyboard shortcuts (Cmd on macOS, Ctrl on Windows/Linux)
   useEffect(() => {
+    const isMac = window.api.platform === 'darwin'
     const handler = (e: KeyboardEvent) => {
-      // Ctrl+1-9: switch to terminal by index
-      if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
+      const mod = isMac ? e.metaKey : e.ctrlKey
+      // Mod+1-9: switch to terminal by index
+      if (mod && e.key >= '1' && e.key <= '9') {
         const idx = parseInt(e.key) - 1
         if (idx < terminals.length) {
           setViewMode({ type: 'focused', terminalId: terminals[idx].id })
@@ -299,14 +301,14 @@ export default function App() {
         }
         return
       }
-      // Ctrl+T: add folder
-      if (e.ctrlKey && e.key === 't') {
+      // Mod+T: add folder
+      if (mod && e.key === 't') {
         e.preventDefault()
         handleAddFolder()
         return
       }
-      // Ctrl+`: show all (grid view)
-      if (e.ctrlKey && e.key === '`') {
+      // Mod+`: show all (grid view)
+      if (mod && e.key === '`') {
         e.preventDefault()
         setViewMode({ type: 'grid' })
         return
@@ -468,7 +470,7 @@ export default function App() {
               style={{
                 width: '100%', background: '#0d1117', border: '1px solid #333',
                 borderRadius: '4px', padding: '8px 10px', color: '#e0e0e0',
-                fontSize: '12px', fontFamily: 'Consolas, monospace', outline: 'none',
+                fontSize: '12px', fontFamily: 'Menlo, Consolas, monospace', outline: 'none',
                 boxSizing: 'border-box', marginBottom: '12px',
               }}
             />

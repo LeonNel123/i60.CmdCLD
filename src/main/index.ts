@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Menu } from 'electron'
 import { join } from 'path'
 import { spawn } from 'child_process'
 import { appendFileSync, existsSync, statSync, writeFileSync, readFileSync, mkdirSync } from 'fs'
@@ -87,7 +87,9 @@ function createWindow(opts?: { empty?: boolean }): { id: string; window: Browser
     title: 'CmdCLD',
   })
 
-  win.setMenuBarVisibility(false)
+  if (process.platform !== 'darwin') {
+    win.setMenuBarVisibility(false)
+  }
 
   // Open external URLs in the system browser, not in Electron
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -139,7 +141,8 @@ function createWindow(opts?: { empty?: boolean }): { id: string; window: Browser
 
   win.on('closed', () => {
     broadcastWindowList()
-    if (registry.size() === 0) {
+    // On non-macOS, quit when last window closes
+    if (process.platform !== 'darwin' && registry.size() === 0) {
       app.quit()
     }
   })
@@ -224,14 +227,15 @@ ipcMain.handle('explorer:open', (_event, folderPath: string) => {
 })
 
 // Open in editor — uses configured editor
-// spawn with shell:true is needed because editors like 'code' are .cmd batch files on Windows
-// folderPath is validated as a directory before use, cmd comes from settings
-ipcMain.handle('editor:open', (_event, folderPath: string) => {
+// shell:true is needed on Windows because editors like 'code' are .cmd batch wrappers
+// On macOS/Linux they're symlinks that work directly
+// Accepts both file paths (from clickable links) and directory paths
+ipcMain.handle('editor:open', (_event, targetPath: string) => {
   const cmd = settings.get('editor')
   try {
-    if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) return
+    if (!existsSync(targetPath)) return
   } catch { return }
-  const child = spawn(cmd, [folderPath], { shell: true, detached: true, stdio: 'ignore' })
+  const child = spawn(cmd, [targetPath], { shell: process.platform === 'win32', detached: true, stdio: 'ignore' })
   child.unref()
 })
 
@@ -365,6 +369,45 @@ ipcMain.handle('store:save', (_event, state) => {
 
 app.whenReady().then(() => {
   log('App ready — creating first window')
+
+  // macOS application menu with standard shortcuts (Cmd+Q, Cmd+W, Edit menu)
+  if (process.platform === 'darwin') {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      {
+        label: app.name,
+        submenu: [
+          { role: 'about' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit' },
+        ],
+      },
+      {
+        label: 'Edit',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'selectAll' },
+        ],
+      },
+      {
+        label: 'Window',
+        submenu: [
+          { role: 'minimize' },
+          { role: 'zoom' },
+          { role: 'close' },
+        ],
+      },
+    ]))
+  }
+
   try {
     createWindow()
     log('First window created successfully')
@@ -395,11 +438,29 @@ app.on('second-instance', () => {
 })
 
 app.on('window-all-closed', () => {
+  // macOS: keep app running in dock when all windows close
+  if (process.platform === 'darwin') {
+    log('All windows closed — staying in dock (macOS)')
+    return
+  }
   log('All windows closed — quitting')
+  app.quit()
+})
+
+// Cleanup resources when app is quitting (works on all platforms including macOS Cmd+Q)
+app.on('before-quit', () => {
+  log('App quitting — cleaning up')
   ptyManager.killAll()
   remoteServer.stop()
   recentDB.close()
-  app.quit()
+})
+
+// macOS: re-create window when clicking dock icon with no windows open
+app.on('activate', () => {
+  if (registry.size() === 0) {
+    log('Dock click — creating new window (macOS)')
+    createWindow()
+  }
 })
 
 process.on('uncaughtException', (e) => {

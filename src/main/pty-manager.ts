@@ -5,6 +5,9 @@ import { EventEmitter } from 'events'
 
 // Detect the best available shell for the platform
 function getShell(): string {
+  if (process.platform === 'darwin') {
+    return process.env.SHELL || '/bin/zsh'
+  }
   if (process.platform !== 'win32') {
     return process.env.SHELL || '/bin/bash'
   }

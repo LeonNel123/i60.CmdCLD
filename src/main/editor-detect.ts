@@ -10,6 +10,7 @@ const KNOWN_EDITORS: EditorInfo[] = [
   { id: 'code', name: 'VS Code', cmd: 'code' },
   { id: 'cursor', name: 'Cursor', cmd: 'cursor' },
   { id: 'windsurf', name: 'Windsurf', cmd: 'windsurf' },
+  { id: 'zed', name: 'Zed', cmd: 'zed' },
   { id: 'devenv', name: 'Visual Studio', cmd: 'devenv' },
   { id: 'idea', name: 'IntelliJ IDEA', cmd: 'idea' },
   { id: 'webstorm', name: 'WebStorm', cmd: 'webstorm' },

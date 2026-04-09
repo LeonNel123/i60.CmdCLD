@@ -28,7 +28,8 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "category": "public.app-category.developer-tools"
     },
     "linux": {
       "target": "AppImage",
