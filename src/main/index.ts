@@ -288,9 +288,12 @@ ipcMain.handle('remote:toggle', async (_event, enabled: boolean) => {
 })
 
 ipcMain.handle('remote:status', () => {
+  const port = settings.get('remotePort') as number
+  const running = remoteServer.isRunning()
   return {
-    running: remoteServer.isRunning(),
-    port: settings.get('remotePort'),
+    running,
+    port,
+    urls: running ? remoteServer.getUrls(port) : [],
   }
 })
 

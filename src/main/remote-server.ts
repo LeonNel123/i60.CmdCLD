@@ -71,6 +71,10 @@ export class RemoteServer {
     return this.httpServer !== null && this.httpServer.listening
   }
 
+  getUrls(port: number): string[] {
+    return this.getLocalUrls(port)
+  }
+
   private cleanup(): void {
     if (this.io) {
       this.io.close()

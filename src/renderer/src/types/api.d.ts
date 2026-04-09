@@ -55,7 +55,7 @@ export interface ElectronAPI {
   editorSetCurrent: (cmd: string) => Promise<void>
   onWindowListUpdated: (callback: (windows: WindowInfo[]) => void) => () => void
   remoteToggle: (enabled: boolean) => Promise<{ ok: boolean; urls?: string[]; port?: number; error?: string }>
-  remoteStatus: () => Promise<{ running: boolean; port: number }>
+  remoteStatus: () => Promise<{ running: boolean; port: number; urls?: string[] }>
   onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string }) => void) => () => void
 }
 

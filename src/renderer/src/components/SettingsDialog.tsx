@@ -35,6 +35,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     window.api.remoteStatus().then((status) => {
       if (status.running) {
         setRemoteAccess(true)
+        if (status.urls?.length) setRemoteUrls(status.urls)
       }
     }).catch(() => {})
   }, [])
