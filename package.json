@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "postinstall": "electron-builder install-app-deps",
     "test": "vitest run",
     "test:watch": "vitest",
     "package": "electron-vite build && electron-builder",
