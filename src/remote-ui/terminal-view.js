@@ -15,7 +15,7 @@
   var currentSocket = null
   var resizeObserver = null
   var mobileBuffer = ''
-  var MAX_MOBILE_BUFFER = 100000
+  var MAX_MOBILE_BUFFER = 15000
 
   function isMobile() {
     return window.innerWidth <= 768
@@ -89,6 +89,8 @@
   function openMobile(scrollback) {
     mobileBuffer = scrollback || ''
     renderMobileOutput()
+    // Auto-focus the input so the user can type immediately
+    setTimeout(function () { mobileInput.focus() }, 300)
   }
 
   function renderMobileOutput() {
@@ -184,6 +186,19 @@
     uploadImage(file)
     mobileImageInput.value = ''
   })
+
+  // Handle mobile virtual keyboard — resize terminal view to visible area
+  if (window.visualViewport) {
+    function adjustForKeyboard() {
+      var termView = document.getElementById('terminal-view')
+      if (termView && !termView.classList.contains('hidden')) {
+        termView.style.height = window.visualViewport.height + 'px'
+        mobileOutput.scrollTop = mobileOutput.scrollHeight
+      }
+    }
+    window.visualViewport.addEventListener('resize', adjustForKeyboard)
+    window.visualViewport.addEventListener('scroll', adjustForKeyboard)
+  }
 
   // Expose globally
   window.CmdCLD_Terminal = { open: open, close: close, onData: onData, onExit: onExit }

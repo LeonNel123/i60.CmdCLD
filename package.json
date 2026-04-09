@@ -1,12 +1,12 @@
 {
   "name": "cmdcld",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "description": "Multi-terminal Claude launcher",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "node -e \"if(process.platform==='darwin')require('child_process').execSync('electron-builder install-app-deps',{stdio:'inherit'})\"",
     "test": "vitest run",
     "test:watch": "vitest",
     "package": "electron-vite build && electron-builder",

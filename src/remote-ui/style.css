@@ -349,6 +349,30 @@ body {
     flex: 1;
     overflow: hidden;
   }
+  #terminal-view {
+    height: 100dvh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+  .quick-btn {
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+  #mobile-input {
+    font-size: 16px; /* prevents iOS zoom on focus */
+    padding: 10px 12px;
+  }
+  #mobile-send-btn {
+    padding: 10px 18px;
+    font-size: 14px;
+  }
+  #mobile-input-bar {
+    padding: 8px;
+    padding-bottom: env(safe-area-inset-bottom, 8px);
+  }
 }
 
 /* Desktop: hide mobile terminal */
