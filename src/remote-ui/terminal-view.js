@@ -97,8 +97,24 @@
     if (mobileBuffer.length > MAX_MOBILE_BUFFER) {
       mobileBuffer = mobileBuffer.slice(-MAX_MOBILE_BUFFER)
     }
-    // Strip ANSI codes for mobile display
-    var clean = mobileBuffer.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+    // Strip all terminal escape sequences for mobile display
+    var clean = mobileBuffer
+      // OSC sequences: \x1b]...BEL or \x1b]...\x1b\\
+      .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
+      // CSI sequences: \x1b[?2004h, \x1b[1;32m, \x1b[0K, etc.
+      .replace(/\x1b\[[?>=!]?[0-9;]*[a-zA-Z~]/g, '')
+      // Character set and other two-char ESC sequences: \x1b(B, \x1b=, \x1b>
+      .replace(/\x1b[()#][A-Za-z0-9]/g, '')
+      .replace(/\x1b[=><]/g, '')
+      // Any remaining lone ESC
+      .replace(/\x1b/g, '')
+      // Control chars (keep \n and \t)
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
+      // Normalize line endings
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      // Collapse excessive blank lines
+      .replace(/\n{4,}/g, '\n\n\n')
     mobileOutput.textContent = clean
     mobileOutput.scrollTop = mobileOutput.scrollHeight
   }
@@ -154,7 +170,7 @@
   mobileSendBtn.addEventListener('click', function () {
     var text = mobileInput.value
     if (text && currentSocket && currentId) {
-      currentSocket.emit('session:input', { id: currentId, data: text + '\n' })
+      currentSocket.emit('session:input', { id: currentId, data: text + '\r' })
       mobileInput.value = ''
     }
   })
@@ -172,8 +188,7 @@
       btn.addEventListener('click', function () {
         var input = btn.dataset.input
         if (input && currentSocket && currentId) {
-          var decoded = input.replace(/&#10;/g, '\n')
-          currentSocket.emit('session:input', { id: currentId, data: decoded })
+          currentSocket.emit('session:input', { id: currentId, data: input })
         }
       })
     })(quickBtns[i])
