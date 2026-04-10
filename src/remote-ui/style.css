@@ -277,11 +277,113 @@ body {
   font-size: 12px;
   font-family: 'Menlo', 'Consolas', monospace;
   transition: border-color 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .folder-item:hover {
   border-color: #6366f1;
   color: #fff;
+}
+
+.folder-item .folder-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.folder-item .folder-name {
+  color: #e0e0e0;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-item .folder-path {
+  color: #666;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-item-active {
+  border-color: #10b981;
+  background: #0d1f17;
+}
+
+.folder-item-active:hover { border-color: #10b981; }
+
+.folder-badge {
+  color: #10b981;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+.folder-remove {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 3px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.folder-remove:hover {
+  color: #ef4444;
+  background: #2a1515;
+}
+
+/* Custom path input row at top of new-session modal */
+#custom-path-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+#custom-path-input {
+  flex: 1;
+  background: #0d0d0d;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 8px 10px;
+  color: #e0e0e0;
+  font-size: 13px;
+  font-family: 'Menlo', 'Consolas', monospace;
+  outline: none;
+  min-width: 0;
+}
+
+#custom-path-input:focus { border-color: #6366f1; }
+
+#custom-path-open {
+  padding: 8px 14px;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+#custom-path-error {
+  color: #ef4444;
+  font-size: 11px;
+  margin-bottom: 8px;
+  min-height: 14px;
+}
+
+@media (max-width: 768px) {
+  #custom-path-input {
+    font-size: 16px; /* prevent iOS zoom on focus */
+    padding: 10px 12px;
+  }
+  #custom-path-open {
+    padding: 10px 16px;
+    font-size: 14px;
+  }
 }
 
 /* Terminal view */
@@ -347,6 +449,17 @@ body {
   border-top: 1px solid #333;
   flex-wrap: wrap;
   flex-shrink: 0;
+}
+
+/* Forces the next quick-btn onto a new row — used to split the quick-actions
+   into semantic groups (answers vs workflow+destructive) instead of letting
+   natural wrap produce an ugly jagged split. */
+.quick-row-break {
+  flex-basis: 100%;
+  width: 0;
+  height: 0;
+  padding: 0;
+  margin: 0;
 }
 
 .quick-btn {
@@ -429,7 +542,7 @@ body {
     bottom: 0;
   }
   .quick-btn {
-    padding: 6px 10px;
+    padding: 5px 9px;
     font-size: 12px;
   }
   #mobile-input {

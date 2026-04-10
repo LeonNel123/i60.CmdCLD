@@ -177,27 +177,80 @@
     refreshSessions()
   }
 
-  // New session modal
-  function showNewSessionModal() {
-    newSessionModal.classList.remove('hidden')
+  // Open a session for a given path. If a session for this path is already
+  // running, navigate to that one instead of creating a duplicate.
+  function openOrCreateSession(path) {
+    var existing = null
+    for (var i = 0; i < sessions.length; i++) {
+      if (sessions[i].path === path) { existing = sessions[i]; break }
+    }
+    if (existing) {
+      newSessionModal.classList.add('hidden')
+      openTerminal(existing.id)
+      return
+    }
+    newSessionModal.classList.add('hidden')
+    fetch('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path }),
+    }).then(function (r) {
+      if (!r.ok) {
+        return r.json().catch(function () { return {} }).then(function (data) {
+          alert('Could not open session: ' + (data.error || 'unknown error'))
+        })
+      }
+    }).catch(function () {
+      alert('Could not open session (network error)')
+    })
+  }
 
+  // Remove a folder from the recent list and refresh the modal.
+  function removeRecent(path) {
+    fetch('/api/folders/recent', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path }),
+    }).then(function () {
+      renderFolderSections() // refresh the modal in place
+    }).catch(function () {})
+  }
+
+  // Render the favorites + recent sections inside the modal. Marks folders
+  // that already have an active session with a running badge.
+  function renderFolderSections() {
+    var folderSections = document.getElementById('folder-sections')
     Promise.all([
       fetch('/api/folders/favorites').then(function (r) { return r.json() }).catch(function () { return [] }),
       fetch('/api/folders/recent').then(function (r) { return r.json() }).catch(function () { return [] }),
     ]).then(function (results) {
       var favRes = results[0]
       var recRes = results[1]
-      var html = ''
 
+      // Map path → active session (if any) for quick lookup
+      var activeByPath = {}
+      for (var a = 0; a < sessions.length; a++) {
+        activeByPath[sessions[a].path] = sessions[a]
+      }
+
+      function buildItem(path, name, removable) {
+        var active = !!activeByPath[path]
+        return '<div class="folder-item' + (active ? ' folder-item-active' : '') + '" data-path="' + escapeHtml(path) + '">' +
+          '<div class="folder-info">' +
+            '<div class="folder-name">' + escapeHtml(name) + (active ? ' <span class="folder-badge">● running</span>' : '') + '</div>' +
+            '<div class="folder-path">' + escapeHtml(path) + '</div>' +
+          '</div>' +
+          (removable ? '<button class="folder-remove" data-path="' + escapeHtml(path) + '" title="Remove from recents">×</button>' : '') +
+        '</div>'
+      }
+
+      var html = ''
       if (favRes.length > 0) {
         html += '<div class="folder-section-label">Favorites</div>'
         for (var i = 0; i < favRes.length; i++) {
           var f = favRes[i]
-          var name = f.split(/[\\/]/).pop() || f
-          html += '<div class="folder-item" data-path="' + escapeHtml(f) + '">' +
-            escapeHtml(name) +
-            '<div style="color:#666;font-size:10px;margin-top:2px">' + escapeHtml(f) + '</div>' +
-          '</div>'
+          var fname = f.split(/[\\/]/).pop() || f
+          html += buildItem(f, fname, false)
         }
       }
 
@@ -205,34 +258,49 @@
         html += '<div class="folder-section-label">Recent</div>'
         for (var j = 0; j < recRes.length; j++) {
           var r = recRes[j]
-          html += '<div class="folder-item" data-path="' + escapeHtml(r.path) + '">' +
-            escapeHtml(r.name) +
-            '<div style="color:#666;font-size:10px;margin-top:2px">' + escapeHtml(r.path) + '</div>' +
-          '</div>'
+          html += buildItem(r.path, r.name, true)
         }
       }
 
       if (favRes.length === 0 && recRes.length === 0) {
-        html = '<div class="empty-state">No folders configured. Add favorites in the app settings.</div>'
+        html = '<div class="empty-state">No favorites or recents yet. Paste a folder path above to open one.</div>'
       }
 
       folderSections.innerHTML = html
 
+      // Attach click handlers — open (or navigate) on item click, delete on × click
       var items = folderSections.querySelectorAll('.folder-item')
       for (var k = 0; k < items.length; k++) {
         (function (item) {
-          item.addEventListener('click', function () {
-            var path = item.dataset.path
-            newSessionModal.classList.add('hidden')
-            fetch('/api/sessions', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ path: path }),
-            }).catch(function () {})
+          item.addEventListener('click', function (e) {
+            // Ignore clicks on the × button
+            if (e.target && e.target.classList && e.target.classList.contains('folder-remove')) return
+            openOrCreateSession(item.dataset.path)
           })
         })(items[k])
       }
+      var removes = folderSections.querySelectorAll('.folder-remove')
+      for (var m = 0; m < removes.length; m++) {
+        (function (btn) {
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation()
+            removeRecent(btn.dataset.path)
+          })
+        })(removes[m])
+      }
     })
+  }
+
+  // New session modal
+  function showNewSessionModal() {
+    newSessionModal.classList.remove('hidden')
+    var input = document.getElementById('custom-path-input')
+    var errEl = document.getElementById('custom-path-error')
+    if (input) input.value = ''
+    if (errEl) errEl.textContent = ''
+    renderFolderSections()
+    // Don't auto-focus the path input on mobile — same reason as the
+    // terminal-view decision: no unsolicited keyboard popup.
   }
 
   // Event listeners
@@ -240,6 +308,25 @@
   cancelNewSession.addEventListener('click', function () { newSessionModal.classList.add('hidden') })
   newSessionModal.querySelector('.modal-backdrop').addEventListener('click', function () { newSessionModal.classList.add('hidden') })
   backBtn.addEventListener('click', closeTerminal)
+
+  // Custom path input — submit on Open button click or Enter key
+  var customPathInput = document.getElementById('custom-path-input')
+  var customPathOpen = document.getElementById('custom-path-open')
+  var customPathError = document.getElementById('custom-path-error')
+  function submitCustomPath() {
+    if (!customPathInput) return
+    var path = customPathInput.value.trim()
+    if (!path) {
+      if (customPathError) customPathError.textContent = 'Please enter a path'
+      return
+    }
+    if (customPathError) customPathError.textContent = ''
+    openOrCreateSession(path)
+  }
+  if (customPathOpen) customPathOpen.addEventListener('click', submitCustomPath)
+  if (customPathInput) customPathInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); submitCustomPath() }
+  })
 
   ctrlCBtn.addEventListener('click', function () {
     if (currentSessionId && socket) {

@@ -76,6 +76,13 @@ export class RecentDB {
     this.save()
   }
 
+  async remove(folderPath: string): Promise<void> {
+    await this.ready
+    if (!this.db) return
+    this.db.run('DELETE FROM recent_folders WHERE path = ?', [folderPath])
+    this.save()
+  }
+
   async list(): Promise<RecentFolder[]> {
     await this.ready
     if (!this.db) return []

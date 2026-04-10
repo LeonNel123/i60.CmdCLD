@@ -62,4 +62,19 @@ describe('RecentDB', () => {
     expect(paths).not.toContain('C:\\folder-00')
     expect(paths).toContain('C:\\folder-24')
   })
+
+  it('removes a folder by path', async () => {
+    await db.add('C:\\projects\\keep-me')
+    await db.add('C:\\projects\\delete-me')
+    await db.remove('C:\\projects\\delete-me')
+    const list = await db.list()
+    expect(list).toHaveLength(1)
+    expect(list[0].path).toBe('C:\\projects\\keep-me')
+  })
+
+  it('remove on non-existent path is a no-op', async () => {
+    await db.add('C:\\projects\\a')
+    await db.remove('C:\\projects\\does-not-exist')
+    expect(await db.list()).toHaveLength(1)
+  })
 })

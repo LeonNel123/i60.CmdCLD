@@ -109,8 +109,8 @@
         term.textarea.setAttribute('tabindex', '-1')
         term.textarea.setAttribute('aria-hidden', 'true')
       }
-      // Auto-focus the input bar so the user can start typing immediately
-      setTimeout(function () { mobileInput.focus() }, 300)
+      // Do NOT auto-focus the input bar — that pops the mobile keyboard on
+      // open. The user taps #mobile-input when they are ready to type.
     }
   }
 

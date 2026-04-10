@@ -131,6 +131,66 @@ app.get('/test-terminal', (_req, res) => {
   res.type('html').send(html)
 })
 
+// Test-only route: dashboard with new-session modal pre-opened with mock data
+app.get('/test-new-session', (_req, res) => {
+  // Override the folder + session APIs with fake data for the screenshot
+  app.get('/api/folders/favorites', (_q, r) => r.json(['I:/i60-Projects/i60.CmdCLD', 'I:/projects/my-website']))
+  const html = readFileSync(join(UI_DIR, 'index.html'), 'utf8')
+    .replace('<div id="new-session-modal" class="modal hidden">', '<div id="new-session-modal" class="modal">')
+    + `<script>
+(function () {
+  setTimeout(function () {
+    // Inject fake sessions so "running" badge shows
+    if (window.CmdCLD_App) {
+      // Mock by hand
+    }
+    // Fake favorites + recents into the modal
+    var fs = document.getElementById('folder-sections')
+    if (fs) {
+      fs.innerHTML = \`
+        <div class="folder-section-label">Favorites</div>
+        <div class="folder-item">
+          <div class="folder-info">
+            <div class="folder-name">CmdCLD</div>
+            <div class="folder-path">I:/i60-Projects/i60.CmdCLD</div>
+          </div>
+        </div>
+        <div class="folder-item">
+          <div class="folder-info">
+            <div class="folder-name">my-website</div>
+            <div class="folder-path">I:/projects/my-website</div>
+          </div>
+        </div>
+        <div class="folder-section-label">Recent</div>
+        <div class="folder-item folder-item-active">
+          <div class="folder-info">
+            <div class="folder-name">api-server <span class="folder-badge">● running</span></div>
+            <div class="folder-path">I:/projects/api-server</div>
+          </div>
+          <button class="folder-remove" title="Remove from recents">×</button>
+        </div>
+        <div class="folder-item">
+          <div class="folder-info">
+            <div class="folder-name">experiment-branch</div>
+            <div class="folder-path">I:/scratch/experiment-branch</div>
+          </div>
+          <button class="folder-remove" title="Remove from recents">×</button>
+        </div>
+        <div class="folder-item">
+          <div class="folder-info">
+            <div class="folder-name">docs</div>
+            <div class="folder-path">I:/work/docs</div>
+          </div>
+          <button class="folder-remove" title="Remove from recents">×</button>
+        </div>
+      \`
+    }
+  }, 200)
+})()
+</script>`
+  res.type('html').send(html)
+})
+
 // Test-only route: terminal view with help modal pre-opened for screenshot
 app.get('/test-help-open', (_req, res) => {
   const html = readFileSync(join(UI_DIR, 'index.html'), 'utf8')
@@ -245,6 +305,42 @@ setTimeout(function () {
 </body></html>`)
 })
 
+// Probe endpoint: measure each quick-action button position
+app.get('/test-btn-positions', (_req, res) => {
+  res.type('html').send(`<!doctype html><html><body>
+<pre id="out">loading…</pre>
+<iframe id="f" src="/test-terminal" style="width:412px;height:915px;border:0"></iframe>
+<script>
+setTimeout(function () {
+  try {
+    var doc = document.getElementById('f').contentDocument
+    var btns = doc.querySelectorAll('#quick-actions .quick-btn')
+    var results = []
+    btns.forEach(function (b) {
+      var r = b.getBoundingClientRect()
+      results.push({
+        label: b.textContent.trim(),
+        x: Math.round(r.left),
+        y: Math.round(r.top),
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+        right: Math.round(r.right),
+      })
+    })
+    var qa = doc.getElementById('quick-actions')
+    var qr = qa.getBoundingClientRect()
+    document.getElementById('out').textContent = JSON.stringify({
+      quickActionsBox: { x: Math.round(qr.left), y: Math.round(qr.top), w: Math.round(qr.width), h: Math.round(qr.height) },
+      buttons: results,
+    }, null, 2)
+  } catch (e) {
+    document.getElementById('out').textContent = 'ERR ' + e.message
+  }
+}, 2000)
+</script>
+</body></html>`)
+})
+
 // Probe endpoint: measure element widths to find horizontal overflow
 app.get('/test-widths', (_req, res) => {
   res.type('html').send(`<!doctype html><html><body>
@@ -263,6 +359,7 @@ setTimeout(function () {
         var cs = doc.defaultView.getComputedStyle(el)
         results[id] = {
           width: Math.round(r.width),
+          height: Math.round(r.height),
           right: Math.round(r.right),
           scrollWidth: el.scrollWidth,
           overflow: cs.overflowX,
@@ -525,6 +622,24 @@ async function runTest() {
   log('Terminal screenshot:', existsSync(screenshotTerminal) ? 'YES' : 'NO', screenshotTerminal)
   try { rmSync(profileDir + '-term', { recursive: true, force: true }) } catch {}
 
+  // Wider screenshot to see button layout without clipping
+  const screenshotWide = join(ROOT, 'test-mobile-wide.png')
+  const wideArgs = [
+    '--headless=new', '--disable-gpu', '--no-sandbox',
+    '--window-size=500,915',
+    '--user-data-dir=' + profileDir + '-wide',
+    '--virtual-time-budget=5000',
+    '--screenshot=' + screenshotWide,
+    `http://localhost:${PORT}/test-terminal`,
+  ]
+  await new Promise((resolve) => {
+    const p = spawn(chrome, wideArgs, { stdio: ['ignore', 'pipe', 'pipe'] })
+    p.on('exit', () => resolve())
+    setTimeout(() => { try { p.kill() } catch {} ; resolve() }, 15000)
+  })
+  log('Wide screenshot:', existsSync(screenshotWide) ? 'YES' : 'NO', screenshotWide)
+  try { rmSync(profileDir + '-wide', { recursive: true, force: true }) } catch {}
+
   // Screenshot the help modal
   const screenshotHelp = join(ROOT, 'test-mobile-help.png')
   const helpArgs = [
@@ -543,6 +658,25 @@ async function runTest() {
   })
   log('Help modal screenshot:', existsSync(screenshotHelp) ? 'YES' : 'NO', screenshotHelp)
   try { rmSync(profileDir + '-help', { recursive: true, force: true }) } catch {}
+
+  // Screenshot the new-session modal with custom path + active folder badges
+  const screenshotNewSession = join(ROOT, 'test-mobile-new-session.png')
+  const nsArgs = [
+    '--headless=new', '--disable-gpu', '--no-sandbox',
+    '--window-size=500,915',
+    '--user-agent=Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
+    '--user-data-dir=' + profileDir + '-ns',
+    '--virtual-time-budget=5000',
+    '--screenshot=' + screenshotNewSession,
+    `http://localhost:${PORT}/test-new-session`,
+  ]
+  await new Promise((resolve) => {
+    const p = spawn(chrome, nsArgs, { stdio: ['ignore', 'pipe', 'pipe'] })
+    p.on('exit', () => resolve())
+    setTimeout(() => { try { p.kill() } catch {} ; resolve() }, 15000)
+  })
+  log('New session modal screenshot:', existsSync(screenshotNewSession) ? 'YES' : 'NO', screenshotNewSession)
+  try { rmSync(profileDir + '-ns', { recursive: true, force: true }) } catch {}
 
   // Xterm runtime check via iframe probe
   log('\n-- Xterm runtime check (spinner should collapse) --')
@@ -661,7 +795,7 @@ async function runTest() {
         }
       })
       log(`Clicks: ${clickPass}/${clickPass + clickFail}`)
-      if (clickFail > 0 || r.count !== 14) fail += (clickFail || 1)
+      if (clickFail > 0 || r.count !== 17) fail += (clickFail || 1)
     } catch (e) {
       log('Could not parse click probe result:', e.message)
       log('Raw (500):', raw.substring(0, 500))

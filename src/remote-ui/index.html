@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
   <title>CmdCLD Remote</title>
   <link rel="stylesheet" href="/vendor/xterm/css/xterm.css">
   <link rel="stylesheet" href="/style.css">
@@ -28,6 +28,11 @@
         <div class="modal-backdrop"></div>
         <div class="modal-content">
           <h3>New Session</h3>
+          <div id="custom-path-row">
+            <input type="text" id="custom-path-input" placeholder="Paste or type a folder path…" autocomplete="off">
+            <button id="custom-path-open" class="btn-primary">Open</button>
+          </div>
+          <div id="custom-path-error"></div>
           <div id="folder-sections"></div>
           <div class="modal-footer">
             <button id="cancel-new-session" class="btn-secondary">Cancel</button>
@@ -68,6 +73,9 @@
 
             <div class="help-group-label">Workflow</div>
             <div class="help-item"><span class="help-key">NP</span><span>Next pass — critical re-examine &amp; fix</span></div>
+            <div class="help-item"><span class="help-key">Vfy</span><span>Verify recent work — report gaps, no fixes</span></div>
+            <div class="help-item"><span class="help-key">Sts</span><span>Status update — 3 sentences, plain English</span></div>
+            <div class="help-item"><span class="help-key">Smp</span><span>Simplify — audit recent work for over-engineering</span></div>
             <div class="help-item"><span class="help-key">NF</span><span>New feature (brainstorm &amp; design)</span></div>
             <div class="help-item"><span class="help-key">CR</span><span>Code review (findings by severity)</span></div>
             <div class="help-item"><span class="help-key">SR</span><span>Security review (OWASP top-10)</span></div>
@@ -102,11 +110,16 @@
           <button class="quick-btn" data-input="A&#13;" title="Option A">A</button>
           <button class="quick-btn" data-input="B&#13;" title="Option B">B</button>
           <button class="quick-btn" data-input="C&#13;" title="Option C">C</button>
+          <div class="quick-row-break"></div>
           <button class="quick-btn" data-input="Do another pass on the current work — critically re-examine what you just did, find anything weak, missing, or improvable, and apply fixes.&#13;" title="Next Pass">NP</button>
+          <button class="quick-btn" data-input="Self-review the changes you just made. Verify they match my original intent exactly, find anything you may have missed or misinterpreted, and check for bugs or regressions you may have introduced. Report findings honestly — do not apply fixes yet, I want to see what you find first.&#13;" title="Verify recent work">Vfy</button>
+          <button class="quick-btn" data-input="Give me a brief status update: what you just finished, what you are working on now, and what is next. 3 sentences max, plain English, no code snippets.&#13;" title="Status update">Sts</button>
+          <button class="quick-btn" data-input="Use your superpowers:simplify skill on the recent changes. Look for over-engineering, unused code, unnecessary abstractions, and simplification opportunities. Apply fixes where the code is clearly too complex.&#13;" title="Simplify recent changes">Smp</button>
           <button class="quick-btn" data-input="New feature incoming. Use your superpowers:brainstorming skill to explore requirements and produce a design before writing any code. I will describe the feature in my next message.&#13;" title="New Feature">NF</button>
           <button class="quick-btn" data-input="Code review the current branch. Use your superpowers:code-reviewer skill. Check correctness, clarity, test coverage, and adherence to existing patterns. Report findings grouped by severity with concrete fixes.&#13;" title="Code Review">CR</button>
           <button class="quick-btn" data-input="Security review the current branch. Look for injection (SQL, command, XSS), auth/authz holes, secrets in code or logs, SSRF, path traversal, unsafe deserialization, and OWASP top-10 issues. Report findings grouped by severity with concrete fixes.&#13;" title="Security Review">SR</button>
           <button class="quick-btn" data-input="Subtle UI polish review of the current work. Focus on spacing, alignment, visual hierarchy, contrast, typography consistency, affordances, and microcopy. Small refinements only — no redesigns. Report specific before/after suggestions.&#13;" title="UI Polish">UI</button>
+          <div class="quick-row-break"></div>
           <button class="quick-btn quick-btn-danger" data-input="/clear&#13;" title="Clear conversation (destructive)">Clr</button>
           <button class="quick-btn quick-btn-danger" data-input="Run all preparatory steps and tests, if a test setup is available. Upon successful completion, apply all required updates to databases and related systems, then commit and push the current branch. If any tests fail, attempt to fix the code and rerun the process once. If the tests still fail, report the issue and wait for further instructions. The objective is to deploy the latest feature set to production. Proceed thoroughly and methodically.&#13;" title="Full deploy (destructive)">FY</button>
         </div>

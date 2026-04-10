@@ -186,6 +186,11 @@ export class RemoteServer {
 
       this.ptyManager.create(id, cwd, wc, meta)
 
+      // Track in recent folders (idempotent upsert — same behaviour as the
+      // desktop createTerminal path). Swallow errors so a DB issue never
+      // breaks session creation.
+      this.recentDB.add(cwd).catch(() => {})
+
       // Launch claude in the PTY
       const args = claudeArgs || this.settings.get('claudeArgs')
       const launchCmd = args ? `claude ${args}\r` : 'claude\r'
@@ -224,6 +229,20 @@ export class RemoteServer {
     app.get('/api/folders/recent', async (_req: any, res: any) => {
       const folders = await this.recentDB.list()
       res.json(folders)
+    })
+
+    app.delete('/api/folders/recent', async (req: any, res: any) => {
+      const { path: folderPath } = req.body
+      if (!folderPath || typeof folderPath !== 'string') {
+        res.status(400).json({ error: 'path is required' })
+        return
+      }
+      try {
+        await this.recentDB.remove(folderPath)
+        res.json({ ok: true })
+      } catch {
+        res.status(500).json({ error: 'failed to remove' })
+      }
     })
 
     app.get('/api/folders/favorites', (_req: any, res: any) => {
