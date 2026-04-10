@@ -45,10 +45,48 @@
           <span id="terminal-status"></span>
         </div>
         <div class="terminal-header-right">
+          <button id="font-dec-btn" class="btn-small mobile-only" title="Smaller terminal text">A−</button>
+          <button id="font-inc-btn" class="btn-small mobile-only" title="Larger terminal text">A+</button>
+          <button id="help-btn" class="btn-small mobile-only" title="Show button help">?</button>
           <button id="ctrl-c-btn" class="btn-small">Ctrl+C</button>
           <button id="kill-btn" class="btn-small btn-danger">Kill</button>
         </div>
       </header>
+
+      <!-- Mobile button help modal -->
+      <div id="help-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+          <h3>Quick Action Buttons</h3>
+          <div class="help-list">
+            <div class="help-group-label">Answers</div>
+            <div class="help-item"><span class="help-key">Y</span><span>Yes</span></div>
+            <div class="help-item"><span class="help-key">N</span><span>No</span></div>
+            <div class="help-item"><span class="help-key">Cont</span><span>Continue</span></div>
+            <div class="help-item"><span class="help-key">YD</span><span>You decide — pick &amp; proceed, brief reason</span></div>
+            <div class="help-item"><span class="help-key">A B C</span><span>Multi-choice answers</span></div>
+
+            <div class="help-group-label">Workflow</div>
+            <div class="help-item"><span class="help-key">NP</span><span>Next pass — critical re-examine &amp; fix</span></div>
+            <div class="help-item"><span class="help-key">NF</span><span>New feature (brainstorm &amp; design)</span></div>
+            <div class="help-item"><span class="help-key">CR</span><span>Code review (findings by severity)</span></div>
+            <div class="help-item"><span class="help-key">SR</span><span>Security review (OWASP top-10)</span></div>
+            <div class="help-item"><span class="help-key">UI</span><span>Subtle UI polish review</span></div>
+
+            <div class="help-group-label">Destructive</div>
+            <div class="help-item"><span class="help-key help-key-danger">Clr</span><span>Clear conversation history</span></div>
+            <div class="help-item"><span class="help-key help-key-danger">FY</span><span>Full deploy: test, commit, push, deploy</span></div>
+
+            <div class="help-group-label">Header</div>
+            <div class="help-item"><span class="help-key">A− / A+</span><span>Terminal font size (saved)</span></div>
+            <div class="help-item"><span class="help-key">Ctrl+C</span><span>Interrupt current command</span></div>
+            <div class="help-item"><span class="help-key help-key-danger">Kill</span><span>Kill this session</span></div>
+          </div>
+          <div class="modal-footer">
+            <button id="close-help" class="btn-secondary">Close</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Desktop: full xterm.js terminal -->
       <div id="terminal-container"></div>
@@ -57,15 +95,20 @@
       <div id="mobile-terminal">
         <div id="mobile-output"></div>
         <div id="quick-actions">
-          <button class="quick-btn" data-input="yes&#13;">Y</button>
-          <button class="quick-btn" data-input="no&#13;">N</button>
-          <button class="quick-btn" data-input="Continue&#13;">Cont</button>
-          <button class="quick-btn" data-input="You Decide&#13;">YD</button>
-          <button class="quick-btn" data-input="A&#13;">A</button>
-          <button class="quick-btn" data-input="B&#13;">B</button>
-          <button class="quick-btn" data-input="C&#13;">C</button>
-          <button class="quick-btn" data-input="NextPass&#13;">NP</button>
-          <button class="quick-btn" data-input="/clear&#13;">Clr</button>
+          <button class="quick-btn" data-input="yes&#13;" title="Yes">Y</button>
+          <button class="quick-btn" data-input="no&#13;" title="No">N</button>
+          <button class="quick-btn" data-input="Continue&#13;" title="Continue">Cont</button>
+          <button class="quick-btn" data-input="You decide — pick the approach you would recommend, state why in one line, and proceed without waiting for confirmation.&#13;" title="You Decide">YD</button>
+          <button class="quick-btn" data-input="A&#13;" title="Option A">A</button>
+          <button class="quick-btn" data-input="B&#13;" title="Option B">B</button>
+          <button class="quick-btn" data-input="C&#13;" title="Option C">C</button>
+          <button class="quick-btn" data-input="Do another pass on the current work — critically re-examine what you just did, find anything weak, missing, or improvable, and apply fixes.&#13;" title="Next Pass">NP</button>
+          <button class="quick-btn" data-input="New feature incoming. Use your superpowers:brainstorming skill to explore requirements and produce a design before writing any code. I will describe the feature in my next message.&#13;" title="New Feature">NF</button>
+          <button class="quick-btn" data-input="Code review the current branch. Use your superpowers:code-reviewer skill. Check correctness, clarity, test coverage, and adherence to existing patterns. Report findings grouped by severity with concrete fixes.&#13;" title="Code Review">CR</button>
+          <button class="quick-btn" data-input="Security review the current branch. Look for injection (SQL, command, XSS), auth/authz holes, secrets in code or logs, SSRF, path traversal, unsafe deserialization, and OWASP top-10 issues. Report findings grouped by severity with concrete fixes.&#13;" title="Security Review">SR</button>
+          <button class="quick-btn" data-input="Subtle UI polish review of the current work. Focus on spacing, alignment, visual hierarchy, contrast, typography consistency, affordances, and microcopy. Small refinements only — no redesigns. Report specific before/after suggestions.&#13;" title="UI Polish">UI</button>
+          <button class="quick-btn quick-btn-danger" data-input="/clear&#13;" title="Clear conversation (destructive)">Clr</button>
+          <button class="quick-btn quick-btn-danger" data-input="Run all preparatory steps and tests, if a test setup is available. Upon successful completion, apply all required updates to databases and related systems, then commit and push the current branch. If any tests fail, attempt to fix the code and rerun the process once. If the tests still fail, report the issue and wait for further instructions. The objective is to deploy the latest feature set to production. Proceed thoroughly and methodically.&#13;" title="Full deploy (destructive)">FY</button>
         </div>
         <div id="mobile-input-bar">
           <input type="text" id="mobile-input" placeholder="Type a message...">

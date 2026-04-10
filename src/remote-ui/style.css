@@ -152,6 +152,65 @@ body {
 .btn-small:hover { border-color: #666; color: #ccc; }
 .btn-danger { color: #ef4444; }
 .btn-danger:hover { border-color: #ef4444; }
+
+/* Mobile-only helper: hidden on desktop, shown on mobile */
+.mobile-only { display: none; }
+@media (max-width: 768px) {
+  .mobile-only { display: inline-block; }
+}
+
+/* Compact font-size and help buttons in the terminal header */
+#font-dec-btn, #font-inc-btn, #help-btn {
+  padding: 4px 8px;
+  font-weight: 600;
+  min-width: 28px;
+}
+
+/* Help modal content */
+.help-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.help-group-label {
+  color: #888;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 10px 0 2px;
+  font-family: monospace;
+}
+
+.help-group-label:first-child { margin-top: 0; }
+
+.help-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 0;
+  color: #d0d0d0;
+}
+
+.help-key {
+  background: #1e1e2e;
+  color: #ccc;
+  border: 1px solid #333;
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-family: monospace;
+  font-size: 11px;
+  min-width: 44px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.help-key-danger {
+  background: #2a1515;
+  color: #f87171;
+  border-color: #7f1d1d;
+}
 .btn-icon {
   background: none;
   border: none;
@@ -276,13 +335,8 @@ body {
 #mobile-output {
   flex: 1;
   background: #0d0d0d;
-  padding: 8px;
-  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
-  font-size: 12px;
-  color: #d4d4d4;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
+  overflow: auto;
+  min-height: 0;
 }
 
 #quick-actions {
@@ -307,6 +361,23 @@ body {
 }
 
 .quick-btn:hover { border-color: #6366f1; }
+
+/* Destructive quick buttons: visually separated and red-tinted */
+.quick-btn-danger {
+  background: #2a1515;
+  color: #f87171;
+  border-color: #7f1d1d;
+}
+
+.quick-btn-danger:hover {
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+/* Extra gap before the first destructive button to separate it from safe actions */
+.quick-btn:not(.quick-btn-danger) + .quick-btn-danger {
+  margin-left: 14px;
+}
 
 #mobile-input-bar {
   display: flex;
@@ -358,8 +429,8 @@ body {
     bottom: 0;
   }
   .quick-btn {
-    padding: 10px 16px;
-    font-size: 14px;
+    padding: 6px 10px;
+    font-size: 12px;
   }
   #mobile-input {
     font-size: 16px; /* prevents iOS zoom on focus */

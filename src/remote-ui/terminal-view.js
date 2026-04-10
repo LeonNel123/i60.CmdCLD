@@ -1,4 +1,4 @@
-// CmdCLD Remote — Terminal View (xterm.js desktop + mobile fallback)
+// CmdCLD Remote — Terminal View (xterm.js for both desktop and mobile)
 (function () {
   'use strict'
 
@@ -8,17 +8,39 @@
   var mobileSendBtn = document.getElementById('mobile-send-btn')
   var mobileImageInput = document.getElementById('mobile-image-input')
   var quickActions = document.getElementById('quick-actions')
+  var fontDecBtn = document.getElementById('font-dec-btn')
+  var fontIncBtn = document.getElementById('font-inc-btn')
 
   var term = null
   var fitAddon = null
   var currentId = null
   var currentSocket = null
-  var resizeObserver = null
-  var mobileBuffer = ''
-  var MAX_MOBILE_BUFFER = 15000
 
   function isMobile() {
     return window.innerWidth <= 768
+  }
+
+  // Mobile font-size control — persists across sessions
+  var MOBILE_FONT_KEY = 'cmdcld-remote-mobile-font-size'
+  var MOBILE_FONT_MIN = 8
+  var MOBILE_FONT_MAX = 24
+  var MOBILE_FONT_DEFAULT = 12
+
+  function getMobileFontSize() {
+    try {
+      var v = parseInt(localStorage.getItem(MOBILE_FONT_KEY), 10)
+      if (!isNaN(v) && v >= MOBILE_FONT_MIN && v <= MOBILE_FONT_MAX) return v
+    } catch (e) {}
+    return MOBILE_FONT_DEFAULT
+  }
+
+  function setMobileFontSize(n) {
+    n = Math.max(MOBILE_FONT_MIN, Math.min(MOBILE_FONT_MAX, n))
+    try { localStorage.setItem(MOBILE_FONT_KEY, String(n)) } catch (e) {}
+    if (term && isMobile()) {
+      try { term.options.fontSize = n } catch (e) {}
+    }
+    return n
   }
 
   var ptyCols = 80
@@ -31,14 +53,9 @@
     if (cols) ptyCols = cols
     if (rows) ptyRows = rows
 
-    if (!isMobile()) {
-      openDesktop(scrollback)
-    } else {
-      openMobile(scrollback)
-    }
-  }
+    var mobile = isMobile()
+    var container = mobile ? mobileOutput : terminalContainer
 
-  function openDesktop(scrollback) {
     term = new Terminal({
       theme: {
         background: '#0d0d0d',
@@ -46,113 +63,74 @@
         cursor: '#d4d4d4',
         selectionBackground: '#264f78',
       },
-      fontSize: 14,
+      fontSize: mobile ? getMobileFontSize() : 14,
       fontFamily: "'Cascadia Code', 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace",
-      cursorBlink: true,
+      cursorBlink: !mobile,
       cursorStyle: 'bar',
       scrollback: 5000,
       cols: ptyCols,
       rows: ptyRows,
+      disableStdin: mobile, // mobile uses the input bar, not xterm's textarea
     })
 
     fitAddon = new FitAddon.FitAddon()
     term.loadAddon(fitAddon)
-    term.open(terminalContainer)
+    term.open(container)
 
     if (scrollback) {
       term.write(scrollback)
     }
 
-    // Handle user input
-    term.onData(function (data) {
-      if (currentSocket && currentId) {
-        currentSocket.emit('session:input', { id: currentId, data: data })
-      }
-    })
-
-    // Intercept paste for image support — let xterm handle text paste natively
-    term.textarea.addEventListener('paste', function (ev) {
-      var items = (ev.clipboardData || {}).items || []
-      for (var i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf('image/') === 0) {
-          ev.preventDefault()
-          uploadImage(items[i].getAsFile())
-          return
+    if (!mobile) {
+      // Desktop: forward xterm keystrokes to the PTY
+      term.onData(function (data) {
+        if (currentSocket && currentId) {
+          currentSocket.emit('session:input', { id: currentId, data: data })
         }
+      })
+
+      // Desktop: intercept image paste (let xterm handle text paste natively)
+      term.textarea.addEventListener('paste', function (ev) {
+        var items = (ev.clipboardData || {}).items || []
+        for (var i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf('image/') === 0) {
+            ev.preventDefault()
+            uploadImage(items[i].getAsFile())
+            return
+          }
+        }
+      })
+    } else {
+      // Mobile: stop xterm's hidden textarea from triggering the virtual keyboard.
+      // The user types into #mobile-input; the terminal is read-only for them.
+      if (term.textarea) {
+        term.textarea.setAttribute('readonly', 'readonly')
+        term.textarea.setAttribute('inputmode', 'none')
+        term.textarea.setAttribute('tabindex', '-1')
+        term.textarea.setAttribute('aria-hidden', 'true')
       }
-      // Text paste: don't preventDefault — let xterm handle it via onData
-    })
-
-    // No resize observer — remote uses PTY dimensions from the main terminal
-  }
-
-  function openMobile(scrollback) {
-    mobileBuffer = scrollback || ''
-    renderMobileOutput()
-    // Auto-focus the input so the user can type immediately
-    setTimeout(function () { mobileInput.focus() }, 300)
-  }
-
-  function renderMobileOutput() {
-    if (mobileBuffer.length > MAX_MOBILE_BUFFER) {
-      mobileBuffer = mobileBuffer.slice(-MAX_MOBILE_BUFFER)
+      // Auto-focus the input bar so the user can start typing immediately
+      setTimeout(function () { mobileInput.focus() }, 300)
     }
-    // Strip all terminal escape sequences for mobile display
-    var clean = mobileBuffer
-      // OSC sequences: \x1b]...BEL or \x1b]...\x1b\\
-      .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
-      // CSI sequences: \x1b[?2004h, \x1b[1;32m, \x1b[0K, etc.
-      .replace(/\x1b\[[?>=!]?[0-9;]*[a-zA-Z~]/g, '')
-      // Character set and other two-char ESC sequences: \x1b(B, \x1b=, \x1b>
-      .replace(/\x1b[()#][A-Za-z0-9]/g, '')
-      .replace(/\x1b[=><]/g, '')
-      // Any remaining lone ESC
-      .replace(/\x1b/g, '')
-      // Control chars (keep \n and \t)
-      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
-      // Normalize line endings
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n')
-      // Collapse excessive blank lines
-      .replace(/\n{4,}/g, '\n\n\n')
-    mobileOutput.textContent = clean
-    mobileOutput.scrollTop = mobileOutput.scrollHeight
   }
-
-
 
   function onData(data) {
-    if (!isMobile() && term) {
-      term.write(data)
-    } else {
-      mobileBuffer += data
-      renderMobileOutput()
-    }
+    if (term) term.write(data)
   }
 
   function onExit(exitCode) {
     var msg = '\r\n[Session exited with code ' + exitCode + ']'
-    if (!isMobile() && term) {
-      term.write(msg)
-    } else {
-      mobileBuffer += msg
-      renderMobileOutput()
-    }
+    if (term) term.write(msg)
   }
 
   function close() {
-    if (resizeObserver) {
-      resizeObserver.disconnect()
-      resizeObserver = null
-    }
     if (term) {
       term.dispose()
       term = null
       fitAddon = null
     }
     terminalContainer.innerHTML = ''
-    mobileOutput.textContent = ''
-    mobileBuffer = ''
+    mobileOutput.innerHTML = ''
     currentId = null
     currentSocket = null
   }
@@ -202,13 +180,47 @@
     mobileImageInput.value = ''
   })
 
+  // Mobile font-size controls
+  if (fontDecBtn) {
+    fontDecBtn.addEventListener('click', function () {
+      setMobileFontSize(getMobileFontSize() - 1)
+    })
+  }
+  if (fontIncBtn) {
+    fontIncBtn.addEventListener('click', function () {
+      setMobileFontSize(getMobileFontSize() + 1)
+    })
+  }
+
+  // Help modal
+  var helpBtn = document.getElementById('help-btn')
+  var helpModal = document.getElementById('help-modal')
+  var closeHelpBtn = document.getElementById('close-help')
+  if (helpBtn && helpModal) {
+    helpBtn.addEventListener('click', function () {
+      helpModal.classList.remove('hidden')
+    })
+  }
+  if (closeHelpBtn && helpModal) {
+    closeHelpBtn.addEventListener('click', function () {
+      helpModal.classList.add('hidden')
+    })
+  }
+  if (helpModal) {
+    var backdrop = helpModal.querySelector('.modal-backdrop')
+    if (backdrop) {
+      backdrop.addEventListener('click', function () {
+        helpModal.classList.add('hidden')
+      })
+    }
+  }
+
   // Handle mobile virtual keyboard — resize terminal view to visible area
   if (window.visualViewport) {
     function adjustForKeyboard() {
       var termView = document.getElementById('terminal-view')
       if (termView && !termView.classList.contains('hidden')) {
         termView.style.height = window.visualViewport.height + 'px'
-        mobileOutput.scrollTop = mobileOutput.scrollHeight
       }
     }
     window.visualViewport.addEventListener('resize', adjustForKeyboard)
