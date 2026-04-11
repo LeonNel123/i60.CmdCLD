@@ -8,6 +8,7 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { SettingsDialog } from './components/SettingsDialog'
 import { LaunchDialog } from './components/LaunchDialog'
 import { MarkdownViewer } from './components/MarkdownViewer'
+import { Toast } from './components/Toast'
 import { assignColor } from './utils/colors'
 import { calculateLayout, getRowCount } from './utils/grid-layout'
 import { onActivityChange } from './utils/terminal-activity'
@@ -45,10 +46,16 @@ export default function App() {
   const [showNewProject, setShowNewProject] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [markdownFile, setMarkdownFile] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ message: string; kind: 'info' | 'warn' } | null>(null)
 
   // Track terminal busy/idle state + notification sound
   const notifyRef = useRef(false)
   useEffect(() => { notifyRef.current = notifyOnIdle }, [notifyOnIdle])
+
+  const showToast = useCallback((message: string, kind: 'info' | 'warn' = 'info') => {
+    setToast({ message, kind })
+    setTimeout(() => setToast(null), 3000)
+  }, [])
 
   useEffect(() => {
     const audio = new Audio(notificationSound)
@@ -214,9 +221,23 @@ export default function App() {
     startAddFolder(homeDir)
   }, [startAddFolder])
 
-  const handleOpenRecent = useCallback((path: string) => {
-    startAddFolder(path)
-  }, [startAddFolder])
+  const handleOpenRecent = useCallback(async (folderPath: string) => {
+    let status: 'ok' | 'missing' | 'unmounted' = 'ok'
+    try {
+      status = await window.api.recentCheckPath(folderPath)
+    } catch {
+      // fail-open: let the OS surface any error
+    }
+    const name = folderPath.split(/[\\/]/).pop() || folderPath
+    if (status === 'ok') {
+      startAddFolder(folderPath)
+    } else if (status === 'missing') {
+      showToast(`"${name}" no longer exists — removed from recents`, 'warn')
+      window.api.recentList().then(setRecentFolders).catch(() => {})
+    } else /* 'unmounted' */ {
+      showToast(`"${name}" is on a drive that isn't currently mounted`, 'info')
+    }
+  }, [startAddFolder, showToast])
 
   const handleLaunchConfirm = useCallback((args: string) => {
     if (!pendingLaunch) return
@@ -443,6 +464,10 @@ export default function App() {
           filePath={markdownFile}
           onClose={() => setMarkdownFile(null)}
         />
+      )}
+
+      {toast && (
+        <Toast message={toast.message} kind={toast.kind} />
       )}
 
       {showNewProject && (

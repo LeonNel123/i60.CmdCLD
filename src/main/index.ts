@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Men
 import { join } from 'path'
 import { spawn, execSync } from 'child_process'
 import { appendFileSync, existsSync, statSync, writeFileSync, readFileSync, mkdirSync } from 'fs'
+import * as os from 'os'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
 import { WindowRegistry } from './window-registry'
@@ -390,6 +391,16 @@ ipcMain.handle('recent:list', async () => {
 ipcMain.handle('recent:add', async (_event, folderPath: string) => {
   await recentDB.add(folderPath)
 })
+
+ipcMain.handle('recent-check-path', (_e, p: string) => recentDB.checkPath(p))
+
+ipcMain.handle('get-build-info', () => ({
+  electron: process.versions.electron,
+  chrome:   process.versions.chrome,
+  node:     process.versions.node,
+  platform: process.platform,
+  release:  os.release(),
+}))
 
 // Store IPC handlers
 ipcMain.handle('store:load', () => {

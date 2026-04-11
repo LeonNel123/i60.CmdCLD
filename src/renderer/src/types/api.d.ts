@@ -41,6 +41,14 @@ export interface ElectronAPI {
   windowList: () => Promise<WindowInfo[]>
   recentList: () => Promise<RecentFolder[]>
   recentAdd: (folderPath: string) => Promise<void>
+  recentCheckPath: (path: string) => Promise<'ok' | 'missing' | 'unmounted'>
+  getBuildInfo: () => Promise<{
+    electron: string
+    chrome: string
+    node: string
+    platform: string
+    release: string
+  }>
   readFile: (filePath: string) => Promise<string | null>
   clipboardSaveImage: (cwd: string) => Promise<string | null>
   getHomeDir: () => Promise<string>

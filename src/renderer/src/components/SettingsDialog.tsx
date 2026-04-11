@@ -6,6 +6,7 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
+  const [tab, setTab] = useState<'settings' | 'about'>('settings')
   const [claudeArgs, setClaudeArgs] = useState('')
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
@@ -18,9 +19,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [remoteError, setRemoteError] = useState('')
   const [favoriteFolders, setFavoriteFolders] = useState<string[]>([])
   const [appVersion, setAppVersion] = useState('')
+  const [buildInfo, setBuildInfo] = useState<{ electron: string; chrome: string; node: string; platform: string; release: string } | null>(null)
 
   useEffect(() => {
     window.api.getVersion().then(setAppVersion).catch(() => {})
+    window.api.getBuildInfo().then(setBuildInfo).catch(() => {})
     window.api.settingsGetAll().then((s) => {
       setClaudeArgs(s.claudeArgs)
       setAskBeforeLaunch(s.askBeforeLaunch)
@@ -111,6 +114,30 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           border: '1px solid #333',
         }}
       >
+        {/* Tab bar */}
+        <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
+          {(['settings', 'about'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                background: tab === t ? '#22c55e20' : '#ffffff08',
+                border: tab === t ? '1px solid #22c55e' : '1px solid #333',
+                borderRadius: '4px',
+                padding: '4px 12px',
+                color: tab === t ? '#22c55e' : '#aaa',
+                fontSize: '11px',
+                fontFamily: 'monospace',
+                cursor: 'pointer',
+                textTransform: 'capitalize',
+              }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'settings' && (
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '0 0 16px 0' }}>
           <h3 style={{ color: '#e0e0e0', margin: 0, fontSize: '14px', fontFamily: 'monospace' }}>
             Claude CLI Settings
@@ -121,6 +148,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             </span>
           )}
         </div>
+        )}
+
+        {tab === 'settings' && (<>
 
         {/* Presets */}
         <div style={{ marginBottom: '12px' }}>
@@ -394,28 +424,108 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           </div>
         </div>
 
+        </>)}
+
+        {/* About tab */}
+        {tab === 'about' && (
+          <div style={{ fontFamily: 'Menlo, Consolas, monospace', fontSize: '12px', color: '#ccc', lineHeight: '1.6' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span style={{ color: '#e0e0e0', fontSize: '14px', fontWeight: 600 }}>CmdCLD</span>
+              <span style={{ color: '#555', fontSize: '11px' }}>{appVersion ? `v${appVersion}` : ''}</span>
+            </div>
+            <div style={{ color: '#888', fontSize: '11px', marginBottom: '16px' }}>Multi-terminal Claude launcher</div>
+
+            <div style={{ color: '#aaa', fontSize: '11px', marginBottom: '16px', lineHeight: '1.7' }}>
+              Created by Leon Nel at i60 Global, an enterprise<br />
+              software company building platforms, AI tools,<br />
+              and developer utilities for the insurance<br />
+              industry since 2005.
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ marginBottom: '4px' }}>
+                <a
+                  href="https://i60.co"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: '#22c55e', fontSize: '11px', textDecoration: 'none' }}
+                >
+                  → i60.co
+                </a>
+              </div>
+              <div>
+                <a
+                  href="https://github.com/LeonNel123/i60.CmdCLD"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: '#22c55e', fontSize: '11px', textDecoration: 'none' }}
+                >
+                  → github.com/LeonNel123/i60.CmdCLD
+                </a>
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid #333', margin: '12px 0' }} />
+
+            <div style={{ color: '#555', fontSize: '11px', marginBottom: '12px' }}>
+              © 2026 i60 · Licensed under MIT
+            </div>
+
+            <div style={{ borderTop: '1px solid #333', margin: '12px 0' }} />
+
+            <div style={{ color: '#888', fontSize: '11px', marginBottom: '8px' }}>Build info</div>
+            {[
+              ['Electron', buildInfo?.electron],
+              ['Chromium', buildInfo?.chrome],
+              ['Node',     buildInfo?.node],
+              ['Platform', buildInfo ? `${buildInfo.platform} ${buildInfo.release}` : undefined],
+            ].map(([label, value]) => (
+              <div key={label as string} style={{ display: 'flex', gap: '12px', marginBottom: '3px' }}>
+                <span style={{ color: '#555', fontSize: '11px', width: '70px', flexShrink: 0 }}>{label}</span>
+                <span style={{ color: '#aaa', fontSize: '11px' }}>{value ?? '—'}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Buttons */}
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onClose}
-            style={{
-              background: '#333', color: '#ccc', border: 'none',
-              borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
-              fontSize: '12px', fontFamily: 'monospace',
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={save}
-            style={{
-              background: '#22c55e', color: '#000', border: 'none',
-              borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
-              fontSize: '12px', fontFamily: 'monospace', fontWeight: 600,
-            }}
-          >
-            Save
-          </button>
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
+          {tab === 'settings' && (
+            <>
+              <button
+                onClick={onClose}
+                style={{
+                  background: '#333', color: '#ccc', border: 'none',
+                  borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
+                  fontSize: '12px', fontFamily: 'monospace',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={save}
+                style={{
+                  background: '#22c55e', color: '#000', border: 'none',
+                  borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
+                  fontSize: '12px', fontFamily: 'monospace', fontWeight: 600,
+                }}
+              >
+                Save
+              </button>
+            </>
+          )}
+          {tab === 'about' && (
+            <button
+              onClick={onClose}
+              style={{
+                background: '#333', color: '#ccc', border: 'none',
+                borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
+                fontSize: '12px', fontFamily: 'monospace',
+              }}
+            >
+              Close
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -108,6 +108,14 @@ contextBridge.exposeInMainWorld('api', {
     return () => { ipcRenderer.removeListener('window:list-updated', listener) }
   },
 
+  // Recent path check (prunes if missing)
+  recentCheckPath: (path: string): Promise<'ok' | 'missing' | 'unmounted'> =>
+    ipcRenderer.invoke('recent-check-path', path),
+
+  // Build info for About tab
+  getBuildInfo: (): Promise<{ electron: string; chrome: string; node: string; platform: string; release: string }> =>
+    ipcRenderer.invoke('get-build-info'),
+
   // Remote access
   remoteToggle: (enabled: boolean): Promise<{ ok: boolean; urls?: string[]; port?: number; error?: string }> =>
     ipcRenderer.invoke('remote:toggle', enabled),
