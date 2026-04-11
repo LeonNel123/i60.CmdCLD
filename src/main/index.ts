@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Menu } from 'electron'
 import { join } from 'path'
-import { spawn } from 'child_process'
+import { spawn, execSync } from 'child_process'
 import { appendFileSync, existsSync, statSync, writeFileSync, readFileSync, mkdirSync } from 'fs'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
@@ -19,6 +19,42 @@ function log(msg: string): void {
 }
 
 log('=== App starting ===')
+
+// Hydrate PATH and env from the user's login shell when launched from Finder/Dock.
+// Packaged macOS apps start with a bare environment (PATH ≈ /usr/bin:/bin:/usr/sbin:/sbin),
+// which breaks MCP servers that Claude Code spawns via `npx`, `uvx`, Homebrew `node`, nvm, etc.
+// Running the login shell interactively picks up ~/.zshrc / ~/.zprofile / ~/.bash_profile
+// so PTYs inherit the same environment the user sees in their terminal.
+function hydrateLoginShellEnv(): void {
+  if (process.platform === 'win32') return
+  const shell = process.env.SHELL || '/bin/zsh'
+  try {
+    const out = execSync(`${shell} -ilc 'printf "%s\\0" "$PATH"; env -0'`, {
+      encoding: 'utf8',
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    const firstNul = out.indexOf('\0')
+    const loginPath = firstNul >= 0 ? out.slice(0, firstNul) : ''
+    const envBlob = firstNul >= 0 ? out.slice(firstNul + 1) : ''
+    if (loginPath) process.env.PATH = loginPath
+    for (const entry of envBlob.split('\0')) {
+      const eq = entry.indexOf('=')
+      if (eq <= 0) continue
+      const k = entry.slice(0, eq)
+      const v = entry.slice(eq + 1)
+      if (k === 'PATH') continue // already set above
+      if (process.env[k] == null) process.env[k] = v
+    }
+    log(`Login shell env hydrated (PATH=${process.env.PATH})`)
+  } catch (e) {
+    log(`Login shell env hydration FAILED: ${e}`)
+  }
+}
+
+if (app.isPackaged) {
+  hydrateLoginShellEnv()
+}
 
 // Single instance lock — only one app process at a time
 const gotLock = app.requestSingleInstanceLock()
