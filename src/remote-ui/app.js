@@ -68,6 +68,15 @@
       }
       refreshSessions()
     })
+
+    // Another client (desktop or another web tab) changed the PTY size.
+    // Mirror it into our xterm without re-fitting — that would bounce the
+    // active driver off the size and start a tug-of-war.
+    socket.on('session:resize', function (msg) {
+      if (msg && msg.id === currentSessionId && window.CmdCLD_Terminal.onResize) {
+        window.CmdCLD_Terminal.onResize(msg.cols, msg.rows)
+      }
+    })
   }
 
   // Activity tracking — only update the status label, don't rebuild the DOM

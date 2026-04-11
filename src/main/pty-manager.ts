@@ -133,11 +133,26 @@ export class PtyManager extends EventEmitter {
 
   resize(id: string, cols: number, rows: number): void {
     const entry = this.ptys.get(id)
-    if (entry) {
+    if (!entry) return
+    // Skip no-op resizes so we don't spam listeners / webContents.
+    if (entry.cols === cols && entry.rows === rows) return
+    try {
       entry.process.resize(cols, rows)
-      entry.cols = cols
-      entry.rows = rows
+    } catch {
+      // node-pty can throw if the PTY has already exited; ignore.
+      return
     }
+    entry.cols = cols
+    entry.rows = rows
+    // Notify the desktop renderer that owns this PTY so its xterm can
+    // update its cols/rows to match the new authoritative size. This keeps
+    // wrapping coherent when a remote (web) client drives the resize.
+    try {
+      if (!entry.webContents.isDestroyed()) {
+        entry.webContents.send(`pty:resize:${id}`, { cols, rows })
+      }
+    } catch {}
+    this.emit('resize', { id, cols, rows })
   }
 
   getSize(id: string): { cols: number; rows: number } {

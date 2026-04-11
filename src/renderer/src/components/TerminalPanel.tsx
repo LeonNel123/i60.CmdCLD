@@ -61,7 +61,13 @@ export function TerminalPanel({
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const searchAddonRef = useRef<SearchAddon | null>(null)
-  const cleanupRef = useRef<{ removeData: () => void; removeExit: () => void; removePaste: () => void } | null>(null)
+  const cleanupRef = useRef<{ removeData: () => void; removeExit: () => void; removePaste: () => void; removeResize: () => void } | null>(null)
+  // Tracks the last dims we received from the PTY (via pty:resize events).
+  // When the local ResizeObserver fires after a remote-driven resize, we
+  // compare against this so we don't echo the remote's dims back and kick
+  // them off the size. Only a *real* container change (different from the
+  // PTY's current size) takes ownership.
+  const ptyDimsRef = useRef<{ cols: number; rows: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [editorName, setEditorName] = useState('Editor')
   const [availableEditors, setAvailableEditors] = useState<Array<{ id: string; name: string; cmd: string }>>([])
@@ -164,10 +170,20 @@ export function TerminalPanel({
       activePtys.delete(id)
     })
 
+    // When another client (or our own fit) resizes the PTY, mirror the new
+    // cols/rows into our xterm without touching the container. This keeps
+    // wrapping correct when a remote web client drives the size.
+    const removeResize = window.api.onTerminalResize(id, ({ cols, rows }) => {
+      ptyDimsRef.current = { cols, rows }
+      if (terminalRef.current && (terminalRef.current.cols !== cols || terminalRef.current.rows !== rows)) {
+        try { terminalRef.current.resize(cols, rows) } catch {}
+      }
+    })
+
     const removePaste = () => {
       if (xtermTextarea) xtermTextarea.removeEventListener('paste', blockNativePaste, true)
     }
-    cleanupRef.current = { removeData, removeExit, removePaste }
+    cleanupRef.current = { removeData, removeExit, removePaste, removeResize }
 
     term.onData((data) => {
       window.api.writeTerminal(id, data)
@@ -263,7 +279,11 @@ export function TerminalPanel({
       }
     })
 
-    // Debounced resize observer
+    // Debounced resize observer — fires only when the container's actual
+    // pixel dimensions change (sidebar toggle, window resize, font zoom).
+    // We fit to our container and claim the PTY size, which broadcasts to
+    // every other client. Remote-driven resizes come in via onTerminalResize
+    // above and don't touch the container, so they don't retrigger this.
     let resizeTimer: ReturnType<typeof setTimeout>
     const resizeObserver = new ResizeObserver(() => {
       clearTimeout(resizeTimer)
@@ -271,7 +291,13 @@ export function TerminalPanel({
         if (fitAddonRef.current && terminalRef.current) {
           fitAddonRef.current.fit()
           const { cols, rows } = terminalRef.current
-          window.api.resizeTerminal(id, cols, rows)
+          // Skip the IPC round-trip if the PTY already matches (e.g. we
+          // just absorbed a remote resize that set our xterm to these dims
+          // and the container happened to fit the same size).
+          const last = ptyDimsRef.current
+          if (!last || last.cols !== cols || last.rows !== rows) {
+            window.api.resizeTerminal(id, cols, rows)
+          }
         }
       }, 100)
     })
@@ -284,6 +310,7 @@ export function TerminalPanel({
         cleanupRef.current.removeData()
         cleanupRef.current.removeExit()
         cleanupRef.current.removePaste()
+        cleanupRef.current.removeResize()
         cleanupRef.current = null
       }
       term.dispose()
