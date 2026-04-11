@@ -134,7 +134,7 @@ app.get('/test-terminal', (_req, res) => {
 // Test-only route: dashboard with new-session modal pre-opened with mock data
 app.get('/test-new-session', (_req, res) => {
   // Override the folder + session APIs with fake data for the screenshot
-  app.get('/api/folders/favorites', (_q, r) => r.json(['I:/i60-Projects/i60.CmdCLD', 'I:/projects/my-website']))
+  app.get('/api/folders/favorites', (_q, r) => r.json(['D:/2026/i60.CmdCLD', 'I:/projects/my-website']))
   const html = readFileSync(join(UI_DIR, 'index.html'), 'utf8')
     .replace('<div id="new-session-modal" class="modal hidden">', '<div id="new-session-modal" class="modal">')
     + `<script>
@@ -152,7 +152,7 @@ app.get('/test-new-session', (_req, res) => {
         <div class="folder-item">
           <div class="folder-info">
             <div class="folder-name">CmdCLD</div>
-            <div class="folder-path">I:/i60-Projects/i60.CmdCLD</div>
+            <div class="folder-path">D:/2026/i60.CmdCLD</div>
           </div>
         </div>
         <div class="folder-item">
