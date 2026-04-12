@@ -123,7 +123,7 @@
       return
     }
 
-    sessionCards.innerHTML = sessions.map(function (s) {
+    sessionCards.innerHTML = sessions.slice().sort(function (a, b) { return a.name.localeCompare(b.name) }).map(function (s) {
       var busy = busyState[s.id]
       var statusClass = busy ? 'busy' : 'idle'
       var statusText = busy ? '⟳ Working...' : '● Idle'
@@ -255,6 +255,7 @@
 
       var html = ''
       if (favRes.length > 0) {
+        favRes.sort(function (a, b) { return a.localeCompare(b) })
         html += '<div class="folder-section-label">Favorites</div>'
         for (var i = 0; i < favRes.length; i++) {
           var f = favRes[i]
@@ -264,6 +265,7 @@
       }
 
       if (recRes.length > 0) {
+        recRes.sort(function (a, b) { return a.name.localeCompare(b.name) })
         html += '<div class="folder-section-label">Recent</div>'
         for (var j = 0; j < recRes.length; j++) {
           var r = recRes[j]
