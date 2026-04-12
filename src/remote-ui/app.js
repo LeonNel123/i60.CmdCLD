@@ -160,6 +160,7 @@
     if (!session) return
 
     terminalName.textContent = session.name
+    document.title = session.name + ' — CmdCLD Remote'
     terminalStatus.textContent = busyState[id] ? '⟳ Working' : '● Idle'
     terminalStatus.style.color = busyState[id] ? '#f59e0b' : '#10b981'
 
@@ -181,6 +182,7 @@
   function closeTerminal() {
     window.CmdCLD_Terminal.close()
     currentSessionId = null
+    document.title = 'CmdCLD Remote'
     terminalView.classList.add('hidden')
     dashboardView.style.display = ''
     refreshSessions()
