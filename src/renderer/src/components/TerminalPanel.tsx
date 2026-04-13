@@ -9,9 +9,11 @@ import { onTerminalDataReceived, removeTerminalActivity } from '../utils/termina
 // Global set of PTY IDs that have been created — prevents duplicates on remount
 const activePtys = new Set<string>()
 
-// Write text to PTY in chunks to avoid overwhelming the buffer
+// Write text to PTY. Single IPC write for normal pastes (<=64KB);
+// chunk only for truly massive pastes, using microtasks (not setTimeout)
+// so we don't introduce artificial rate limits that can drop bytes.
 function writeChunked(id: string, text: string): void {
-  const CHUNK_SIZE = 256
+  const CHUNK_SIZE = 64 * 1024
   if (text.length <= CHUNK_SIZE) {
     window.api.writeTerminal(id, text)
     return
@@ -22,7 +24,7 @@ function writeChunked(id: string, text: string): void {
     const chunk = text.slice(offset, offset + CHUNK_SIZE)
     window.api.writeTerminal(id, chunk)
     offset += CHUNK_SIZE
-    setTimeout(writeNext, 5)
+    queueMicrotask(writeNext)
   }
   writeNext()
 }
