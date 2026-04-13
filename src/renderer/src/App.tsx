@@ -52,9 +52,11 @@ export default function App() {
   const notifyRef = useRef(false)
   useEffect(() => { notifyRef.current = notifyOnIdle }, [notifyOnIdle])
 
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const showToast = useCallback((message: string, kind: 'info' | 'warn' = 'info') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     setToast({ message, kind })
-    setTimeout(() => setToast(null), 3000)
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000)
   }, [])
 
   useEffect(() => {
