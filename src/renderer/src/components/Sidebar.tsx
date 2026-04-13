@@ -130,7 +130,7 @@ export function Sidebar({
 
       {/* Active terminals */}
       <div style={{ overflowY: 'auto', padding: '4px', flexShrink: 0 }}>
-        {terminals.map((t) => {
+        {[...terminals].sort((a, b) => a.name.localeCompare(b.name)).map((t) => {
           const isActive = viewMode.type === 'focused' && viewMode.terminalId === t.id
           const busy = busyTerminals.has(t.id)
           return (
@@ -190,7 +190,7 @@ export function Sidebar({
             <span>Recent</span>
             <span style={{ fontSize: '10px' }}>{recentExpanded ? '\u25BC' : '\u25B6'}</span>
           </button>
-          {recentExpanded && recentFolders.map((f) => {
+          {recentExpanded && [...recentFolders].sort((a, b) => a.name.localeCompare(b.name)).map((f) => {
             const isOpen = activePaths.has(f.path)
             return (
               <button

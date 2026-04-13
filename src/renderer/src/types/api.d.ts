@@ -34,6 +34,7 @@ export interface ElectronAPI {
   getScrollback: (id: string) => Promise<string>
   onTerminalData: (id: string, callback: (data: string) => void) => () => void
   onTerminalExit: (id: string, callback: (exitCode: number) => void) => () => void
+  onTerminalResize: (id: string, callback: (size: { cols: number; rows: number }) => void) => () => void
   selectFolder: () => Promise<string | null>
   loadState: () => Promise<MultiWindowState | null>
   saveState: (state: MultiWindowState) => Promise<void>

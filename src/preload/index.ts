@@ -32,6 +32,16 @@ contextBridge.exposeInMainWorld('api', {
     return () => { ipcRenderer.removeListener(`pty:exit:${id}`, listener) }
   },
 
+  // Fires when the PTY size changes from any source (including remote web
+  // clients). Renderer should call term.resize(cols, rows) to stay in sync
+  // with the authoritative PTY dims — do NOT call fitAddon.fit() here, since
+  // that would feed back and kick the active client off the size.
+  onTerminalResize: (id: string, callback: (size: { cols: number; rows: number }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, size: { cols: number; rows: number }): void => callback(size)
+    ipcRenderer.on(`pty:resize:${id}`, listener)
+    return () => { ipcRenderer.removeListener(`pty:resize:${id}`, listener) }
+  },
+
   // Existing dialog/store
   selectFolder: (): Promise<string | null> =>
     ipcRenderer.invoke('dialog:selectFolder'),

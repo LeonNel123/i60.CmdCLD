@@ -314,9 +314,17 @@ export class RemoteServer {
         }
       })
 
-      // Ignore remote resize — the main Electron terminal owns the PTY size.
-      // Remote xterm.js adapts via its own fit addon without resizing the PTY.
-      socket.on('session:resize', () => {})
+      // Remote clients can drive the PTY size. The PtyManager broadcasts
+      // the authoritative new size back to every connected client (including
+      // the desktop renderer via webContents), so all xterm instances update
+      // their cols/rows together and wrapping stays coherent. "Last writer
+      // wins" — whichever client's layout most recently changed owns the
+      // size; idle clients follow along without re-fitting their own DOM.
+      socket.on('session:resize', ({ id, cols, rows }: { id: string; cols: number; rows: number }) => {
+        if (typeof cols === 'number' && typeof rows === 'number' && this.ptyManager.has(id)) {
+          this.ptyManager.resize(id, cols, rows)
+        }
+      })
     })
   }
 
@@ -343,6 +351,12 @@ export class RemoteServer {
       if (this.io) {
         this.io.emit('session:created', meta)
         this.io.emit('sessions:changed', this.ptyManager.listAll())
+      }
+    })
+
+    this.addPtyListener('resize', ({ id, cols, rows }: { id: string; cols: number; rows: number }) => {
+      if (this.io) {
+        this.io.emit('session:resize', { id, cols, rows })
       }
     })
   }

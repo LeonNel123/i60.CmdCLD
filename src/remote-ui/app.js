@@ -68,6 +68,15 @@
       }
       refreshSessions()
     })
+
+    // Another client (desktop or another web tab) changed the PTY size.
+    // Mirror it into our xterm without re-fitting — that would bounce the
+    // active driver off the size and start a tug-of-war.
+    socket.on('session:resize', function (msg) {
+      if (msg && msg.id === currentSessionId && window.CmdCLD_Terminal.onResize) {
+        window.CmdCLD_Terminal.onResize(msg.cols, msg.rows)
+      }
+    })
   }
 
   // Activity tracking — only update the status label, don't rebuild the DOM
@@ -114,7 +123,7 @@
       return
     }
 
-    sessionCards.innerHTML = sessions.map(function (s) {
+    sessionCards.innerHTML = sessions.slice().sort(function (a, b) { return a.name.localeCompare(b.name) }).map(function (s) {
       var busy = busyState[s.id]
       var statusClass = busy ? 'busy' : 'idle'
       var statusText = busy ? '⟳ Working...' : '● Idle'
@@ -151,6 +160,7 @@
     if (!session) return
 
     terminalName.textContent = session.name
+    document.title = session.name + ' — CmdCLD Remote'
     terminalStatus.textContent = busyState[id] ? '⟳ Working' : '● Idle'
     terminalStatus.style.color = busyState[id] ? '#f59e0b' : '#10b981'
 
@@ -172,6 +182,7 @@
   function closeTerminal() {
     window.CmdCLD_Terminal.close()
     currentSessionId = null
+    document.title = 'CmdCLD Remote'
     terminalView.classList.add('hidden')
     dashboardView.style.display = ''
     refreshSessions()
@@ -246,6 +257,7 @@
 
       var html = ''
       if (favRes.length > 0) {
+        favRes.sort(function (a, b) { return a.localeCompare(b) })
         html += '<div class="folder-section-label">Favorites</div>'
         for (var i = 0; i < favRes.length; i++) {
           var f = favRes[i]
@@ -255,6 +267,7 @@
       }
 
       if (recRes.length > 0) {
+        recRes.sort(function (a, b) { return a.name.localeCompare(b.name) })
         html += '<div class="folder-section-label">Recent</div>'
         for (var j = 0; j < recRes.length; j++) {
           var r = recRes[j]

@@ -15,6 +15,7 @@
   var fitAddon = null
   var currentId = null
   var currentSocket = null
+  var remoteResizeHandler = null
 
   function isMobile() {
     return window.innerWidth <= 768
@@ -77,6 +78,61 @@
     term.loadAddon(fitAddon)
     term.open(container)
 
+    // Size xterm to the container and claim the PTY size. The server
+    // relays session:resize to all other clients so their xterm instances
+    // update cols/rows to match — keeps wrapping coherent across clients.
+    if (!mobile) {
+      // Tracks the dims most recently applied by a remote-driven resize, so
+      // our own post-fit resize doesn't echo them back.
+      var lastRemoteDims = null
+      var safeFit = function () {
+        try {
+          if (!fitAddon || !term || !term.element) return
+          if (container.clientWidth <= 0 || container.clientHeight <= 0) return
+          fitAddon.fit()
+          var cols = term.cols
+          var rows = term.rows
+          if (!lastRemoteDims || lastRemoteDims.cols !== cols || lastRemoteDims.rows !== rows) {
+            if (currentSocket && currentId) {
+              currentSocket.emit('session:resize', { id: currentId, cols: cols, rows: rows })
+            }
+          }
+        } catch (e) {}
+      }
+
+      // The remote-driven resize handler needs to see this session's
+      // `lastRemoteDims`, so rebind it on every open() call.
+      remoteResizeHandler = function (cols, rows) {
+        if (!term) return
+        lastRemoteDims = { cols: cols, rows: rows }
+        if (term.cols !== cols || term.rows !== rows) {
+          try { term.resize(cols, rows) } catch (e) {}
+        }
+      }
+
+      // First fit as soon as layout is ready, then retry across the next few
+      // frames in case the container was still transitioning out of `.hidden`
+      // when term.open() was called.
+      requestAnimationFrame(function () {
+        safeFit()
+        requestAnimationFrame(safeFit)
+        setTimeout(safeFit, 50)
+        setTimeout(safeFit, 150)
+        setTimeout(safeFit, 400)
+      })
+
+      if (window.ResizeObserver) {
+        var resizeTimer = null
+        var resizeObs = new ResizeObserver(function () {
+          if (resizeTimer) clearTimeout(resizeTimer)
+          resizeTimer = setTimeout(safeFit, 60)
+        })
+        resizeObs.observe(container)
+      }
+
+      window.addEventListener('resize', safeFit)
+    }
+
     if (scrollback) {
       term.write(scrollback)
     }
@@ -133,6 +189,11 @@
     mobileOutput.innerHTML = ''
     currentId = null
     currentSocket = null
+    remoteResizeHandler = null
+  }
+
+  function onResize(cols, rows) {
+    if (remoteResizeHandler) remoteResizeHandler(cols, rows)
   }
 
   function uploadImage(blob) {
@@ -228,5 +289,5 @@
   }
 
   // Expose globally
-  window.CmdCLD_Terminal = { open: open, close: close, onData: onData, onExit: onExit }
+  window.CmdCLD_Terminal = { open: open, close: close, onData: onData, onExit: onExit, onResize: onResize }
 })()
