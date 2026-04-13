@@ -63,6 +63,10 @@ contextBridge.exposeInMainWorld('api', {
   clipboardSaveImage: (cwd: string): Promise<string | null> =>
     ipcRenderer.invoke('clipboard:saveImage', cwd),
 
+  // Clipboard file references — returns array of absolute paths, or null
+  clipboardReadFiles: (): Promise<string[] | null> =>
+    ipcRenderer.invoke('clipboard:readFiles'),
+
   // File reading (for markdown viewer)
   readFile: (filePath: string): Promise<string | null> =>
     ipcRenderer.invoke('file:read', filePath),

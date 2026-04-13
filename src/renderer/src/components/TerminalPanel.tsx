@@ -5,6 +5,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import { onTerminalDataReceived, removeTerminalActivity } from '../utils/terminal-activity'
+import { formatPaths } from '../utils/format-paths'
 
 // Global set of PTY IDs that have been created — prevents duplicates on remount
 const activePtys = new Set<string>()
@@ -63,7 +64,7 @@ export function TerminalPanel({
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const searchAddonRef = useRef<SearchAddon | null>(null)
-  const cleanupRef = useRef<{ removeData: () => void; removeExit: () => void; removePaste: () => void; removeResize: () => void } | null>(null)
+  const cleanupRef = useRef<{ removeData: () => void; removeExit: () => void; removePaste: () => void; removeResize: () => void; removeDragDrop: () => void } | null>(null)
   // Tracks the last dims we received from the PTY (via pty:resize events).
   // When the local ResizeObserver fires after a remote-driven resize, we
   // compare against this so we don't echo the remote's dims back and kick
@@ -83,6 +84,7 @@ export function TerminalPanel({
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const [dragActive, setDragActive] = useState(false)
 
   useEffect(() => {
     if (!termRef.current) return
@@ -198,7 +200,37 @@ export function TerminalPanel({
     const removePaste = () => {
       if (xtermTextarea) xtermTextarea.removeEventListener('paste', blockNativePaste, true)
     }
-    cleanupRef.current = { removeData, removeExit, removePaste, removeResize }
+
+    // Drag-and-drop: forward dropped file paths into the PTY
+    const container = termRef.current!
+    const onDragOver = (e: DragEvent): void => {
+      if (e.dataTransfer?.types.includes('Files')) {
+        e.preventDefault()
+        setDragActive(true)
+      }
+    }
+    const onDragLeave = (): void => setDragActive(false)
+    const onDrop = (e: DragEvent): void => {
+      e.preventDefault()
+      setDragActive(false)
+      const files = Array.from(e.dataTransfer?.files ?? [])
+      const paths = files.map((f: any) => f.path as string).filter(Boolean)
+      if (paths.length === 0) return
+      const payload = bracketedPasteRef.current
+        ? '\x1b[200~' + formatPaths(paths) + '\x1b[201~'
+        : formatPaths(paths)
+      writeChunked(id, payload)
+    }
+    container.addEventListener('dragover', onDragOver)
+    container.addEventListener('dragleave', onDragLeave)
+    container.addEventListener('drop', onDrop)
+    const removeDragDrop = (): void => {
+      container.removeEventListener('dragover', onDragOver)
+      container.removeEventListener('dragleave', onDragLeave)
+      container.removeEventListener('drop', onDrop)
+    }
+
+    cleanupRef.current = { removeData, removeExit, removePaste, removeResize, removeDragDrop }
 
     term.onData((data) => {
       window.api.writeTerminal(id, data)
@@ -227,7 +259,13 @@ export function TerminalPanel({
         window.api.clipboardSaveImage(folderPath).then((imgPath) => {
           if (imgPath) {
             window.api.writeTerminal(id, imgPath)
-          } else {
+            return
+          }
+          return window.api.clipboardReadFiles().then((files) => {
+            if (files && files.length > 0) {
+              window.api.writeTerminal(id, formatPaths(files))
+              return
+            }
             return navigator.clipboard.readText().then((text) => {
               if (!text) return
               const payload = bracketedPasteRef.current
@@ -235,7 +273,7 @@ export function TerminalPanel({
                 : text
               writeChunked(id, payload)
             })
-          }
+          })
         }).catch(() => {})
         return false
       }
@@ -330,6 +368,7 @@ export function TerminalPanel({
         cleanupRef.current.removeExit()
         cleanupRef.current.removePaste()
         cleanupRef.current.removeResize()
+        cleanupRef.current.removeDragDrop()
         cleanupRef.current = null
       }
       term.dispose()
@@ -522,7 +561,14 @@ export function TerminalPanel({
         </div>
       )}
 
-      <div ref={termRef} style={{ flex: 1, overflow: 'hidden' }} />
+      <div
+        ref={termRef}
+        style={{
+          flex: 1,
+          overflow: 'hidden',
+          boxShadow: dragActive ? 'inset 0 0 0 2px #22c55e' : undefined,
+        }}
+      />
 
       {contextMenu && availableEditors.length > 1 && (
         <div

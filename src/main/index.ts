@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Menu } from 'electron'
 import { join } from 'path'
+import { fileURLToPath } from 'url'
 import { spawn, execSync } from 'child_process'
 import { appendFileSync, existsSync, statSync, writeFileSync, readFileSync, mkdirSync } from 'fs'
 import * as os from 'os'
@@ -302,6 +303,42 @@ ipcMain.handle('clipboard:saveImage', (_event, cwd: string) => {
   writeFileSync(filePath, img.toPNG())
   return filePath
 })
+
+// Read file paths from clipboard (for Ctrl+V file-paste)
+function readClipboardFilePaths(): string[] | null {
+  try {
+    if (process.platform === 'win32') {
+      // CF_HDROP via FileNameW — UTF-16LE, null-terminated, returns first file
+      const buf = clipboard.readBuffer('FileNameW')
+      if (!buf || buf.length < 2) return null
+      const raw = buf.toString('utf16le')
+      const trimmed = raw.replace(/\0+$/, '')
+      if (!trimmed) return null
+      return [trimmed]
+    } else if (process.platform === 'darwin') {
+      // public.file-url — single file:// URL
+      const raw = clipboard.read('public.file-url')
+      if (!raw) return null
+      const p = raw.startsWith('file://') ? fileURLToPath(raw) : raw
+      if (!p) return null
+      return [p]
+    } else {
+      // Linux: text/uri-list — newline-separated file:// URLs
+      const raw = clipboard.read('text/uri-list')
+      if (!raw) return null
+      const paths = raw
+        .split(/\r?\n/)
+        .filter((line) => line && !line.startsWith('#'))
+        .map((line) => line.startsWith('file://') ? fileURLToPath(line) : line)
+        .filter(Boolean)
+      return paths.length > 0 ? paths : null
+    }
+  } catch {
+    return null
+  }
+}
+
+ipcMain.handle('clipboard:readFiles', () => readClipboardFilePaths())
 
 // Settings
 ipcMain.handle('settings:getAll', () => {
