@@ -70,6 +70,12 @@ export function TerminalPanel({
   // them off the size. Only a *real* container change (different from the
   // PTY's current size) takes ownership.
   const ptyDimsRef = useRef<{ cols: number; rows: number } | null>(null)
+  // Whether the program currently running in this PTY has enabled bracketed
+  // paste mode (it sends \x1b[?2004h to enable, \x1b[?2004l to disable).
+  // When true, our paste handler wraps the clipboard text with the paste
+  // markers so the program treats the whole thing as one paste event
+  // instead of executing each embedded newline as Enter.
+  const bracketedPasteRef = useRef(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [editorName, setEditorName] = useState('Editor')
   const [availableEditors, setAvailableEditors] = useState<Array<{ id: string; name: string; cmd: string }>>([])
@@ -163,6 +169,13 @@ export function TerminalPanel({
     let claudeLaunched = false
 
     const removeData = window.api.onTerminalData(id, (data) => {
+      // Sniff bracketed-paste mode toggles. A single chunk can in theory
+      // contain both — the later one wins.
+      const enableIdx = data.lastIndexOf('\x1b[?2004h')
+      const disableIdx = data.lastIndexOf('\x1b[?2004l')
+      if (enableIdx >= 0 || disableIdx >= 0) {
+        bracketedPasteRef.current = enableIdx > disableIdx
+      }
       term.write(data)
       onTerminalDataReceived(id)
     })
@@ -216,7 +229,11 @@ export function TerminalPanel({
             window.api.writeTerminal(id, imgPath)
           } else {
             return navigator.clipboard.readText().then((text) => {
-              if (text) writeChunked(id, text)
+              if (!text) return
+              const payload = bracketedPasteRef.current
+                ? '\x1b[200~' + text + '\x1b[201~'
+                : text
+              writeChunked(id, payload)
             })
           }
         }).catch(() => {})
