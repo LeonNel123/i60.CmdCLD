@@ -137,6 +137,24 @@ contextBridge.exposeInMainWorld('api', {
   remoteStatus: (): Promise<{ running: boolean; port: number }> =>
     ipcRenderer.invoke('remote:status'),
 
+  // Tailscale HTTPS exposure
+  tailscaleStatus: (): Promise<{
+    installed: boolean
+    loggedIn: boolean
+    online: boolean
+    httpsEnabled: boolean
+    httpsHost: string | null
+    error: string | null
+    serveActive: boolean
+    serveUrl: string | null
+  }> => ipcRenderer.invoke('tailscale:status'),
+
+  tailscaleServeStart: (): Promise<{ ok: boolean; url?: string; error?: string }> =>
+    ipcRenderer.invoke('tailscale:serveStart'),
+
+  tailscaleServeStop: (): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('tailscale:serveStop'),
+
   onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string }) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, session: any): void => callback(session)
     ipcRenderer.on('remote:session-created', listener)

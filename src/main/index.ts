@@ -12,6 +12,7 @@ import { Settings } from './settings'
 import { detectEditors, getDefaultEditor } from './editor-detect'
 import { RemoteServer } from './remote-server'
 import { hardenGlobalSettings, trustFolder } from './claude-config'
+import { getStatus as tsGetStatus, getServeStatus as tsGetServeStatus, startServe as tsStartServe, stopServe as tsStopServe } from './tailscale'
 import type { TerminalMeta } from './pty-manager'
 
 // File logger for debugging startup issues
@@ -385,6 +386,26 @@ ipcMain.handle('remote:status', () => {
     port,
     urls: running ? remoteServer.getUrls(port) : [],
   }
+})
+
+// Tailscale HTTPS exposure — shells out to the user's tailscale CLI.
+// Requires: tailscale installed, signed in, and HTTPS enabled on the tailnet.
+ipcMain.handle('tailscale:status', async () => {
+  const status = await tsGetStatus()
+  const serve = status.installed ? await tsGetServeStatus() : { active: false, url: null as string | null }
+  return { ...status, serveActive: serve.active, serveUrl: serve.url }
+})
+
+ipcMain.handle('tailscale:serveStart', async () => {
+  if (!remoteServer.isRunning()) {
+    return { ok: false, error: 'Enable Remote Access first.' }
+  }
+  const port = settings.get('remotePort') as number
+  return tsStartServe(port)
+})
+
+ipcMain.handle('tailscale:serveStop', async () => {
+  return tsStopServe()
 })
 
 // Get home directory for quick Claude sessions

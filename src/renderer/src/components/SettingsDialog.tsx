@@ -18,6 +18,18 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [remoteUrls, setRemoteUrls] = useState<string[]>([])
   const [remoteError, setRemoteError] = useState('')
   const [favoriteFolders, setFavoriteFolders] = useState<string[]>([])
+  const [tsStatus, setTsStatus] = useState<{
+    installed: boolean
+    loggedIn: boolean
+    online: boolean
+    httpsEnabled: boolean
+    httpsHost: string | null
+    error: string | null
+    serveActive: boolean
+    serveUrl: string | null
+  } | null>(null)
+  const [tsBusy, setTsBusy] = useState(false)
+  const [tsError, setTsError] = useState('')
   const [appVersion, setAppVersion] = useState('')
   const [buildInfo, setBuildInfo] = useState<{ electron: string; chrome: string; node: string; platform: string; release: string } | null>(null)
 
@@ -41,7 +53,29 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         if (status.urls?.length) setRemoteUrls(status.urls)
       }
     }).catch(() => {})
+    window.api.tailscaleStatus().then(setTsStatus).catch(() => {})
   }, [])
+
+  const refreshTailscale = async () => {
+    try {
+      const s = await window.api.tailscaleStatus()
+      setTsStatus(s)
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleTailscaleServeToggle = async (on: boolean) => {
+    setTsError('')
+    setTsBusy(true)
+    try {
+      const result = on ? await window.api.tailscaleServeStart() : await window.api.tailscaleServeStop()
+      if (!result.ok) setTsError(result.error || (on ? 'Failed to start' : 'Failed to stop'))
+      await refreshTailscale()
+    } finally {
+      setTsBusy(false)
+    }
+  }
 
   const handleRemoteToggle = async (enabled: boolean) => {
     setRemoteError('')
@@ -62,6 +96,12 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       setRemoteAccess(false)
       setRemoteUrls([])
       window.api.settingsSet('remoteAccess', false)
+      // Tailscale serve points at the local HTTP server; stop it too so we
+      // don't leave a broken HTTPS URL behind after disabling remote access.
+      if (tsStatus?.serveActive) {
+        await window.api.tailscaleServeStop().catch(() => {})
+        await refreshTailscale()
+      }
     }
   }
 
@@ -396,6 +436,77 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               {remoteError}
             </div>
           )}
+
+          {/* Tailscale HTTPS */}
+          <div style={{ marginBottom: '16px', paddingTop: '12px', borderTop: '1px dashed #2a2a3a' }}>
+            <div style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', marginBottom: '6px' }}>
+              Tailscale HTTPS (optional)
+            </div>
+            {!tsStatus && (
+              <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace' }}>Checking…</div>
+            )}
+            {tsStatus && !tsStatus.installed && (
+              <div style={{ color: '#666', fontSize: '10px', fontFamily: 'monospace', lineHeight: 1.5 }}>
+                Tailscale CLI not found. Install from{' '}
+                <a
+                  href="https://tailscale.com/download"
+                  onClick={(e) => { e.preventDefault(); window.api.openExternal('https://tailscale.com/download') }}
+                  style={{ color: '#22c55e' }}
+                >tailscale.com/download</a>{' '}
+                to expose CmdCLD over a trusted HTTPS URL without touching router settings.
+              </div>
+            )}
+            {tsStatus?.installed && !tsStatus.loggedIn && (
+              <div style={{ color: '#f59e0b', fontSize: '10px', fontFamily: 'monospace' }}>
+                {tsStatus.error || 'Sign in with `tailscale up` and try again.'}
+              </div>
+            )}
+            {tsStatus?.installed && tsStatus.loggedIn && (
+              <>
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  cursor: remoteAccess && !tsBusy ? 'pointer' : 'not-allowed',
+                  color: remoteAccess ? '#ccc' : '#666',
+                  fontSize: '12px', fontFamily: 'monospace',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={!!tsStatus.serveActive}
+                    disabled={!remoteAccess || tsBusy}
+                    onChange={(e) => handleTailscaleServeToggle(e.target.checked)}
+                    style={{ accentColor: '#22c55e' }}
+                  />
+                  Expose over HTTPS via Tailscale Serve
+                </label>
+                {!remoteAccess && (
+                  <div style={{ color: '#666', fontSize: '10px', fontFamily: 'monospace', marginTop: '4px' }}>
+                    Enable Remote Access above first.
+                  </div>
+                )}
+                {tsStatus.serveActive && tsStatus.serveUrl && (
+                  <div
+                    style={{
+                      color: '#22c55e', fontSize: '12px', fontFamily: 'Menlo, Consolas, monospace',
+                      padding: '4px 0', cursor: 'pointer',
+                    }}
+                    onClick={() => navigator.clipboard.writeText(tsStatus.serveUrl!)}
+                    title="Click to copy"
+                  >
+                    {tsStatus.serveUrl}
+                  </div>
+                )}
+                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginTop: '4px', lineHeight: 1.5 }}>
+                  Uses `tailscale serve --https=443`. Issues a Let's Encrypt cert on your tailnet name.
+                  Note: disabling runs `tailscale serve reset`, which clears all serve rules on this machine.
+                </div>
+                {tsError && (
+                  <div style={{ color: '#ef4444', fontSize: '11px', fontFamily: 'monospace', marginTop: '6px' }}>
+                    {tsError}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
 
           <div style={{ marginBottom: '12px' }}>
             <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>

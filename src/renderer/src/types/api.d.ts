@@ -67,6 +67,18 @@ export interface ElectronAPI {
   onWindowListUpdated: (callback: (windows: WindowInfo[]) => void) => () => void
   remoteToggle: (enabled: boolean) => Promise<{ ok: boolean; urls?: string[]; port?: number; error?: string }>
   remoteStatus: () => Promise<{ running: boolean; port: number; urls?: string[] }>
+  tailscaleStatus: () => Promise<{
+    installed: boolean
+    loggedIn: boolean
+    online: boolean
+    httpsEnabled: boolean
+    httpsHost: string | null
+    error: string | null
+    serveActive: boolean
+    serveUrl: string | null
+  }>
+  tailscaleServeStart: () => Promise<{ ok: boolean; url?: string; error?: string }>
+  tailscaleServeStop: () => Promise<{ ok: boolean; error?: string }>
   onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string }) => void) => () => void
 }
 
