@@ -126,6 +126,13 @@ contextBridge.exposeInMainWorld('api', {
   recentCheckPath: (path: string): Promise<'ok' | 'missing' | 'unmounted'> =>
     ipcRenderer.invoke('recent-check-path', path),
 
+  // Claude CLI config (global + local settings.json)
+  claudeConfigRead: (): Promise<{ global: Record<string, unknown>; local: Record<string, unknown> }> =>
+    ipcRenderer.invoke('claude-config:read'),
+
+  claudeConfigWrite: (scope: 'global' | 'local', data: Record<string, unknown>): Promise<void> =>
+    ipcRenderer.invoke('claude-config:write', scope, data),
+
   // Build info for About tab
   getBuildInfo: (): Promise<{ electron: string; chrome: string; node: string; platform: string; release: string }> =>
     ipcRenderer.invoke('get-build-info'),

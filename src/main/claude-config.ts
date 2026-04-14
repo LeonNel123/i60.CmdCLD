@@ -3,6 +3,7 @@ import { join, dirname } from 'path'
 import { homedir } from 'os'
 
 const settingsPath = (): string => join(homedir(), '.claude', 'settings.json')
+const settingsLocalPath = (): string => join(homedir(), '.claude', 'settings.local.json')
 const claudeJsonPath = (): string => join(homedir(), '.claude.json')
 
 function readJson(path: string): Record<string, unknown> | null {
@@ -17,6 +18,26 @@ function readJson(path: string): Record<string, unknown> | null {
 function writeJson(path: string, data: unknown): void {
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, JSON.stringify(data, null, 2))
+}
+
+// Read both global and local Claude settings files for the UI
+export function readClaudeConfig(): { global: Record<string, unknown>; local: Record<string, unknown> } {
+  return {
+    global: readJson(settingsPath()) || {},
+    local: readJson(settingsLocalPath()) || {},
+  }
+}
+
+// Write back the global or local settings, preserving fields the UI doesn't edit
+export function writeClaudeConfig(scope: 'global' | 'local', data: Record<string, unknown>): void {
+  const path = scope === 'global' ? settingsPath() : settingsLocalPath()
+  const current = readJson(path) || {}
+  const merged = { ...current, ...data }
+  // If permissions was updated, merge it properly
+  if (data.permissions && current.permissions) {
+    merged.permissions = { ...(current.permissions as Record<string, unknown>), ...(data.permissions as Record<string, unknown>) }
+  }
+  writeJson(path, merged)
 }
 
 // Previously enforced `disableBypassPermissionsMode: "disable"` in the

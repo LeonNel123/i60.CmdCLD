@@ -6,7 +6,7 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
-  const [tab, setTab] = useState<'settings' | 'about'>('settings')
+  const [tab, setTab] = useState<'settings' | 'claude config' | 'about'>('settings')
   const [claudeArgs, setClaudeArgs] = useState('')
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
@@ -33,6 +33,21 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [appVersion, setAppVersion] = useState('')
   const [buildInfo, setBuildInfo] = useState<{ electron: string; chrome: string; node: string; platform: string; release: string } | null>(null)
 
+  // Claude Config tab state
+  const [ccDisableBypass, setCcDisableBypass] = useState(false)
+  const [ccDefaultMode, setCcDefaultMode] = useState('default')
+  const [ccEffort, setCcEffort] = useState('')
+  const [ccModel, setCcModel] = useState('')
+  const [ccAutoUpdates, setCcAutoUpdates] = useState('')
+  const [ccGlobalAllow, setCcGlobalAllow] = useState<string[]>([])
+  const [ccGlobalDeny, setCcGlobalDeny] = useState<string[]>([])
+  const [ccLocalAllow, setCcLocalAllow] = useState<string[]>([])
+  const [ccLocalDeny, setCcLocalDeny] = useState<string[]>([])
+  const [ccNewRule, setCcNewRule] = useState('')
+  const [ccAddTarget, setCcAddTarget] = useState<'global-allow' | 'global-deny' | 'local-allow' | 'local-deny' | null>(null)
+  const [ccLoaded, setCcLoaded] = useState(false)
+  const [ccSaved, setCcSaved] = useState(false)
+
   useEffect(() => {
     window.api.getVersion().then(setAppVersion).catch(() => {})
     window.api.getBuildInfo().then(setBuildInfo).catch(() => {})
@@ -47,6 +62,22 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       setFavoriteFolders(s.favoriteFolders ?? [])
       setLoaded(true)
     })
+    window.api.claudeConfigRead().then((cfg) => {
+      const g = cfg.global as any
+      const l = cfg.local as any
+      const gp = g.permissions || {}
+      const lp = l.permissions || {}
+      setCcDisableBypass(gp.disableBypassPermissionsMode === 'disable')
+      setCcDefaultMode(gp.defaultMode || 'default')
+      setCcEffort(g.effortLevel || '')
+      setCcModel(g.model || '')
+      setCcAutoUpdates(g.autoUpdatesChannel || '')
+      setCcGlobalAllow(Array.isArray(gp.allow) ? gp.allow : [])
+      setCcGlobalDeny(Array.isArray(gp.deny) ? gp.deny : [])
+      setCcLocalAllow(Array.isArray(lp.allow) ? lp.allow : [])
+      setCcLocalDeny(Array.isArray(lp.deny) ? lp.deny : [])
+      setCcLoaded(true)
+    }).catch(() => setCcLoaded(true))
     window.api.remoteStatus().then((status) => {
       if (status.running) {
         setRemoteAccess(true)
@@ -127,6 +158,43 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     onClose()
   }
 
+  const saveClaudeConfig = () => {
+    const globalPerms: Record<string, unknown> = {
+      allow: ccGlobalAllow,
+      deny: ccGlobalDeny.length > 0 ? ccGlobalDeny : undefined,
+    }
+    if (ccDisableBypass) globalPerms.disableBypassPermissionsMode = 'disable'
+    if (ccDefaultMode && ccDefaultMode !== 'default') globalPerms.defaultMode = ccDefaultMode
+
+    const globalData: Record<string, unknown> = { permissions: globalPerms }
+    if (ccEffort) globalData.effortLevel = ccEffort
+    if (ccModel) globalData.model = ccModel
+    else globalData.model = undefined
+    if (ccAutoUpdates) globalData.autoUpdatesChannel = ccAutoUpdates
+
+    window.api.claudeConfigWrite('global', globalData)
+
+    const localPerms: Record<string, unknown> = {
+      allow: ccLocalAllow,
+    }
+    if (ccLocalDeny.length > 0) localPerms.deny = ccLocalDeny
+    window.api.claudeConfigWrite('local', { permissions: localPerms })
+
+    setCcSaved(true)
+    setTimeout(() => setCcSaved(false), 2000)
+  }
+
+  const handleAddRule = (target: 'global-allow' | 'global-deny' | 'local-allow' | 'local-deny') => {
+    const rule = ccNewRule.trim()
+    if (!rule) return
+    if (target === 'global-allow' && !ccGlobalAllow.includes(rule)) setCcGlobalAllow([...ccGlobalAllow, rule])
+    if (target === 'global-deny' && !ccGlobalDeny.includes(rule)) setCcGlobalDeny([...ccGlobalDeny, rule])
+    if (target === 'local-allow' && !ccLocalAllow.includes(rule)) setCcLocalAllow([...ccLocalAllow, rule])
+    if (target === 'local-deny' && !ccLocalDeny.includes(rule)) setCcLocalDeny([...ccLocalDeny, rule])
+    setCcNewRule('')
+    setCcAddTarget(null)
+  }
+
   if (!loaded) return null
 
   return (
@@ -156,7 +224,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       >
         {/* Tab bar */}
         <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
-          {(['settings', 'about'] as const).map((t) => (
+          {(['settings', 'claude config', 'about'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -537,6 +605,238 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
         </>)}
 
+        {/* Claude Config tab */}
+        {tab === 'claude config' && ccLoaded && (<>
+          <h3 style={{ color: '#e0e0e0', margin: '0 0 16px', fontSize: '14px', fontFamily: 'monospace' }}>
+            Claude CLI Config
+          </h3>
+
+          {/* Global Settings */}
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', marginBottom: '10px' }}>
+              Global Settings <span style={{ color: '#555' }}>~/.claude/settings.json</span>
+            </div>
+
+            {/* Disable Bypass */}
+            <div style={{ marginBottom: '10px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#ccc', fontSize: '12px', fontFamily: 'monospace' }}>
+                <input type="checkbox" checked={ccDisableBypass} onChange={(e) => setCcDisableBypass(e.target.checked)} style={{ accentColor: '#22c55e' }} />
+                Disable bypass permissions mode
+              </label>
+              <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginTop: '2px', marginLeft: '24px' }}>
+                Blocks --dangerously-skip-permissions and Shift+Tab bypass
+              </div>
+            </div>
+
+            {/* Default Mode */}
+            <div style={{ marginBottom: '10px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+                Default Permission Mode
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                {['default', 'auto', 'acceptEdits', 'plan', 'bypassPermissions', 'dontAsk'].map((m) => (
+                  <button key={m} onClick={() => setCcDefaultMode(m)} style={{
+                    background: ccDefaultMode === m ? '#22c55e20' : '#ffffff08',
+                    border: ccDefaultMode === m ? '1px solid #22c55e' : '1px solid #333',
+                    borderRadius: '4px', padding: '3px 8px',
+                    color: ccDefaultMode === m ? '#22c55e' : '#aaa',
+                    fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer',
+                  }}>{m}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Effort Level */}
+            <div style={{ marginBottom: '10px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+                Effort Level
+              </label>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {['low', 'medium', 'high'].map((e) => (
+                  <button key={e} onClick={() => setCcEffort(e)} style={{
+                    background: ccEffort === e ? '#22c55e20' : '#ffffff08',
+                    border: ccEffort === e ? '1px solid #22c55e' : '1px solid #333',
+                    borderRadius: '4px', padding: '4px 10px',
+                    color: ccEffort === e ? '#22c55e' : '#aaa',
+                    fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer',
+                  }}>{e}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Model Override */}
+            <div style={{ marginBottom: '10px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+                Model Override
+              </label>
+              <input type="text" value={ccModel} onChange={(e) => setCcModel(e.target.value)}
+                placeholder="(default — no override)"
+                style={{
+                  width: '100%', boxSizing: 'border-box', background: '#0d1117', border: '1px solid #333',
+                  borderRadius: '4px', padding: '6px 10px', color: '#e0e0e0',
+                  fontSize: '12px', fontFamily: 'Menlo, Consolas, monospace', outline: 'none',
+                }} />
+            </div>
+
+            {/* Auto Updates Channel */}
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+                Auto Updates Channel
+              </label>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {['latest', 'stable'].map((ch) => (
+                  <button key={ch} onClick={() => setCcAutoUpdates(ch)} style={{
+                    background: ccAutoUpdates === ch ? '#22c55e20' : '#ffffff08',
+                    border: ccAutoUpdates === ch ? '1px solid #22c55e' : '1px solid #333',
+                    borderRadius: '4px', padding: '4px 10px',
+                    color: ccAutoUpdates === ch ? '#22c55e' : '#aaa',
+                    fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer',
+                  }}>{ch}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Global Allow rules */}
+            <div style={{ marginBottom: '10px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+                Permission Allow Rules
+              </label>
+              {ccGlobalAllow.length === 0 && (
+                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginBottom: '4px' }}>No rules</div>
+              )}
+              {ccGlobalAllow.map((r, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0' }}>
+                  <span style={{ color: '#ccc', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r}</span>
+                  <button onClick={() => setCcGlobalAllow(ccGlobalAllow.filter((_, j) => j !== i))} style={{
+                    background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '14px', padding: '0 4px', flexShrink: 0,
+                  }}>×</button>
+                </div>
+              ))}
+              {ccAddTarget === 'global-allow' ? (
+                <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                  <input type="text" value={ccNewRule} onChange={(e) => setCcNewRule(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddRule('global-allow'); if (e.key === 'Escape') setCcAddTarget(null) }}
+                    autoFocus placeholder='e.g. Bash(npm:*)'
+                    style={{ flex: 1, background: '#0d1117', border: '1px solid #333', borderRadius: '4px', padding: '4px 8px', color: '#e0e0e0', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', outline: 'none' }} />
+                  <button onClick={() => handleAddRule('global-allow')} style={{ background: '#22c55e', color: '#000', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Add</button>
+                  <button onClick={() => setCcAddTarget(null)} style={{ background: '#333', color: '#999', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Cancel</button>
+                </div>
+              ) : (
+                <button onClick={() => { setCcNewRule(''); setCcAddTarget('global-allow') }} style={{
+                  background: '#ffffff08', border: '1px solid #333', borderRadius: '4px', padding: '3px 8px',
+                  color: '#888', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer', marginTop: '4px',
+                }}>+ Add Rule</button>
+              )}
+            </div>
+
+            {/* Global Deny rules */}
+            <div style={{ marginBottom: '10px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+                Permission Deny Rules
+              </label>
+              {ccGlobalDeny.length === 0 && (
+                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginBottom: '4px' }}>No rules</div>
+              )}
+              {ccGlobalDeny.map((r, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0' }}>
+                  <span style={{ color: '#ccc', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r}</span>
+                  <button onClick={() => setCcGlobalDeny(ccGlobalDeny.filter((_, j) => j !== i))} style={{
+                    background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '14px', padding: '0 4px', flexShrink: 0,
+                  }}>×</button>
+                </div>
+              ))}
+              {ccAddTarget === 'global-deny' ? (
+                <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                  <input type="text" value={ccNewRule} onChange={(e) => setCcNewRule(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddRule('global-deny'); if (e.key === 'Escape') setCcAddTarget(null) }}
+                    autoFocus placeholder='e.g. Bash(rm -rf:*)'
+                    style={{ flex: 1, background: '#0d1117', border: '1px solid #333', borderRadius: '4px', padding: '4px 8px', color: '#e0e0e0', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', outline: 'none' }} />
+                  <button onClick={() => handleAddRule('global-deny')} style={{ background: '#22c55e', color: '#000', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Add</button>
+                  <button onClick={() => setCcAddTarget(null)} style={{ background: '#333', color: '#999', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Cancel</button>
+                </div>
+              ) : (
+                <button onClick={() => { setCcNewRule(''); setCcAddTarget('global-deny') }} style={{
+                  background: '#ffffff08', border: '1px solid #333', borderRadius: '4px', padding: '3px 8px',
+                  color: '#888', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer', marginTop: '4px',
+                }}>+ Add Rule</button>
+              )}
+            </div>
+          </div>
+
+          {/* Local Settings */}
+          <div style={{ borderTop: '1px solid #333', paddingTop: '16px' }}>
+            <div style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', marginBottom: '10px' }}>
+              Local Settings <span style={{ color: '#555' }}>~/.claude/settings.local.json</span>
+            </div>
+
+            {/* Local Allow rules */}
+            <div style={{ marginBottom: '10px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+                Permission Allow Rules
+              </label>
+              {ccLocalAllow.length === 0 && (
+                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginBottom: '4px' }}>No rules</div>
+              )}
+              {ccLocalAllow.map((r, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0' }}>
+                  <span style={{ color: '#ccc', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r}</span>
+                  <button onClick={() => setCcLocalAllow(ccLocalAllow.filter((_, j) => j !== i))} style={{
+                    background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '14px', padding: '0 4px', flexShrink: 0,
+                  }}>×</button>
+                </div>
+              ))}
+              {ccAddTarget === 'local-allow' ? (
+                <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                  <input type="text" value={ccNewRule} onChange={(e) => setCcNewRule(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddRule('local-allow'); if (e.key === 'Escape') setCcAddTarget(null) }}
+                    autoFocus placeholder='e.g. Bash(ssh:*)'
+                    style={{ flex: 1, background: '#0d1117', border: '1px solid #333', borderRadius: '4px', padding: '4px 8px', color: '#e0e0e0', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', outline: 'none' }} />
+                  <button onClick={() => handleAddRule('local-allow')} style={{ background: '#22c55e', color: '#000', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Add</button>
+                  <button onClick={() => setCcAddTarget(null)} style={{ background: '#333', color: '#999', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Cancel</button>
+                </div>
+              ) : (
+                <button onClick={() => { setCcNewRule(''); setCcAddTarget('local-allow') }} style={{
+                  background: '#ffffff08', border: '1px solid #333', borderRadius: '4px', padding: '3px 8px',
+                  color: '#888', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer', marginTop: '4px',
+                }}>+ Add Rule</button>
+              )}
+            </div>
+
+            {/* Local Deny rules */}
+            <div style={{ marginBottom: '10px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+                Permission Deny Rules
+              </label>
+              {ccLocalDeny.length === 0 && (
+                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginBottom: '4px' }}>No rules</div>
+              )}
+              {ccLocalDeny.map((r, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0' }}>
+                  <span style={{ color: '#ccc', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r}</span>
+                  <button onClick={() => setCcLocalDeny(ccLocalDeny.filter((_, j) => j !== i))} style={{
+                    background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '14px', padding: '0 4px', flexShrink: 0,
+                  }}>×</button>
+                </div>
+              ))}
+              {ccAddTarget === 'local-deny' ? (
+                <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                  <input type="text" value={ccNewRule} onChange={(e) => setCcNewRule(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddRule('local-deny'); if (e.key === 'Escape') setCcAddTarget(null) }}
+                    autoFocus placeholder='e.g. Bash(rm -rf:*)'
+                    style={{ flex: 1, background: '#0d1117', border: '1px solid #333', borderRadius: '4px', padding: '4px 8px', color: '#e0e0e0', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', outline: 'none' }} />
+                  <button onClick={() => handleAddRule('local-deny')} style={{ background: '#22c55e', color: '#000', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Add</button>
+                  <button onClick={() => setCcAddTarget(null)} style={{ background: '#333', color: '#999', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Cancel</button>
+                </div>
+              ) : (
+                <button onClick={() => { setCcNewRule(''); setCcAddTarget('local-deny') }} style={{
+                  background: '#ffffff08', border: '1px solid #333', borderRadius: '4px', padding: '3px 8px',
+                  color: '#888', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer', marginTop: '4px',
+                }}>+ Add Rule</button>
+              )}
+            </div>
+          </div>
+        </>)}
+
         {/* About tab */}
         {tab === 'about' && (
           <div style={{ fontFamily: 'Menlo, Consolas, monospace', fontSize: '12px', color: '#ccc', lineHeight: '1.6' }}>
@@ -622,6 +922,31 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 }}
               >
                 Save
+              </button>
+            </>
+          )}
+          {tab === 'claude config' && (
+            <>
+              <button
+                onClick={onClose}
+                style={{
+                  background: '#333', color: '#ccc', border: 'none',
+                  borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
+                  fontSize: '12px', fontFamily: 'monospace',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveClaudeConfig}
+                style={{
+                  background: ccSaved ? '#166534' : '#22c55e', color: ccSaved ? '#ccc' : '#000', border: 'none',
+                  borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
+                  fontSize: '12px', fontFamily: 'monospace', fontWeight: 600,
+                  transition: 'background 0.2s',
+                }}
+              >
+                {ccSaved ? 'Saved' : 'Save'}
               </button>
             </>
           )}

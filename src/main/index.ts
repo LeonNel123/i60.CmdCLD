@@ -11,7 +11,7 @@ import { RecentDB } from './recent-db'
 import { Settings } from './settings'
 import { detectEditors, getDefaultEditor } from './editor-detect'
 import { RemoteServer } from './remote-server'
-import { hardenGlobalSettings, trustFolder } from './claude-config'
+import { hardenGlobalSettings, trustFolder, readClaudeConfig, writeClaudeConfig } from './claude-config'
 import { getStatus as tsGetStatus, getServeStatus as tsGetServeStatus, startServe as tsStartServe, stopServe as tsStopServe } from './tailscale'
 import type { TerminalMeta } from './pty-manager'
 
@@ -358,6 +358,13 @@ ipcMain.handle('settings:getAll', () => {
 
 ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
   settings.set(key as any, value as any)
+})
+
+// Claude CLI config (global + local settings files)
+ipcMain.handle('claude-config:read', () => readClaudeConfig())
+
+ipcMain.handle('claude-config:write', (_event, scope: 'global' | 'local', data: Record<string, unknown>) => {
+  writeClaudeConfig(scope, data)
 })
 
 // Remote access
