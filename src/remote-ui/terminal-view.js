@@ -216,6 +216,16 @@
 
   mobileInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') {
+      e.preventDefault()
+      mobileSendBtn.click()
+    }
+  })
+
+  // Some mobile keyboards (Gboard, Samsung) skip keydown for Enter and fire
+  // a beforeinput with inputType "insertLineBreak" instead. Catch that too.
+  mobileInput.addEventListener('beforeinput', function (e) {
+    if (e.inputType === 'insertLineBreak') {
+      e.preventDefault()
       mobileSendBtn.click()
     }
   })
