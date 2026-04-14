@@ -18,27 +18,17 @@ afterEach(() => {
 })
 
 describe('claude-config', () => {
-  it('hardenGlobalSettings writes disableBypassPermissionsMode when file absent', async () => {
-    const { hardenGlobalSettings } = await import('../src/main/claude-config')
-    hardenGlobalSettings()
-    const written = JSON.parse(readFileSync(join(TMP, '.claude', 'settings.json'), 'utf-8'))
-    expect(written.permissions.disableBypassPermissionsMode).toBe('disable')
-  })
-
-  it('hardenGlobalSettings preserves existing keys and strips skipDangerousModePermissionPrompt', async () => {
+  it('hardenGlobalSettings is a no-op (does not modify settings)', async () => {
     mkdirSync(join(TMP, '.claude'), { recursive: true })
     writeFileSync(join(TMP, '.claude', 'settings.json'), JSON.stringify({
       effortLevel: 'high',
-      skipDangerousModePermissionPrompt: true,
       permissions: { allow: ['Bash(ls)'] },
     }))
+    const before = readFileSync(join(TMP, '.claude', 'settings.json'), 'utf-8')
     const { hardenGlobalSettings } = await import('../src/main/claude-config')
     hardenGlobalSettings()
-    const written = JSON.parse(readFileSync(join(TMP, '.claude', 'settings.json'), 'utf-8'))
-    expect(written.effortLevel).toBe('high')
-    expect(written.permissions.allow).toEqual(['Bash(ls)'])
-    expect(written.permissions.disableBypassPermissionsMode).toBe('disable')
-    expect(written.skipDangerousModePermissionPrompt).toBeUndefined()
+    const after = readFileSync(join(TMP, '.claude', 'settings.json'), 'utf-8')
+    expect(after).toBe(before)
   })
 
   it('trustFolder sets hasTrustDialogAccepted without clobbering other projects', async () => {

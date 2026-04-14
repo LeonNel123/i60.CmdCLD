@@ -37,7 +37,7 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>({ type: 'grid' })
   const [recentFolders, setRecentFolders] = useState<RecentFolder[]>([])
   const [showSettings, setShowSettings] = useState(false)
-  const [pendingLaunch, setPendingLaunch] = useState<{ path: string; name: string } | null>(null)
+  const [pendingLaunch, setPendingLaunch] = useState<{ path: string; name: string; args?: string } | null>(null)
   const [busyTerminals, setBusyTerminals] = useState<Set<string>>(new Set())
   const [claudeArgs, setClaudeArgs] = useState('--dangerously-skip-permissions')
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
@@ -220,8 +220,18 @@ export default function App() {
 
   const handleQuickClaude = useCallback(async () => {
     const homeDir = await window.api.getHomeDir()
-    startAddFolder(homeDir)
-  }, [startAddFolder])
+    // Strip --continue for quick Claude — no project folder means no session to resume
+    const quickArgs = claudeArgs
+      .replace(/--continue/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+    const name = homeDir.split(/[\\/]/).pop() || homeDir
+    if (askBeforeLaunch) {
+      setPendingLaunch({ path: homeDir, name, args: quickArgs })
+    } else {
+      createTerminal(homeDir, quickArgs)
+    }
+  }, [claudeArgs, askBeforeLaunch, createTerminal])
 
   const handleOpenRecent = useCallback(async (folderPath: string) => {
     let status: 'ok' | 'missing' | 'unmounted' = 'ok'
@@ -455,7 +465,7 @@ export default function App() {
       {pendingLaunch && (
         <LaunchDialog
           folderName={pendingLaunch.name}
-          defaultArgs={claudeArgs}
+          defaultArgs={pendingLaunch.args ?? claudeArgs}
           onLaunch={handleLaunchConfirm}
           onCancel={() => setPendingLaunch(null)}
         />

@@ -107,12 +107,10 @@ try {
   throw e
 }
 
-// Enforce the Claude bypass-permissions lockdown for every session spawned by
-// CmdCLD. Runs once at startup; subsequent folder launches still auto-trust
-// the folder via `trustFolder` in the pty:create handler below.
+// Previously enforced bypass-permissions lockdown; now a no-op.
+// Folder trust is still handled per-folder via `trustFolder` in pty:create.
 try {
   hardenGlobalSettings()
-  log('Claude global settings hardened (disableBypassPermissionsMode=disable)')
 } catch (e) {
   log(`hardenGlobalSettings failed: ${e}`)
 }

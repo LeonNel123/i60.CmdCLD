@@ -19,28 +19,11 @@ function writeJson(path: string, data: unknown): void {
   writeFileSync(path, JSON.stringify(data, null, 2))
 }
 
-// Enforce `disableBypassPermissionsMode: "disable"` in the user-level Claude
-// settings. This blocks `--dangerously-skip-permissions` and Shift+Tab bypass
-// mode so a user can't skip permission checks from within a CmdCLD-launched
-// Claude session.
+// Previously enforced `disableBypassPermissionsMode: "disable"` in the
+// user-level Claude settings.  Now a no-op — we let the user control their
+// own permission mode via the CLI settings or the in-app presets.
 export function hardenGlobalSettings(): void {
-  const path = settingsPath()
-  const current = (readJson(path) as Record<string, unknown>) || {}
-  const permissions = (current.permissions as Record<string, unknown>) || {}
-
-  if (permissions.disableBypassPermissionsMode === 'disable' && !('skipDangerousModePermissionPrompt' in current)) {
-    return
-  }
-
-  const next = { ...current }
-  next.permissions = { ...permissions, disableBypassPermissionsMode: 'disable' }
-  delete (next as Record<string, unknown>).skipDangerousModePermissionPrompt
-
-  try {
-    writeJson(path, next)
-  } catch {
-    // best-effort; we don't want to crash launch if the home dir is read-only
-  }
+  // intentionally empty — kept as a callable so callers don't need to change
 }
 
 // Pre-accept the Claude trust prompt for a folder so the first launch doesn't
