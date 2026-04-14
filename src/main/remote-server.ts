@@ -7,6 +7,7 @@ import { networkInterfaces } from 'os'
 import { PtyManager, TerminalMeta } from './pty-manager'
 import { Settings } from './settings'
 import { RecentDB } from './recent-db'
+import { trustFolder } from './claude-config'
 
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024 // 10MB
 
@@ -184,6 +185,7 @@ export class RemoteServer {
         return
       }
 
+      trustFolder(cwd)
       this.ptyManager.create(id, cwd, wc, meta)
 
       // Track in recent folders (idempotent upsert — same behaviour as the

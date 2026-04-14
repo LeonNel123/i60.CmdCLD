@@ -15,7 +15,7 @@ export interface AppSettings {
 
 const DEFAULTS: AppSettings = {
   editor: 'code',
-  claudeArgs: '--dangerously-skip-permissions',
+  claudeArgs: '',
   askBeforeLaunch: false,
   defaultViewMode: 'grid',
   notifyOnIdle: false,
@@ -38,7 +38,17 @@ export class Settings {
     try {
       if (existsSync(this.filePath)) {
         const raw = JSON.parse(readFileSync(this.filePath, 'utf-8'))
-        return { ...DEFAULTS, ...raw }
+        const merged = { ...DEFAULTS, ...raw }
+        // --dangerously-skip-permissions is blocked by the in-app hardening
+        // (disableBypassPermissionsMode=disable). Strip it from saved args so
+        // existing installs don't trip over a now-invalid flag on launch.
+        if (typeof merged.claudeArgs === 'string' && merged.claudeArgs.includes('--dangerously-skip-permissions')) {
+          merged.claudeArgs = merged.claudeArgs
+            .replace(/--dangerously-skip-permissions/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+        }
+        return merged
       }
     } catch {}
     return { ...DEFAULTS }

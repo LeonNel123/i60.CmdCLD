@@ -1,10 +1,12 @@
+// Bypass-permissions presets are intentionally omitted: CmdCLD hardens the
+// user-level Claude settings with `disableBypassPermissionsMode: "disable"`
+// on startup, which makes `--dangerously-skip-permissions` error out.
 export const CLAUDE_PRESETS = [
-  { label: 'Skip Permissions', args: '--dangerously-skip-permissions' },
-  { label: 'Skip + Continue', args: '--dangerously-skip-permissions --continue' },
+  { label: 'Default (no flags)', args: '' },
+  { label: 'Continue', args: '--continue' },
   { label: 'Auto Mode', args: '--permission-mode auto' },
   { label: 'Plan Mode', args: '--permission-mode plan' },
-  { label: 'Default (no flags)', args: '' },
-  { label: 'Opus + Skip', args: '--dangerously-skip-permissions --model opus' },
+  { label: 'Opus', args: '--model opus' },
   { label: 'Sonnet + High Effort', args: '--model sonnet --effort high' },
   { label: 'Opus + Max Effort', args: '--model opus --effort max' },
 ]

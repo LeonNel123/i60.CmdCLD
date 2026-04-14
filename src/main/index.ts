@@ -11,6 +11,7 @@ import { RecentDB } from './recent-db'
 import { Settings } from './settings'
 import { detectEditors, getDefaultEditor } from './editor-detect'
 import { RemoteServer } from './remote-server'
+import { hardenGlobalSettings, trustFolder } from './claude-config'
 import type { TerminalMeta } from './pty-manager'
 
 // File logger for debugging startup issues
@@ -103,6 +104,16 @@ try {
 } catch (e) {
   log(`Service init FAILED: ${e}`)
   throw e
+}
+
+// Enforce the Claude bypass-permissions lockdown for every session spawned by
+// CmdCLD. Runs once at startup; subsequent folder launches still auto-trust
+// the folder via `trustFolder` in the pty:create handler below.
+try {
+  hardenGlobalSettings()
+  log('Claude global settings hardened (disableBypassPermissionsMode=disable)')
+} catch (e) {
+  log(`hardenGlobalSettings failed: ${e}`)
 }
 
 function createWindow(opts?: { empty?: boolean }): { id: string; window: BrowserWindow } {
@@ -216,6 +227,7 @@ ipcMain.handle('pty:create', (event, id: string, cwd: string) => {
   if (ptyManager.getMeta(id)) return
   const name = cwd.split(/[\\/]/).pop() || cwd
   const meta: TerminalMeta = { id, path: cwd, name, color: '' }
+  trustFolder(cwd)
   ptyManager.create(id, cwd, wc, meta)
 })
 
