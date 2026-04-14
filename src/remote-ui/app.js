@@ -165,6 +165,7 @@
     terminalStatus.style.color = busyState[id] ? '#f59e0b' : '#10b981'
 
     dashboardView.style.display = 'none'
+    terminalView.style.height = ''
     terminalView.classList.remove('hidden')
 
     // Fetch full scrollback from server (includes everything since session started)
@@ -180,9 +181,16 @@
 
   // Back to dashboard
   function closeTerminal() {
+    // Blur the mobile input so the virtual keyboard dismisses before we
+    // navigate away — prevents the next session from inheriting a
+    // keyboard-sized viewport height.
+    var mobileInput = document.getElementById('mobile-input')
+    if (mobileInput) mobileInput.blur()
+
     window.CmdCLD_Terminal.close()
     currentSessionId = null
     document.title = 'CmdCLD Remote'
+    terminalView.style.height = ''
     terminalView.classList.add('hidden')
     dashboardView.style.display = ''
     refreshSessions()
