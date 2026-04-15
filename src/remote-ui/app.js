@@ -330,6 +330,14 @@
   newSessionModal.querySelector('.modal-backdrop').addEventListener('click', function () { newSessionModal.classList.add('hidden') })
   backBtn.addEventListener('click', closeTerminal)
 
+  var newFromTerminalBtn = document.getElementById('new-from-terminal-btn')
+  if (newFromTerminalBtn) {
+    newFromTerminalBtn.addEventListener('click', function () {
+      closeTerminal()
+      showNewSessionModal()
+    })
+  }
+
   // Custom path input — submit on Open button click or Enter key
   var customPathInput = document.getElementById('custom-path-input')
   var customPathOpen = document.getElementById('custom-path-open')
