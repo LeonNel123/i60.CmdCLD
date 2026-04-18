@@ -205,29 +205,41 @@
     }).catch(function () {})
   }
 
-  // Mobile input handling
-  mobileSendBtn.addEventListener('click', function () {
-    var text = mobileInput.value
-    if (text && currentSocket && currentId) {
-      currentSocket.emit('session:input', { id: currentId, data: text + '\r' })
-      mobileInput.value = ''
-    }
-  })
+  // Single source of truth for sending. Sanitises the input of any embedded
+  // newlines (Samsung keyboards on long text inject raw \n) and appends a
+  // single \r for the terminal. Everything — Send tap, Enter key, Samsung
+  // newline-injection — funnels through here.
+  function sendMobileInput() {
+    if (!currentSocket || !currentId) return
+    var text = mobileInput.value.replace(/[\r\n]+/g, '')
+    if (!text) return
+    currentSocket.emit('session:input', { id: currentId, data: text + '\r' })
+    mobileInput.value = ''
+  }
+
+  mobileSendBtn.addEventListener('click', sendMobileInput)
 
   mobileInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') {
       e.preventDefault()
-      mobileSendBtn.click()
+      sendMobileInput()
     }
   })
 
   // Some mobile keyboards (Gboard, Samsung) skip keydown for Enter and fire
-  // a beforeinput with inputType "insertLineBreak" instead. Catch that too.
+  // a beforeinput with inputType "insertLineBreak" instead.
   mobileInput.addEventListener('beforeinput', function (e) {
     if (e.inputType === 'insertLineBreak') {
       e.preventDefault()
-      mobileSendBtn.click()
+      sendMobileInput()
     }
+  })
+
+  // Last-resort fallback: Samsung keyboards on long text sometimes bypass
+  // both keydown and beforeinput and just inject a raw \n into the value.
+  // sendMobileInput strips it anyway, so we just trigger the send here.
+  mobileInput.addEventListener('input', function () {
+    if (/[\r\n]/.test(mobileInput.value)) sendMobileInput()
   })
 
   // Quick action buttons
