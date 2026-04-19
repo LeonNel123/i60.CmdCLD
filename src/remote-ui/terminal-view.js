@@ -205,15 +205,15 @@
     }).catch(function () {})
   }
 
-  // Single source of truth for sending. Sanitises the input of any embedded
-  // newlines (Samsung keyboards on long text inject raw \n) and appends a
-  // single \r for the terminal. Everything — Send tap, Enter key, Samsung
-  // newline-injection — funnels through here.
+  // Single source of truth for sending. Uses CmdCLD_InputSanitizer to
+  // strip any embedded newlines (Samsung keyboards on long text inject
+  // raw \n) and build the terminal-ready payload (text + \r). Every
+  // trigger — Send tap, Enter key, input-event fallback — funnels here.
   function sendMobileInput() {
     if (!currentSocket || !currentId) return
-    var text = mobileInput.value.replace(/[\r\n]+/g, '')
-    if (!text) return
-    currentSocket.emit('session:input', { id: currentId, data: text + '\r' })
+    var payload = window.CmdCLD_InputSanitizer.buildSendPayload(mobileInput.value)
+    if (!payload) return
+    currentSocket.emit('session:input', { id: currentId, data: payload })
     mobileInput.value = ''
   }
 
@@ -237,9 +237,8 @@
 
   // Last-resort fallback: Samsung keyboards on long text sometimes bypass
   // both keydown and beforeinput and just inject a raw \n into the value.
-  // sendMobileInput strips it anyway, so we just trigger the send here.
   mobileInput.addEventListener('input', function () {
-    if (/[\r\n]/.test(mobileInput.value)) sendMobileInput()
+    if (window.CmdCLD_InputSanitizer.hasNewline(mobileInput.value)) sendMobileInput()
   })
 
   // Quick action buttons
