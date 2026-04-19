@@ -237,7 +237,10 @@
 
   // Last-resort fallback: Samsung keyboards on long text sometimes bypass
   // both keydown and beforeinput and just inject a raw \n into the value.
-  mobileInput.addEventListener('input', function () {
+  // Skip paste events — pasted multi-line content is intentional and the
+  // user may want to review it before hitting Send.
+  mobileInput.addEventListener('input', function (e) {
+    if (e && e.inputType === 'insertFromPaste') return
     if (window.CmdCLD_InputSanitizer.hasNewline(mobileInput.value)) sendMobileInput()
   })
 

@@ -3,59 +3,9 @@ import { describe, it, expect } from 'vitest'
 // Load the remote-ui sanitizer. It's a browser IIFE that also exports via
 // CommonJS when `module` is defined, which vitest sets up for us.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { sanitize, hasNewline, buildSendPayload } = require('../src/remote-ui/input-sanitizer.js')
+const { hasNewline, buildSendPayload } = require('../src/remote-ui/input-sanitizer.js')
 
 describe('remote input sanitizer', () => {
-  describe('sanitize', () => {
-    it('returns empty string for null/undefined', () => {
-      expect(sanitize(null)).toBe('')
-      expect(sanitize(undefined)).toBe('')
-    })
-
-    it('passes normal text through unchanged', () => {
-      expect(sanitize('hello world')).toBe('hello world')
-      expect(sanitize('npm run dev')).toBe('npm run dev')
-    })
-
-    it('strips single \\n (Samsung long-text injection)', () => {
-      expect(sanitize('hello\n')).toBe('hello')
-      expect(sanitize('hello\nworld')).toBe('helloworld')
-    })
-
-    it('strips single \\r', () => {
-      expect(sanitize('hello\r')).toBe('hello')
-    })
-
-    it('strips mixed \\r\\n (Windows-style line endings)', () => {
-      expect(sanitize('hello\r\nworld')).toBe('helloworld')
-    })
-
-    it('strips multiple consecutive newlines', () => {
-      expect(sanitize('hello\n\n\nworld')).toBe('helloworld')
-      expect(sanitize('hello\r\n\r\nworld')).toBe('helloworld')
-    })
-
-    it('handles only-newline input', () => {
-      expect(sanitize('\n')).toBe('')
-      expect(sanitize('\r\n')).toBe('')
-      expect(sanitize('\n\r\n\r')).toBe('')
-    })
-
-    it('preserves internal whitespace that is not newlines', () => {
-      expect(sanitize('  spaces  ')).toBe('  spaces  ')
-      expect(sanitize('tab\there')).toBe('tab\there')
-    })
-
-    it('handles empty string', () => {
-      expect(sanitize('')).toBe('')
-    })
-
-    it('handles long text with embedded newline (the bug case)', () => {
-      const long = 'a'.repeat(200) + '\n'
-      expect(sanitize(long)).toBe('a'.repeat(200))
-    })
-  })
-
   describe('hasNewline', () => {
     it('returns false for null/undefined', () => {
       expect(hasNewline(null)).toBe(false)
@@ -104,19 +54,43 @@ describe('remote input sanitizer', () => {
       expect(buildSendPayload('npm run dev')).toBe('npm run dev\r')
     })
 
-    it('strips embedded newlines before appending \\r', () => {
+    it('converts a trailing \\n to \\r (Samsung Enter injection)', () => {
       expect(buildSendPayload('hello\n')).toBe('hello\r')
+    })
+
+    it('converts \\r\\n to a single \\r (Windows line endings)', () => {
       expect(buildSendPayload('hello\r\n')).toBe('hello\r')
-      expect(buildSendPayload('hello\nworld')).toBe('helloworld\r')
+    })
+
+    it('preserves multi-line paste as multiple terminal commands', () => {
+      // Two lines pasted should execute both, each with its own Enter.
+      expect(buildSendPayload('line1\nline2')).toBe('line1\rline2\r')
+      expect(buildSendPayload('line1\r\nline2')).toBe('line1\rline2\r')
+      expect(buildSendPayload('line1\nline2\nline3')).toBe('line1\rline2\rline3\r')
+    })
+
+    it('strips leading blank lines', () => {
+      expect(buildSendPayload('\nhello')).toBe('hello\r')
+      expect(buildSendPayload('\n\nhello')).toBe('hello\r')
+    })
+
+    it('strips trailing blank lines', () => {
+      expect(buildSendPayload('hello\n\n')).toBe('hello\r')
     })
 
     it('handles the Samsung long-text case', () => {
-      const long = 'This is a long command that Samsung might inject a newline into' + '\n'
+      const long = 'This is a long command that Samsung might inject a newline into\n'
       expect(buildSendPayload(long)).toBe('This is a long command that Samsung might inject a newline into\r')
     })
 
-    it('preserves trailing \\r if the user somehow has one (gets replaced then re-added)', () => {
-      expect(buildSendPayload('hello\r')).toBe('hello\r')
+    it('preserves internal whitespace on each line', () => {
+      expect(buildSendPayload('  spaces  \n  more  ')).toBe('  spaces  \r  more  \r')
+      expect(buildSendPayload('tab\there\ntab\there')).toBe('tab\there\rtab\there\r')
+    })
+
+    it('handles a long multi-line paste', () => {
+      const pasted = 'cd /tmp\nls -la\necho done'
+      expect(buildSendPayload(pasted)).toBe('cd /tmp\rls -la\recho done\r')
     })
   })
 })

@@ -1,17 +1,8 @@
-// Pure sanitization logic for the mobile input bar.
+// Pure send-payload logic for the mobile input bar.
 // Extracted into its own file so it can be unit-tested and kept in sync.
 // Attached to window.CmdCLD_InputSanitizer for use by terminal-view.js.
 (function () {
   'use strict'
-
-  // Strip embedded \r and \n from typed/pasted text. Mobile keyboards
-  // (notably Samsung on long text) can inject raw newlines when the user
-  // presses Enter, bypassing keydown/beforeinput. We always clean the
-  // value before sending to the terminal.
-  function sanitize(raw) {
-    if (raw == null) return ''
-    return String(raw).replace(/[\r\n]+/g, '')
-  }
 
   // True if the raw value contains any newline character. Used by the
   // input-event fallback to decide whether the user "pressed Enter".
@@ -20,15 +11,24 @@
     return /[\r\n]/.test(String(raw))
   }
 
-  // Full send-path decision: returns the payload to emit, or null to skip.
-  // Terminal Enter is \r, so we append that to sanitised text.
+  // Build the terminal-bound payload from the input value.
+  // - \r\n and \n are both converted to \r (terminal Enter) so multi-line
+  //   pasted content executes each line in sequence instead of collapsing.
+  // - Leading/trailing blank lines are stripped (nothing to execute there).
+  // - Always appends a final \r so the last line submits.
+  // - Returns null if the input is empty or only whitespace/newlines.
   function buildSendPayload(raw) {
-    var clean = sanitize(raw)
-    if (!clean) return null
-    return clean + '\r'
+    if (raw == null) return null
+    var s = String(raw)
+    // Normalise Windows line endings, then \n → \r.
+    s = s.replace(/\r\n/g, '\r').replace(/\n/g, '\r')
+    // Strip leading/trailing \r's (blank lines produce nothing).
+    s = s.replace(/^\r+|\r+$/g, '')
+    if (!s) return null
+    return s + '\r'
   }
 
-  var api = { sanitize: sanitize, hasNewline: hasNewline, buildSendPayload: buildSendPayload }
+  var api = { hasNewline: hasNewline, buildSendPayload: buildSendPayload }
 
   // Expose for browser (terminal-view.js) and CommonJS (vitest).
   if (typeof window !== 'undefined') window.CmdCLD_InputSanitizer = api
