@@ -63,9 +63,18 @@ interface PtyEntry {
   rows: number
   dataDisposable: { dispose: () => void } | null
   exitDisposable: { dispose: () => void } | null
+  pendingData: string
+  flushTimer: ReturnType<typeof setTimeout> | null
 }
 
 const SCROLLBACK_SIZE = 200_000
+
+// node-pty delivers output in many small chunks (often ~30 chars every few
+// ms during heavy output). Each chunk fired an IPC send + a socket.io emit
+// per connected client, which was the dominant overhead on the Tailscale
+// path. Coalesce within one animation frame — imperceptible latency,
+// 10-50× fewer events during floods like `npm install`.
+const PTY_FLUSH_MS = 16
 
 export class PtyManager extends EventEmitter {
   private ptys = new Map<string, PtyEntry>()
@@ -93,19 +102,38 @@ export class PtyManager extends EventEmitter {
       rows: 24,
       dataDisposable: null,
       exitDisposable: null,
+      pendingData: '',
+      flushTimer: null,
     }
 
-    entry.dataDisposable = ptyProcess.onData((data) => {
-      scrollback.push(data)
+    const flush = (): void => {
+      if (entry.flushTimer) {
+        clearTimeout(entry.flushTimer)
+        entry.flushTimer = null
+      }
+      if (!entry.pendingData) return
+      const data = entry.pendingData
+      entry.pendingData = ''
       this.emit('data', { id, data })
       try {
         if (!entry.webContents.isDestroyed()) {
           entry.webContents.send(`pty:data:${id}`, data)
         }
       } catch {}
+    }
+
+    entry.dataDisposable = ptyProcess.onData((data) => {
+      scrollback.push(data)
+      entry.pendingData += data
+      if (!entry.flushTimer) {
+        entry.flushTimer = setTimeout(flush, PTY_FLUSH_MS)
+      }
     })
 
     entry.exitDisposable = ptyProcess.onExit(({ exitCode }) => {
+      // Flush any buffered bytes before the exit notification so clients
+      // see the final output before the process-gone signal.
+      flush()
       this.emit('exit', { id, exitCode })
       try {
         if (!entry.webContents.isDestroyed()) {
@@ -163,6 +191,10 @@ export class PtyManager extends EventEmitter {
   kill(id: string): void {
     const entry = this.ptys.get(id)
     if (entry) {
+      if (entry.flushTimer) {
+        clearTimeout(entry.flushTimer)
+        entry.flushTimer = null
+      }
       entry.dataDisposable?.dispose()
       entry.exitDisposable?.dispose()
       entry.process.kill()
