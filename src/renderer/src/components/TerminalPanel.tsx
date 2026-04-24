@@ -10,22 +10,31 @@ import { formatPaths } from '../utils/format-paths'
 // Global set of PTY IDs that have been created — prevents duplicates on remount
 const activePtys = new Set<string>()
 
-// Write text to PTY. Single IPC write for normal pastes (<=64KB);
-// chunk only for truly massive pastes, using microtasks (not setTimeout)
-// so we don't introduce artificial rate limits that can drop bytes.
+// Write text to PTY. Small writes go through as a single IPC call.
+// Larger pastes are chunked with a tiny setTimeout delay between chunks
+// so the PTY/conpty/Claude Code's prompt parser has time to drain each
+// chunk before the next arrives — without pacing, Windows conpty
+// silently dropped characters on long single-burst pastes.
+const PASTE_CHUNK_SIZE = 1024 // bytes per chunk once we enter chunked mode
+const PASTE_CHUNK_THRESHOLD = 1024 // pastes larger than this get paced
+const PASTE_CHUNK_DELAY_MS = 5 // ~200 KB/s — faster than typing, below conpty's drop threshold
+
 function writeChunked(id: string, text: string): void {
-  const CHUNK_SIZE = 64 * 1024
-  if (text.length <= CHUNK_SIZE) {
+  if (text.length > PASTE_CHUNK_THRESHOLD) {
+    // eslint-disable-next-line no-console
+    console.log(`[CmdCLD] paste size=${text.length} bytes → chunking @ ${PASTE_CHUNK_SIZE}B/${PASTE_CHUNK_DELAY_MS}ms`)
+  }
+  if (text.length <= PASTE_CHUNK_THRESHOLD) {
     window.api.writeTerminal(id, text)
     return
   }
   let offset = 0
-  const writeNext = () => {
+  const writeNext = (): void => {
     if (offset >= text.length) return
-    const chunk = text.slice(offset, offset + CHUNK_SIZE)
+    const chunk = text.slice(offset, offset + PASTE_CHUNK_SIZE)
     window.api.writeTerminal(id, chunk)
-    offset += CHUNK_SIZE
-    queueMicrotask(writeNext)
+    offset += PASTE_CHUNK_SIZE
+    setTimeout(writeNext, PASTE_CHUNK_DELAY_MS)
   }
   writeNext()
 }
