@@ -115,8 +115,8 @@ try {
   log(`hardenGlobalSettings failed: ${e}`)
 }
 
-function createWindow(opts?: { empty?: boolean }): { id: string; window: BrowserWindow } {
-  const id = crypto.randomUUID()
+function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: string; window: BrowserWindow } {
+  const id = opts?.persistedId || crypto.randomUUID()
   const bounds = store.getWindowBounds(id)
   const isEmpty = opts?.empty ?? false
 
@@ -531,7 +531,7 @@ app.whenReady().then(() => {
   }
 
   try {
-    createWindow()
+    createWindow({ persistedId: 'primary' })
     log('First window created successfully')
 
     // Auto-start remote server if enabled
@@ -581,7 +581,7 @@ app.on('before-quit', () => {
 app.on('activate', () => {
   if (registry.size() === 0) {
     log('Dock click — creating new window (macOS)')
-    createWindow()
+    createWindow({ persistedId: 'primary' })
   }
 })
 

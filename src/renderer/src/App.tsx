@@ -13,7 +13,7 @@ import { assignColor } from './utils/colors'
 import { calculateLayout, getRowCount } from './utils/grid-layout'
 import { onActivityChange } from './utils/terminal-activity'
 import notificationSound from './assets/notification.wav'
-import type { MultiWindowState, RecentFolder } from './types/api'
+import type { RecentFolder } from './types/api'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
@@ -35,6 +35,7 @@ export default function App() {
   const [showCloseAll, setShowCloseAll] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>({ type: 'grid' })
+  const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
   const [recentFolders, setRecentFolders] = useState<RecentFolder[]>([])
   const [showSettings, setShowSettings] = useState(false)
   const [pendingLaunch, setPendingLaunch] = useState<{ path: string; name: string; args?: string } | null>(null)
@@ -79,18 +80,20 @@ export default function App() {
 
   // Load settings + saved state + recent folders on mount
   useEffect(() => {
-    const settingsPromise = window.api.settingsGetAll().then((s) => {
-      setClaudeArgs(s.claudeArgs)
-      setAskBeforeLaunch(s.askBeforeLaunch)
-      setNotifyOnIdle(s.notifyOnIdle)
-      setProjectsRoot(s.projectsRoot)
-      return s
-    }).catch(() => null)
-
-    window.api.recentList().then(setRecentFolders).catch(() => {})
-
-    // Always start with a blank slate
-    setLoaded(true)
+    Promise.all([
+      window.api.settingsGetAll().catch(() => null),
+      window.api.recentList().catch(() => [] as RecentFolder[]),
+    ]).then(([settings, recent]) => {
+      if (settings) {
+        setClaudeArgs(settings.claudeArgs)
+        setAskBeforeLaunch(settings.askBeforeLaunch)
+        setNotifyOnIdle(settings.notifyOnIdle)
+        setProjectsRoot(settings.projectsRoot)
+        setDefaultViewMode(settings.defaultViewMode)
+      }
+      setRecentFolders(recent)
+      setLoaded(true)
+    })
   }, [])
 
   // Listen for sessions created remotely
@@ -107,6 +110,9 @@ export default function App() {
           claudeArgs: session.claudeArgs,
         }
         const next = [...prev, newEntry]
+        if (prev.length === 0 && defaultViewMode === 'focused') {
+          setViewMode({ type: 'focused', terminalId: session.id })
+        }
         setLayouts(calculateLayout(next.length).map((pos, i) => ({
           ...pos,
           i: next[i].id,
@@ -115,34 +121,7 @@ export default function App() {
       })
     })
     return unsub
-  }, [])
-
-  // Save state whenever terminals or layouts change (debounced)
-  useEffect(() => {
-    if (!loaded) return
-    const timer = setTimeout(() => {
-      const state: MultiWindowState = {
-        windows: [{
-          id: 'current',
-          bounds: { width: 0, height: 0, x: 0, y: 0 },
-          sidebarCollapsed: false,
-          viewMode: viewMode.type === 'grid' ? 'grid' : { focused: viewMode.terminalId },
-          folders: terminals.map((t) => {
-            const l = layouts.find((lay) => lay.i === t.id)
-            return {
-              path: t.path,
-              color: t.color,
-              layout: l
-                ? { x: l.x, y: l.y, w: l.w, h: l.h }
-                : { x: 0, y: 0, w: 12, h: 1 },
-            }
-          }),
-        }],
-      }
-      window.api.saveState(state)
-    }, 500)
-    return () => clearTimeout(timer)
-  }, [terminals, layouts, loaded, viewMode])
+  }, [defaultViewMode])
 
   // Actually create a terminal with specific args
   const createTerminal = useCallback((folderPath: string, args: string) => {
@@ -157,6 +136,9 @@ export default function App() {
 
     const newTerminals = [...terminals, newEntry]
     setTerminals(newTerminals)
+    if (terminals.length === 0 && defaultViewMode === 'focused') {
+      setViewMode({ type: 'focused', terminalId: newEntry.id })
+    }
 
     const newLayouts = calculateLayout(newTerminals.length).map((pos, i) => ({
       ...pos,
@@ -165,7 +147,7 @@ export default function App() {
     setLayouts(newLayouts)
 
     window.api.recentAdd(folderPath).catch(() => {})
-  }, [terminals])
+  }, [defaultViewMode, terminals])
 
   // Start the folder-open flow (may show dialog or launch directly)
   const startAddFolder = useCallback((folderPath: string) => {
@@ -190,13 +172,16 @@ export default function App() {
 
     const newTerminals = [...terminals, newEntry]
     setTerminals(newTerminals)
+    if (terminals.length === 0 && defaultViewMode === 'focused') {
+      setViewMode({ type: 'focused', terminalId: newEntry.id })
+    }
 
     const newLayouts = calculateLayout(newTerminals.length).map((pos, i) => ({
       ...pos,
       i: newTerminals[i].id,
     }))
     setLayouts(newLayouts)
-  }, [terminals])
+  }, [defaultViewMode, terminals])
 
   const handleCloseAll = useCallback(() => {
     setShowCloseAll(true)
@@ -307,6 +292,7 @@ export default function App() {
       setAskBeforeLaunch(s.askBeforeLaunch)
       setNotifyOnIdle(s.notifyOnIdle)
       setProjectsRoot(s.projectsRoot)
+      setDefaultViewMode(s.defaultViewMode)
     }).catch(() => {})
   }, [])
 
@@ -354,6 +340,23 @@ export default function App() {
   const gridRows = getRowCount(terminals.length)
   const rowHeight = Math.max(150, Math.floor(window.innerHeight / gridRows) - 4)
   const isFocused = viewMode.type === 'focused'
+
+  if (!loaded) {
+    return (
+      <div style={{
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#1e1e1e',
+        color: '#666',
+        fontSize: '14px',
+        fontFamily: 'monospace',
+      }}>
+        Loading...
+      </div>
+    )
+  }
 
   return (
     <div style={{ height: '100vh', display: 'flex', background: '#1e1e1e' }}>

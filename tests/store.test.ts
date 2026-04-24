@@ -52,4 +52,14 @@ describe('Store multi-window', () => {
     const state = store.load()
     expect(state.windows).toEqual([])
   })
+
+  it('persists window bounds by stable window id', () => {
+    const store = new Store(TEST_FILE)
+    const bounds = { x: 42, y: 64, width: 1440, height: 900 }
+
+    store.saveWindowBounds('primary', bounds)
+
+    const reloaded = new Store(TEST_FILE)
+    expect(reloaded.getWindowBounds('primary')).toEqual(bounds)
+  })
 })
