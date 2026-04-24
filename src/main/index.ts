@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Menu, powerSaveBlocker } from 'electron'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { spawn, execSync } from 'child_process'
@@ -367,18 +367,35 @@ ipcMain.handle('claude-config:write', (_event, scope: 'global' | 'local', data: 
   writeClaudeConfig(scope, data)
 })
 
+// Keep the app process from being suspended while remote access is on, so a
+// headless Mac (mini) stays reachable over Tailscale. Does NOT prevent system
+// sleep — the user is expected to set `pmset sleep 0` at the OS level.
+let sleepBlockerId: number | null = null
+function setSleepBlockEnabled(enabled: boolean): void {
+  if (enabled && sleepBlockerId === null) {
+    sleepBlockerId = powerSaveBlocker.start('prevent-app-suspension')
+    log(`Sleep blocker started (id=${sleepBlockerId})`)
+  } else if (!enabled && sleepBlockerId !== null) {
+    powerSaveBlocker.stop(sleepBlockerId)
+    log(`Sleep blocker stopped (id=${sleepBlockerId})`)
+    sleepBlockerId = null
+  }
+}
+
 // Remote access
 ipcMain.handle('remote:toggle', async (_event, enabled: boolean) => {
   if (enabled) {
     const port = settings.get('remotePort')
     try {
       const result = await remoteServer.start(port)
+      setSleepBlockEnabled(true)
       return { ok: true, urls: result.urls, port: result.port }
     } catch (err: any) {
       return { ok: false, error: err.message || 'Failed to start server' }
     }
   } else {
     remoteServer.stop()
+    setSleepBlockEnabled(false)
     return { ok: true }
   }
 })
@@ -539,6 +556,7 @@ app.whenReady().then(() => {
       const port = settings.get('remotePort')
       remoteServer.start(port).then((result) => {
         log(`Remote server started on port ${result.port}: ${result.urls.join(', ')}`)
+        setSleepBlockEnabled(true)
       }).catch((err) => {
         log(`Remote server failed to start: ${err.message}`)
       })

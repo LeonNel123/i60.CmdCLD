@@ -384,6 +384,41 @@ body {
     padding: 10px 16px;
     font-size: 14px;
   }
+
+  /* Full-height sheet: phone URL bars eat vh, and centered-with-margin modals
+     end up with their footer behind browser chrome. Pin header/footer and
+     give the scroll-heavy section (folder list, help list) its own bounded
+     overflow container so touch scrolling works reliably. */
+  .modal-content {
+    margin: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 16px;
+  }
+  .modal-content h3,
+  #custom-path-row,
+  #custom-path-error { flex-shrink: 0; }
+  .modal-footer {
+    flex-shrink: 0;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #222;
+  }
+  #folder-sections,
+  .help-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
 }
 
 /* Terminal view */

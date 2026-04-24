@@ -1,10 +1,38 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { existsSync } from 'fs'
 
 const exec = promisify(execFile)
 
 // Timeouts keep the UI responsive if the daemon is wedged.
 const CLI_TIMEOUT_MS = 5000
+
+// The Mac App Store build of Tailscale does not install a `tailscale` symlink
+// on PATH — the CLI lives inside the app bundle. Probe known locations so the
+// app works whether the user installed via brew, the standalone pkg, or the
+// App Store.
+const MACOS_FALLBACK_PATHS = [
+  '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
+  '/usr/local/bin/tailscale',
+  '/opt/homebrew/bin/tailscale',
+]
+
+let cachedCliPath: string | null = null
+
+function resolveCliPath(): string {
+  if (cachedCliPath) return cachedCliPath
+  if (process.platform === 'darwin') {
+    for (const p of MACOS_FALLBACK_PATHS) {
+      if (existsSync(p)) {
+        cachedCliPath = p
+        return p
+      }
+    }
+  }
+  // Default — let execFile resolve via PATH (and ENOENT if missing).
+  cachedCliPath = 'tailscale'
+  return cachedCliPath
+}
 
 export interface TailscaleStatus {
   installed: boolean
@@ -16,7 +44,7 @@ export interface TailscaleStatus {
 }
 
 async function runTailscale(args: string[]): Promise<{ stdout: string; stderr: string }> {
-  return exec('tailscale', args, { timeout: CLI_TIMEOUT_MS })
+  return exec(resolveCliPath(), args, { timeout: CLI_TIMEOUT_MS })
 }
 
 // `tailscale status --json` gives us everything we need:
@@ -73,7 +101,7 @@ export async function getStatus(): Promise<TailscaleStatus> {
   } catch (e: unknown) {
     const err = e as { code?: string; stderr?: string; message?: string }
     if (err.code === 'ENOENT') {
-      status.error = 'tailscale CLI not found on PATH.'
+      status.error = 'Tailscale CLI not found. Install Tailscale.app or `brew install tailscale`.'
     } else if (err.stderr) {
       status.error = String(err.stderr).trim()
     } else {
@@ -117,7 +145,7 @@ export async function startServe(port: number): Promise<{ ok: boolean; url?: str
   } catch (e: unknown) {
     const err = e as { code?: string; stderr?: string; message?: string }
     let msg = err.stderr?.trim() || err.message || 'Failed to start tailscale serve'
-    if (err.code === 'ENOENT') msg = 'tailscale CLI not found on PATH.'
+    if (err.code === 'ENOENT') msg = 'Tailscale CLI not found. Install Tailscale.app or `brew install tailscale`.'
     return { ok: false, error: msg }
   }
 }
