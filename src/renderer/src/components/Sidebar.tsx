@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { RecentFolder } from '../types/api'
 import { formatRelativeTime } from '../utils/format-relative-time'
+import { ChevronLeft, ChevronRight, ChevronDown, Star, X, LayoutGrid } from './icons'
 
 interface TerminalEntry {
   id: string
@@ -80,7 +81,7 @@ export function Sidebar({
     color: disabled ? '#444' : '#ccc',
     cursor: disabled ? 'default' : 'pointer',
     fontSize: '12px',
-    fontFamily: 'monospace',
+    fontFamily: 'inherit',
     borderRadius: '3px',
     textAlign: 'left',
     opacity: disabled ? 0.5 : 1,
@@ -163,7 +164,7 @@ export function Sidebar({
             }}
           >
             <span>Recent</span>
-            <span style={{ fontSize: '10px' }}>{recentExpanded ? '▼' : '▶'}</span>
+            {recentExpanded ? <ChevronDown width={12} height={12} /> : <ChevronRight width={12} height={12} />}
           </button>
           {recentExpanded && (() => {
             const favSet = new Set(favoriteFolders)
@@ -191,7 +192,7 @@ export function Sidebar({
                     background: 'none',
                     cursor: isOpen ? 'default' : 'pointer',
                     opacity: isOpen ? 0.5 : 1,
-                    fontFamily: 'monospace',
+                    fontFamily: 'inherit',
                     fontSize: '12px',
                     borderRadius: '3px',
                   }}
@@ -201,17 +202,17 @@ export function Sidebar({
                     onClick={(e) => { e.stopPropagation(); onToggleFavorite(f.path) }}
                     className="recent-star"
                     style={{
-                      color: isFav ? '#fbbf24' : '#444',
-                      fontSize: '12px',
+                      color: isFav ? '#fbbf24' : '#666',
                       cursor: 'pointer',
                       width: '14px',
-                      textAlign: 'center',
                       flexShrink: 0,
                       opacity: isFav ? 1 : 0,
+                      display: 'flex',
+                      alignItems: 'center',
                     }}
                     title={isFav ? 'Unfavorite' : 'Add to favorites'}
                   >
-                    {isFav ? '★' : '☆'}
+                    <Star width={12} height={12} fill={isFav ? 'currentColor' : 'none'} />
                   </span>
                   <span style={{
                     flex: 1,
@@ -222,7 +223,7 @@ export function Sidebar({
                   }}>
                     {f.name}
                   </span>
-                  <span style={{ color: '#666', fontSize: '10px', flexShrink: 0 }}>
+                  <span style={{ color: '#666', fontSize: '10px', flexShrink: 0, fontFamily: 'Menlo, Consolas, monospace' }}>
                     {formatRelativeTime(f.lastOpened)}
                   </span>
                 </div>
@@ -235,17 +236,17 @@ export function Sidebar({
       {/* Bottom actions */}
       <div style={{ padding: '6px 4px', borderTop: '1px solid #2d2d2d', flexShrink: 0 }}>
         <button onClick={onShowAll} style={btnStyle(viewMode.type === 'grid')} title="Show All">
-          <span style={{ fontSize: '13px', lineHeight: 1 }}>&#9635;</span>
+          <LayoutGrid width={14} height={14} />
           {!collapsed && <span>Show All</span>}
         </button>
         {terminals.length > 0 && (
           <button onClick={onCloseAll} style={btnStyle()} title="Close All">
-            <span style={{ fontSize: '13px', lineHeight: 1, color: '#f14c4c' }}>&#10005;</span>
+            <X width={14} height={14} style={{ color: '#f14c4c' }} />
             {!collapsed && <span>Close All</span>}
           </button>
         )}
         <button onClick={toggleCollapsed} style={btnStyle()} title={collapsed ? 'Expand' : 'Collapse'}>
-          <span style={{ fontSize: '12px', lineHeight: 1 }}>{collapsed ? '\u25B6' : '\u25C0'}</span>
+          {collapsed ? <ChevronRight width={14} height={14} /> : <ChevronLeft width={14} height={14} />}
           {!collapsed && <span>Collapse</span>}
         </button>
       </div>
