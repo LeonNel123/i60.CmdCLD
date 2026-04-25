@@ -17,17 +17,10 @@ interface SidebarProps {
   viewMode: ViewMode
   onSelectTerminal: (id: string) => void
   onShowAll: () => void
-  onAddFolder: () => void
-  onNewWindow: () => void
   busyTerminals: Set<string>
   recentFolders: RecentFolder[]
   onOpenRecent: (path: string) => void
-  onOpenSettings: () => void
-  onQuickClaude: () => void
-  onQuickShell: () => void
-  onNewProject: () => void
   onCloseAll: () => void
-  hasProjectsRoot: boolean
   favoriteFolders: string[]
   onToggleFavorite: (path: string) => void
 }
@@ -40,17 +33,10 @@ export function Sidebar({
   viewMode,
   onSelectTerminal,
   onShowAll,
-  onAddFolder,
-  onNewWindow,
   recentFolders,
   busyTerminals,
   onOpenRecent,
-  onQuickClaude,
-  onQuickShell,
-  onOpenSettings,
-  onNewProject,
   onCloseAll,
-  hasProjectsRoot,
   favoriteFolders,
   onToggleFavorite,
 }: SidebarProps) {
@@ -117,32 +103,6 @@ export function Sidebar({
         .recent-row:hover .recent-star { opacity: 1 !important; }
         .recent-row:hover { background: rgba(255,255,255,0.04); }
       `}</style>
-      {/* Action buttons */}
-      <div style={{ padding: '6px 4px', borderBottom: '1px solid #2d2d2d' }}>
-        <button onClick={onAddFolder} style={btnStyle()} title="Open Project — pick a folder to launch Claude in">
-          <span style={{ color: '#22c55e', fontSize: '14px', lineHeight: 1 }}>+</span>
-          {!collapsed && <span>Open Project</span>}
-        </button>
-        <button onClick={onQuickClaude} style={btnStyle()} title="Quick Claude (no folder)">
-          <span style={{ color: '#fb923c', fontSize: '13px', lineHeight: 1 }}>&gt;</span>
-          {!collapsed && <span>Quick Claude</span>}
-        </button>
-        <button onClick={onQuickShell} style={btnStyle()} title="Quick Shell — plain shell in your home folder">
-          <span style={{ color: '#94a3b8', fontSize: '11px', lineHeight: 1, fontFamily: 'monospace' }}>&gt;_</span>
-          {!collapsed && <span>Quick Shell</span>}
-        </button>
-        <button onClick={onNewWindow} style={btnStyle()} title="New Window">
-          <span style={{ fontSize: '13px', lineHeight: 1 }}>&#8862;</span>
-          {!collapsed && <span>New Window</span>}
-        </button>
-        {hasProjectsRoot && (
-          <button onClick={onNewProject} style={btnStyle()} title="New Project">
-            <span style={{ color: '#38bdf8', fontSize: '14px', lineHeight: 1 }}>&#9733;</span>
-            {!collapsed && <span>New Project</span>}
-          </button>
-        )}
-      </div>
-
       {/* Active terminals */}
       <div style={{ overflowY: 'auto', padding: '4px', flexShrink: 0 }}>
         {[...terminals].sort((a, b) => a.name.localeCompare(b.name)).map((t) => {
@@ -284,10 +244,6 @@ export function Sidebar({
             {!collapsed && <span>Close All</span>}
           </button>
         )}
-        <button onClick={onOpenSettings} style={btnStyle()} title="Settings">
-          <span style={{ fontSize: '13px', lineHeight: 1 }}>&#9881;</span>
-          {!collapsed && <span>Settings</span>}
-        </button>
         <button onClick={toggleCollapsed} style={btnStyle()} title={collapsed ? 'Expand' : 'Collapse'}>
           <span style={{ fontSize: '12px', lineHeight: 1 }}>{collapsed ? '\u25B6' : '\u25C0'}</span>
           {!collapsed && <span>Collapse</span>}
