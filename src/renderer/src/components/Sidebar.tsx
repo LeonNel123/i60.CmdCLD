@@ -110,9 +110,9 @@ export function Sidebar({
     }}>
       {/* Action buttons */}
       <div style={{ padding: '6px 4px', borderBottom: '1px solid #2d2d2d' }}>
-        <button onClick={onAddFolder} style={btnStyle()} title="Add Folder">
+        <button onClick={onAddFolder} style={btnStyle()} title="Open Project — pick a folder to launch Claude in">
           <span style={{ color: '#22c55e', fontSize: '14px', lineHeight: 1 }}>+</span>
-          {!collapsed && <span>Add Folder</span>}
+          {!collapsed && <span>Open Project</span>}
         </button>
         <button onClick={onQuickClaude} style={btnStyle()} title="Quick Claude (no folder)">
           <span style={{ color: '#fb923c', fontSize: '13px', lineHeight: 1 }}>&gt;</span>
