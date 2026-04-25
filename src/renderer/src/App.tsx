@@ -9,6 +9,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { LaunchDialog } from './components/LaunchDialog'
 import { MarkdownViewer } from './components/MarkdownViewer'
 import { Toast } from './components/Toast'
+import { WelcomeBackCard } from './components/WelcomeBackCard'
 import { assignColor } from './utils/colors'
 import { calculateLayout, getRowCount } from './utils/grid-layout'
 import { onActivityChange } from './utils/terminal-activity'
@@ -49,6 +50,9 @@ export default function App() {
   const [markdownFile, setMarkdownFile] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; kind: 'info' | 'warn' } | null>(null)
   const [favoriteFolders, setFavoriteFolders] = useState<string[]>([])
+  const [restoreSessionEnabled, setRestoreSessionEnabled] = useState(false)
+  const [savedSessionProjects, setSavedSessionProjects] = useState<Array<{ path: string; claudeArgs: string; isPlainShell: boolean }>>([])
+  const [welcomeDismissed, setWelcomeDismissed] = useState(false)
 
   // Track terminal busy/idle state + notification sound
   const notifyRef = useRef(false)
@@ -92,11 +96,68 @@ export default function App() {
         setProjectsRoot(settings.projectsRoot)
         setDefaultViewMode(settings.defaultViewMode)
         setFavoriteFolders(settings.favoriteFolders ?? [])
+        setRestoreSessionEnabled(settings.restoreSessionEnabled ?? false)
       }
       setRecentFolders(recent)
       setLoaded(true)
     })
   }, [])
+
+  // Load saved session once at mount. Validates each path against the recent
+  // db so we don't try to reopen folders that no longer exist or are on
+  // unmounted drives. Empty result hides the welcome card.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const saved = await window.api.sessionLoadLast()
+        if (cancelled || !saved) return
+        const valid: typeof saved.projects = []
+        for (const p of saved.projects) {
+          try {
+            const status = await window.api.recentCheckPath(p.path)
+            if (status === 'ok') valid.push(p)
+          } catch {
+            // skip
+          }
+        }
+        if (!cancelled) setSavedSessionProjects(valid)
+      } catch {
+        // best-effort
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  // Debounced autosave of the open project set when restore is enabled.
+  useEffect(() => {
+    if (!restoreSessionEnabled) return
+    const timer = setTimeout(() => {
+      const projects = terminals.map((t) => ({
+        path: t.path,
+        claudeArgs: t.claudeArgs ?? '',
+        isPlainShell: t.isPlainShell ?? false,
+      }))
+      window.api.sessionSaveLast({ savedAt: Date.now(), projects }).catch(() => {})
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [terminals, restoreSessionEnabled])
+
+  // Flush save on window close so the most recent terminals state is captured
+  // even if the 1s autosave debounce hasn't fired yet.
+  useEffect(() => {
+    if (!restoreSessionEnabled) return
+    const onBeforeUnload = () => {
+      const projects = terminals.map((t) => ({
+        path: t.path,
+        claudeArgs: t.claudeArgs ?? '',
+        isPlainShell: t.isPlainShell ?? false,
+      }))
+      void window.api.sessionSaveLast({ savedAt: Date.now(), projects })
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [terminals, restoreSessionEnabled])
 
   // Listen for sessions created remotely
   useEffect(() => {
@@ -251,6 +312,33 @@ export default function App() {
       return next
     })
   }, [])
+
+  const handleReopenSavedSession = useCallback(() => {
+    for (const p of savedSessionProjects) {
+      if (p.isPlainShell) {
+        const folderName = p.path.split(/[\\/]/).pop() || p.path
+        setTerminals((prev) => {
+          const usedColors = prev.map((t) => t.color)
+          const newEntry: TerminalEntry = {
+            id: crypto.randomUUID(),
+            path: p.path,
+            name: `${folderName} (shell)`,
+            color: assignColor(usedColors),
+            isPlainShell: true,
+          }
+          const next = [...prev, newEntry]
+          if (prev.length === 0 && defaultViewMode === 'focused') {
+            setViewMode({ type: 'focused', terminalId: newEntry.id })
+          }
+          setLayouts(calculateLayout(next.length).map((pos, i) => ({ ...pos, i: next[i].id })))
+          return next
+        })
+      } else {
+        createTerminal(p.path, p.claudeArgs)
+      }
+    }
+    setWelcomeDismissed(true)
+  }, [savedSessionProjects, createTerminal, defaultViewMode])
 
   const handleOpenRecent = useCallback(async (folderPath: string) => {
     let status: 'ok' | 'missing' | 'unmounted' = 'ok'
@@ -414,6 +502,13 @@ export default function App() {
         onToggleFavorite={handleToggleFavorite}
       />
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+        {terminals.length === 0 && savedSessionProjects.length > 0 && !welcomeDismissed && (
+          <WelcomeBackCard
+            count={savedSessionProjects.length}
+            onReopen={handleReopenSavedSession}
+            onDismiss={() => setWelcomeDismissed(true)}
+          />
+        )}
         {terminals.length === 0 && (
           <div style={{
             display: 'flex',
