@@ -11,6 +11,7 @@ export interface AppSettings {
   remoteAccess: boolean
   remotePort: number
   favoriteFolders: string[]
+  restoreSessionEnabled: boolean
 }
 
 const DEFAULTS: AppSettings = {
@@ -23,6 +24,7 @@ const DEFAULTS: AppSettings = {
   remoteAccess: false,
   remotePort: 3456,
   favoriteFolders: [],
+  restoreSessionEnabled: false,
 }
 
 export class Settings {
