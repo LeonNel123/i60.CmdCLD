@@ -16,7 +16,7 @@ export function Toast({ message, kind }: ToastProps) {
       padding: '10px 14px',
       color: kind === 'warn' ? '#f59e0b' : '#ccc',
       fontSize: '12px',
-      fontFamily: 'Menlo, Consolas, monospace',
+      fontFamily: 'inherit',
       maxWidth: '360px',
       zIndex: 9000,
       boxShadow: '0 4px 12px rgba(0,0,0,0.5)',

@@ -32,6 +32,12 @@ export function MarkdownViewer({ filePath, onClose }: MarkdownViewerProps) {
   const html = content ? marked.parse(content, { async: false }) as string : ''
 
   return (
+    <>
+    <style>{`
+      .markdown-body { font-family: inherit; }
+      .markdown-body code,
+      .markdown-body pre { font-family: Menlo, Consolas, monospace; }
+    `}</style>
     <div style={{
       position: 'fixed',
       inset: 0,
@@ -68,7 +74,7 @@ export function MarkdownViewer({ filePath, onClose }: MarkdownViewerProps) {
           <span style={{
             color: '#ccc',
             fontSize: '13px',
-            fontFamily: 'monospace',
+            fontFamily: 'inherit',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -81,7 +87,7 @@ export function MarkdownViewer({ filePath, onClose }: MarkdownViewerProps) {
               title="Open in editor"
               style={{
                 background: 'none', border: 'none', color: '#888',
-                cursor: 'pointer', fontSize: '12px', fontFamily: 'monospace',
+                cursor: 'pointer', fontSize: '12px', fontFamily: 'inherit',
               }}
             >
               &#9998; Edit
@@ -105,11 +111,11 @@ export function MarkdownViewer({ filePath, onClose }: MarkdownViewerProps) {
           padding: '20px 32px',
         }}>
           {error ? (
-            <div style={{ color: '#f14c4c', fontFamily: 'monospace', fontSize: '13px' }}>
+            <div style={{ color: '#f14c4c', fontFamily: 'inherit', fontSize: '13px' }}>
               Failed to read file: {filePath}
             </div>
           ) : content === null ? (
-            <div style={{ color: '#666', fontFamily: 'monospace', fontSize: '13px' }}>
+            <div style={{ color: '#666', fontFamily: 'inherit', fontSize: '13px' }}>
               Loading...
             </div>
           ) : (
@@ -121,5 +127,6 @@ export function MarkdownViewer({ filePath, onClose }: MarkdownViewerProps) {
         </div>
       </div>
     </div>
+    </>
   )
 }
