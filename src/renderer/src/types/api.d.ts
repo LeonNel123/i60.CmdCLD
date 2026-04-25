@@ -25,6 +25,17 @@ export interface RecentFolder {
   lastOpened: number
 }
 
+export interface SavedProject {
+  path: string
+  claudeArgs: string
+  isPlainShell: boolean
+}
+
+export interface SavedSession {
+  savedAt: number
+  projects: SavedProject[]
+}
+
 export interface ElectronAPI {
   platform: 'win32' | 'darwin' | 'linux'
   createTerminal: (id: string, cwd: string) => Promise<void>
@@ -58,6 +69,9 @@ export interface ElectronAPI {
   projectCreate: (folderName: string) => Promise<string | null>
   settingsGetAll: () => Promise<{ editor: string; claudeArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; favoriteFolders: string[]; restoreSessionEnabled: boolean }>
   settingsSet: (key: string, value: unknown) => Promise<void>
+  sessionSaveLast: (session: SavedSession) => Promise<void>
+  sessionLoadLast: () => Promise<SavedSession | null>
+  sessionClearLast: () => Promise<void>
   openExternal: (url: string) => Promise<void>
   openInExplorer: (folderPath: string) => Promise<void>
   openInEditor: (targetPath: string) => Promise<void>

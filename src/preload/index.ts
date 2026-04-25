@@ -133,6 +133,16 @@ contextBridge.exposeInMainWorld('api', {
   claudeConfigWrite: (scope: 'global' | 'local', data: Record<string, unknown>): Promise<void> =>
     ipcRenderer.invoke('claude-config:write', scope, data),
 
+  // Last-session store
+  sessionSaveLast: (session: { savedAt: number; projects: Array<{ path: string; claudeArgs: string; isPlainShell: boolean }> }): Promise<void> =>
+    ipcRenderer.invoke('session:saveLast', session),
+
+  sessionLoadLast: (): Promise<{ savedAt: number; projects: Array<{ path: string; claudeArgs: string; isPlainShell: boolean }> } | null> =>
+    ipcRenderer.invoke('session:loadLast'),
+
+  sessionClearLast: (): Promise<void> =>
+    ipcRenderer.invoke('session:clearLast'),
+
   // Build info for About tab
   getBuildInfo: (): Promise<{ electron: string; chrome: string; node: string; platform: string; release: string }> =>
     ipcRenderer.invoke('get-build-info'),

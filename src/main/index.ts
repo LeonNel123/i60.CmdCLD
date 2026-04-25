@@ -9,6 +9,7 @@ import { Store } from './store'
 import { WindowRegistry } from './window-registry'
 import { RecentDB } from './recent-db'
 import { Settings } from './settings'
+import { LastSessionStore } from './last-session-store'
 import { detectEditors, getDefaultEditor } from './editor-detect'
 import { RemoteServer } from './remote-server'
 import { hardenGlobalSettings, trustFolder, readClaudeConfig, writeClaudeConfig } from './claude-config'
@@ -73,6 +74,7 @@ let ptyManager: PtyManager
 let store: Store
 let recentDB: RecentDB
 let settings: Settings
+let lastSessionStore: LastSessionStore
 const registry = new WindowRegistry()
 let remoteServer: RemoteServer
 const newWindowIds = new Set<string>()
@@ -82,6 +84,7 @@ try {
   store = new Store(join(app.getPath('userData'), 'sessions.json'))
   recentDB = new RecentDB(join(app.getPath('userData'), 'recent.db'))
   settings = new Settings(join(app.getPath('userData'), 'settings.json'))
+  lastSessionStore = new LastSessionStore(join(app.getPath('userData'), 'last-session.json'))
   remoteServer = new RemoteServer({
     ptyManager,
     settings,
@@ -365,6 +368,21 @@ ipcMain.handle('claude-config:read', () => readClaudeConfig())
 
 ipcMain.handle('claude-config:write', (_event, scope: 'global' | 'local', data: Record<string, unknown>) => {
   writeClaudeConfig(scope, data)
+})
+
+// Last-session store — best-effort persistence of the open project set.
+// Read at mount in renderer, write debounced on terminals change, flushed
+// on beforeunload. Never throws.
+ipcMain.handle('session:saveLast', (_event, session: { savedAt: number; projects: Array<{ path: string; claudeArgs: string; isPlainShell: boolean }> }) => {
+  lastSessionStore.write(session)
+})
+
+ipcMain.handle('session:loadLast', () => {
+  return lastSessionStore.read()
+})
+
+ipcMain.handle('session:clearLast', () => {
+  lastSessionStore.clear()
 })
 
 // Keep the app process from being suspended while remote access is on, so a
