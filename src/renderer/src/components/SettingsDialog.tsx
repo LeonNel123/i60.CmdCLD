@@ -11,6 +11,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
   const [notifyOnIdle, setNotifyOnIdle] = useState(false)
+  const [restoreSessionEnabled, setRestoreSessionEnabled] = useState(false)
   const [projectsRoot, setProjectsRoot] = useState('')
   const [loaded, setLoaded] = useState(false)
   const [remoteAccess, setRemoteAccess] = useState(false)
@@ -60,6 +61,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       setRemoteAccess(s.remoteAccess ?? false)
       setRemotePort(s.remotePort ?? 3456)
       setFavoriteFolders(s.favoriteFolders ?? [])
+      setRestoreSessionEnabled(s.restoreSessionEnabled ?? false)
       setLoaded(true)
     })
     window.api.claudeConfigRead().then((cfg) => {
@@ -155,6 +157,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     window.api.settingsSet('projectsRoot', projectsRoot)
     window.api.settingsSet('remotePort', remotePort)
     window.api.settingsSet('favoriteFolders', favoriteFolders)
+    window.api.settingsSet('restoreSessionEnabled', restoreSessionEnabled)
+    if (!restoreSessionEnabled) {
+      // Clear the saved file so the next launch behaves like a fresh install.
+      window.api.sessionClearLast().catch(() => {})
+    }
     onClose()
   }
 
@@ -398,6 +405,25 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             />
             Play sound when terminal finishes work
           </label>
+        </div>
+
+        {/* Remember last session */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            cursor: 'pointer', color: '#ccc', fontSize: '12px', fontFamily: 'monospace',
+          }}>
+            <input
+              type="checkbox"
+              checked={restoreSessionEnabled}
+              onChange={(e) => setRestoreSessionEnabled(e.target.checked)}
+              style={{ accentColor: '#22c55e' }}
+            />
+            Remember last session
+          </label>
+          <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginTop: '2px', marginLeft: '24px', lineHeight: 1.4 }}>
+            Track which projects you have open. On next launch, a "Welcome back" card lets you reopen them with one click. App startup is unaffected.
+          </div>
         </div>
 
         {/* Projects root */}
