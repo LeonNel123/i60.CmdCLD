@@ -22,7 +22,7 @@ export function LaunchDialog({ folderName, defaultArgs, onLaunch, onCancel }: La
         padding: '3px 8px',
         color: args === value ? '#22c55e' : '#aaa',
         fontSize: '11px',
-        fontFamily: 'monospace',
+        fontFamily: 'inherit',
         cursor: 'pointer',
       }}
     >
@@ -53,13 +53,13 @@ export function LaunchDialog({ folderName, defaultArgs, onLaunch, onCancel }: La
           border: '1px solid #333',
         }}
       >
-        <h3 style={{ color: '#e0e0e0', margin: '0 0 14px 0', fontSize: '14px', fontFamily: 'monospace' }}>
+        <h3 style={{ color: '#e0e0e0', margin: '0 0 14px 0', fontSize: '14px', fontFamily: 'inherit' }}>
           Launch Claude in {folderName}
         </h3>
 
         {/* Presets */}
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
+          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
             Quick Presets
           </label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
@@ -69,7 +69,7 @@ export function LaunchDialog({ folderName, defaultArgs, onLaunch, onCancel }: La
 
         {/* Args text field + clear */}
         <div style={{ marginBottom: '10px' }}>
-          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
+          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
             Launch Arguments
           </label>
           <div style={{ display: 'flex', gap: '6px' }}>
@@ -102,7 +102,7 @@ export function LaunchDialog({ folderName, defaultArgs, onLaunch, onCancel }: La
                 padding: '0 10px',
                 color: '#999',
                 fontSize: '11px',
-                fontFamily: 'monospace',
+                fontFamily: 'inherit',
                 cursor: 'pointer',
                 flexShrink: 0,
               }}
@@ -132,7 +132,7 @@ export function LaunchDialog({ folderName, defaultArgs, onLaunch, onCancel }: La
             style={{
               background: '#333', color: '#ccc', border: 'none',
               borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
-              fontSize: '12px', fontFamily: 'monospace',
+              fontSize: '12px', fontFamily: 'inherit',
             }}
           >
             Cancel
@@ -142,7 +142,7 @@ export function LaunchDialog({ folderName, defaultArgs, onLaunch, onCancel }: La
             style={{
               background: '#22c55e', color: '#000', border: 'none',
               borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
-              fontSize: '12px', fontFamily: 'monospace', fontWeight: 600,
+              fontSize: '12px', fontFamily: 'inherit', fontWeight: 600,
             }}
           >
             Launch
