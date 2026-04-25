@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { RecentFolder } from '../types/api'
+import { formatRelativeTime } from '../utils/format-relative-time'
 
 interface TerminalEntry {
   id: string
@@ -27,6 +28,8 @@ interface SidebarProps {
   onNewProject: () => void
   onCloseAll: () => void
   hasProjectsRoot: boolean
+  favoriteFolders: string[]
+  onToggleFavorite: (path: string) => void
 }
 
 const EXPANDED_WIDTH = 180
@@ -48,6 +51,8 @@ export function Sidebar({
   onNewProject,
   onCloseAll,
   hasProjectsRoot,
+  favoriteFolders,
+  onToggleFavorite,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -108,6 +113,10 @@ export function Sidebar({
       overflow: 'hidden',
       flexShrink: 0,
     }}>
+      <style>{`
+        .recent-row:hover .recent-star { opacity: 1 !important; }
+        .recent-row:hover { background: rgba(255,255,255,0.04); }
+      `}</style>
       {/* Action buttons */}
       <div style={{ padding: '6px 4px', borderBottom: '1px solid #2d2d2d' }}>
         <button onClick={onAddFolder} style={btnStyle()} title="Open Project — pick a folder to launch Claude in">
@@ -180,7 +189,7 @@ export function Sidebar({
         })}
       </div>
 
-      {/* Recent folders — expandable, hidden when sidebar collapsed */}
+      {/* Recent folders — favorites pin to top, then non-favorites sorted by recency */}
       {!collapsed && recentFolders.length > 0 && (
         <div style={{ flex: 1, overflowY: 'auto', borderTop: '1px solid #2d2d2d' }}>
           <button
@@ -194,34 +203,72 @@ export function Sidebar({
             }}
           >
             <span>Recent</span>
-            <span style={{ fontSize: '10px' }}>{recentExpanded ? '\u25BC' : '\u25B6'}</span>
+            <span style={{ fontSize: '10px' }}>{recentExpanded ? '▼' : '▶'}</span>
           </button>
-          {recentExpanded && [...recentFolders].sort((a, b) => a.name.localeCompare(b.name)).map((f) => {
-            const isOpen = activePaths.has(f.path)
-            return (
-              <button
-                key={f.path}
-                onClick={() => { if (!isOpen) onOpenRecent(f.path) }}
-                style={btnStyle(false, isOpen)}
-                title={isOpen ? `${f.path} (already open)` : f.path}
-              >
-                <span style={{
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '50%',
-                  background: isOpen ? '#333' : '#555',
-                  flexShrink: 0,
-                }} />
-                <span style={{
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {f.name}
-                </span>
-              </button>
-            )
-          })}
+          {recentExpanded && (() => {
+            const favSet = new Set(favoriteFolders)
+            const sorted = [...recentFolders].sort((a, b) => {
+              const aFav = favSet.has(a.path)
+              const bFav = favSet.has(b.path)
+              if (aFav !== bFav) return aFav ? -1 : 1
+              if (aFav && bFav) return a.name.localeCompare(b.name)
+              return b.lastOpened - a.lastOpened
+            })
+            return sorted.map((f) => {
+              const isOpen = activePaths.has(f.path)
+              const isFav = favSet.has(f.path)
+              return (
+                <div
+                  key={f.path}
+                  className="recent-row"
+                  onClick={() => { if (!isOpen) onOpenRecent(f.path) }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    width: '100%',
+                    padding: '6px 10px',
+                    background: 'none',
+                    cursor: isOpen ? 'default' : 'pointer',
+                    opacity: isOpen ? 0.5 : 1,
+                    fontFamily: 'monospace',
+                    fontSize: '12px',
+                    borderRadius: '3px',
+                  }}
+                  title={isOpen ? `${f.path} (already open)` : f.path}
+                >
+                  <span
+                    onClick={(e) => { e.stopPropagation(); onToggleFavorite(f.path) }}
+                    className="recent-star"
+                    style={{
+                      color: isFav ? '#fbbf24' : '#444',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      width: '14px',
+                      textAlign: 'center',
+                      flexShrink: 0,
+                      opacity: isFav ? 1 : 0,
+                    }}
+                    title={isFav ? 'Unfavorite' : 'Add to favorites'}
+                  >
+                    {isFav ? '★' : '☆'}
+                  </span>
+                  <span style={{
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    color: '#ccc',
+                  }}>
+                    {f.name}
+                  </span>
+                  <span style={{ color: '#666', fontSize: '10px', flexShrink: 0 }}>
+                    {formatRelativeTime(f.lastOpened)}
+                  </span>
+                </div>
+              )
+            })
+          })()}
         </div>
       )}
 
