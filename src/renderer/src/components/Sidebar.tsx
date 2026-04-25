@@ -24,6 +24,7 @@ interface SidebarProps {
   onCloseAll: () => void
   favoriteFolders: string[]
   onToggleFavorite: (path: string) => void
+  onContextMenu: (path: string, x: number, y: number) => void
 }
 
 const EXPANDED_WIDTH = 180
@@ -40,6 +41,7 @@ export function Sidebar({
   onCloseAll,
   favoriteFolders,
   onToggleFavorite,
+  onContextMenu,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -183,6 +185,10 @@ export function Sidebar({
                   key={f.path}
                   className="recent-row"
                   onClick={() => { if (!isOpen) onOpenRecent(f.path) }}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    onContextMenu(f.path, e.clientX, e.clientY)
+                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',

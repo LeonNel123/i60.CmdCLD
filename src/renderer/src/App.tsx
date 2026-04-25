@@ -11,6 +11,8 @@ import { LaunchDialog } from './components/LaunchDialog'
 import { MarkdownViewer } from './components/MarkdownViewer'
 import { Toast } from './components/Toast'
 import { WelcomeBackCard } from './components/WelcomeBackCard'
+import { ContextMenu } from './components/ContextMenu'
+import { FolderOpen, AppWindow, Star, FolderSearch, Code, Copy, Trash2 } from './components/icons'
 import { assignColor } from './utils/colors'
 import { calculateLayout, getRowCount } from './utils/grid-layout'
 import { onActivityChange } from './utils/terminal-activity'
@@ -54,6 +56,7 @@ export default function App() {
   const [restoreSessionEnabled, setRestoreSessionEnabled] = useState(false)
   const [savedSessionProjects, setSavedSessionProjects] = useState<Array<{ path: string; claudeArgs: string; isPlainShell: boolean }>>([])
   const [welcomeDismissed, setWelcomeDismissed] = useState(false)
+  const [contextMenu, setContextMenu] = useState<{ path: string; x: number; y: number } | null>(null)
 
   // Track terminal busy/idle state + notification sound
   const notifyRef = useRef(false)
@@ -314,6 +317,15 @@ export default function App() {
     })
   }, [])
 
+  const handleRemoveRecent = useCallback(async (path: string) => {
+    try {
+      const current = await window.api.recentList()
+      setRecentFolders(current.filter((r) => r.path !== path))
+    } catch {
+      // best-effort
+    }
+  }, [])
+
   const handleReopenSavedSession = useCallback(() => {
     if (savedSessionProjects.length === 0) {
       setWelcomeDismissed(true)
@@ -508,6 +520,7 @@ export default function App() {
         onCloseAll={handleCloseAll}
         favoriteFolders={favoriteFolders}
         onToggleFavorite={handleToggleFavorite}
+        onContextMenu={(path, x, y) => setContextMenu({ path, x, y })}
       />
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {terminals.length === 0 && savedSessionProjects.length > 0 && !welcomeDismissed && (
@@ -624,6 +637,29 @@ export default function App() {
       {toast && (
         <Toast message={toast.message} kind={toast.kind} />
       )}
+
+      {contextMenu && (() => {
+        const path = contextMenu.path
+        const isFav = favoriteFolders.includes(path)
+        const isOpen = terminals.some((t) => t.path === path)
+        return (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onClose={() => setContextMenu(null)}
+            items={[
+              { label: 'Open', icon: FolderOpen, onClick: () => handleOpenRecent(path), disabled: isOpen },
+              { label: 'Open in new window', icon: AppWindow, onClick: () => { window.api.windowCreate().catch(() => {}) } },
+              { label: isFav ? 'Remove from favorites' : 'Add to favorites', icon: Star, onClick: () => handleToggleFavorite(path) },
+              { label: 'Open in Explorer', icon: FolderSearch, onClick: () => { window.api.openInExplorer(path).catch(() => {}) } },
+              { label: 'Open in Editor', icon: Code, onClick: () => { window.api.openInEditor(path).catch(() => {}) } },
+              { label: 'Copy path', icon: Copy, onClick: () => { navigator.clipboard.writeText(path).catch(() => {}) } },
+              { label: '', divider: true, onClick: () => {} },
+              { label: 'Remove from recents', icon: Trash2, onClick: () => handleRemoveRecent(path), destructive: true },
+            ]}
+          />
+        )
+      })()}
 
       {showNewProject && (
         <div style={{
