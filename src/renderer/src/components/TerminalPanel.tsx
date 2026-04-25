@@ -86,6 +86,12 @@ export function TerminalPanel({
   // markers so the program treats the whole thing as one paste event
   // instead of executing each embedded newline as Enter.
   const bracketedPasteRef = useRef(false)
+  // Carry-over of the last few bytes of the previous PTY chunk, used when
+  // sniffing bracketed-paste-mode toggles. Without this, a split escape
+  // sequence (e.g. chunk ends "\x1b[?20" and the next starts "04h") is
+  // missed and bracketedPasteRef gets stuck stale for the rest of the
+  // session, breaking pasted multi-line content.
+  const sniffTailRef = useRef('')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [editorName, setEditorName] = useState('Editor')
   const [availableEditors, setAvailableEditors] = useState<Array<{ id: string; name: string; cmd: string }>>([])
@@ -180,13 +186,20 @@ export function TerminalPanel({
     let claudeLaunched = false
 
     const removeData = window.api.onTerminalData(id, (data) => {
-      // Sniff bracketed-paste mode toggles. A single chunk can in theory
-      // contain both — the later one wins.
-      const enableIdx = data.lastIndexOf('\x1b[?2004h')
-      const disableIdx = data.lastIndexOf('\x1b[?2004l')
+      // Sniff bracketed-paste mode toggles. The escape sequences are 7 bytes
+      // each (`\x1b[?2004h` / `\x1b[?2004l`); they can land split across two
+      // PTY chunks, so we prepend the tail of the previous chunk before
+      // searching, then save a fresh tail. A single chunk can also contain
+      // both toggles — the later one wins.
+      const probe = sniffTailRef.current + data
+      const enableIdx = probe.lastIndexOf('\x1b[?2004h')
+      const disableIdx = probe.lastIndexOf('\x1b[?2004l')
       if (enableIdx >= 0 || disableIdx >= 0) {
         bracketedPasteRef.current = enableIdx > disableIdx
       }
+      // Keep the last 7 bytes (length of either toggle sequence) so a
+      // toggle straddling the next chunk boundary still gets caught.
+      sniffTailRef.current = probe.length > 7 ? probe.slice(-7) : probe
       term.write(data)
       onTerminalDataReceived(id)
     })
