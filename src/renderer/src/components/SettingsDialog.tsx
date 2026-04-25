@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { CLAUDE_PRESETS } from '../utils/claude-presets'
+import { X } from './icons'
 
 interface SettingsDialogProps {
   onClose: () => void
@@ -242,7 +243,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 padding: '4px 12px',
                 color: tab === t ? '#22c55e' : '#aaa',
                 fontSize: '11px',
-                fontFamily: 'monospace',
+                fontFamily: 'inherit',
                 cursor: 'pointer',
                 textTransform: 'capitalize',
               }}
@@ -254,11 +255,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
         {tab === 'settings' && (
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '0 0 16px 0' }}>
-          <h3 style={{ color: '#e0e0e0', margin: 0, fontSize: '14px', fontFamily: 'monospace' }}>
+          <h3 style={{ color: '#e0e0e0', margin: 0, fontSize: '14px', fontFamily: 'inherit' }}>
             Claude CLI Settings
           </h3>
           {appVersion && (
-            <span style={{ color: '#555', fontSize: '11px', fontFamily: 'monospace' }}>
+            <span style={{ color: '#555', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace' }}>
               v{appVersion}
             </span>
           )}
@@ -269,7 +270,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
         {/* Presets */}
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
+          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
             Quick Presets
           </label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
@@ -284,7 +285,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   padding: '3px 8px',
                   color: claudeArgs === p.args ? '#22c55e' : '#aaa',
                   fontSize: '11px',
-                  fontFamily: 'monospace',
+                  fontFamily: 'inherit',
                   cursor: 'pointer',
                 }}
               >
@@ -296,7 +297,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
         {/* Args text field */}
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
+          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
             Default Launch Arguments
           </label>
           <div style={{ display: 'flex', gap: '6px' }}>
@@ -327,7 +328,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 padding: '0 10px',
                 color: '#999',
                 fontSize: '11px',
-                fontFamily: 'monospace',
+                fontFamily: 'inherit',
                 cursor: 'pointer',
                 flexShrink: 0,
               }}
@@ -335,7 +336,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               Clear
             </button>
           </div>
-          <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginTop: '4px' }}>
+          <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '4px' }}>
             These flags are passed to `claude` when opening a new terminal
           </div>
         </div>
@@ -349,7 +350,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             cursor: 'pointer',
             color: '#ccc',
             fontSize: '12px',
-            fontFamily: 'monospace',
+            fontFamily: 'inherit',
           }}>
             <input
               type="checkbox"
@@ -363,7 +364,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
         {/* Default view mode */}
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
+          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
             Default View
           </label>
           <div style={{ display: 'flex', gap: '4px' }}>
@@ -381,7 +382,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   padding: '4px 10px',
                   color: defaultViewMode === opt.value ? '#22c55e' : '#aaa',
                   fontSize: '11px',
-                  fontFamily: 'monospace',
+                  fontFamily: 'inherit',
                   cursor: 'pointer',
                 }}
               >
@@ -395,7 +396,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         <div style={{ marginBottom: '12px' }}>
           <label style={{
             display: 'flex', alignItems: 'center', gap: '8px',
-            cursor: 'pointer', color: '#ccc', fontSize: '12px', fontFamily: 'monospace',
+            cursor: 'pointer', color: '#ccc', fontSize: '12px', fontFamily: 'inherit',
           }}>
             <input
               type="checkbox"
@@ -411,7 +412,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         <div style={{ marginBottom: '12px' }}>
           <label style={{
             display: 'flex', alignItems: 'center', gap: '8px',
-            cursor: 'pointer', color: '#ccc', fontSize: '12px', fontFamily: 'monospace',
+            cursor: 'pointer', color: '#ccc', fontSize: '12px', fontFamily: 'inherit',
           }}>
             <input
               type="checkbox"
@@ -421,14 +422,14 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             />
             Remember last session
           </label>
-          <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginTop: '2px', marginLeft: '24px', lineHeight: 1.4 }}>
+          <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '2px', marginLeft: '24px', lineHeight: 1.4 }}>
             Track which projects you have open. On next launch, a "Welcome back" card lets you reopen them with one click. App startup is unaffected.
           </div>
         </div>
 
         {/* Projects root */}
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
+          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
             Projects Root (for "New Project")
           </label>
           <div style={{ display: 'flex', gap: '6px' }}>
@@ -450,28 +451,28 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               }}
               style={{
                 background: '#333', border: '1px solid #444', borderRadius: '4px',
-                padding: '0 10px', color: '#999', fontSize: '11px', fontFamily: 'monospace',
+                padding: '0 10px', color: '#999', fontSize: '11px', fontFamily: 'inherit',
                 cursor: 'pointer', flexShrink: 0,
               }}
             >
               Browse
             </button>
           </div>
-          <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginTop: '4px' }}>
+          <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '4px' }}>
             "New Project" creates a folder here and opens it in the app
           </div>
         </div>
 
         {/* Remote Access */}
         <div style={{ borderTop: '1px solid #333', paddingTop: '16px', marginTop: '16px' }}>
-          <h4 style={{ color: '#e0e0e0', margin: '0 0 12px', fontSize: '13px', fontFamily: 'monospace' }}>
+          <h4 style={{ color: '#e0e0e0', margin: '0 0 12px', fontSize: '13px', fontFamily: 'inherit' }}>
             Remote Access
           </h4>
 
           <div style={{ marginBottom: '12px' }}>
             <label style={{
               display: 'flex', alignItems: 'center', gap: '8px',
-              cursor: 'pointer', color: '#ccc', fontSize: '12px', fontFamily: 'monospace',
+              cursor: 'pointer', color: '#ccc', fontSize: '12px', fontFamily: 'inherit',
             }}>
               <input
                 type="checkbox"
@@ -484,7 +485,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           </div>
 
           <div style={{ marginBottom: '12px' }}>
-            <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
+            <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
               Port
             </label>
             <input
@@ -500,7 +501,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               }}
             />
             {remoteAccess && (
-              <span style={{ color: '#666', fontSize: '10px', fontFamily: 'monospace', marginLeft: '8px' }}>
+              <span style={{ color: '#666', fontSize: '10px', fontFamily: 'inherit', marginLeft: '8px' }}>
                 Disable to change port
               </span>
             )}
@@ -508,7 +509,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
           {remoteAccess && remoteUrls.length > 0 && (
             <div style={{ marginBottom: '12px' }}>
-              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
                 Connect from
               </label>
               {remoteUrls.map((url) => (
@@ -519,28 +520,28 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   {url}
                 </div>
               ))}
-              <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginTop: '4px' }}>
+              <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '4px' }}>
                 Click to copy. Open in any browser on your network.
               </div>
             </div>
           )}
 
           {remoteError && (
-            <div style={{ color: '#ef4444', fontSize: '11px', fontFamily: 'monospace', marginBottom: '12px' }}>
+            <div style={{ color: '#ef4444', fontSize: '11px', fontFamily: 'inherit', marginBottom: '12px' }}>
               {remoteError}
             </div>
           )}
 
           {/* Tailscale HTTPS */}
           <div style={{ marginBottom: '16px', paddingTop: '12px', borderTop: '1px dashed #2a2a3a' }}>
-            <div style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', marginBottom: '6px' }}>
+            <div style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', marginBottom: '6px' }}>
               Tailscale HTTPS (optional)
             </div>
             {!tsStatus && (
-              <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace' }}>Checking…</div>
+              <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit' }}>Checking…</div>
             )}
             {tsStatus && !tsStatus.installed && (
-              <div style={{ color: '#666', fontSize: '10px', fontFamily: 'monospace', lineHeight: 1.5 }}>
+              <div style={{ color: '#666', fontSize: '10px', fontFamily: 'inherit', lineHeight: 1.5 }}>
                 Tailscale CLI not found. Install from{' '}
                 <a
                   href="https://tailscale.com/download"
@@ -551,7 +552,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               </div>
             )}
             {tsStatus?.installed && !tsStatus.loggedIn && (
-              <div style={{ color: '#f59e0b', fontSize: '10px', fontFamily: 'monospace' }}>
+              <div style={{ color: '#f59e0b', fontSize: '10px', fontFamily: 'inherit' }}>
                 {tsStatus.error || 'Sign in with `tailscale up` and try again.'}
               </div>
             )}
@@ -561,7 +562,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   display: 'flex', alignItems: 'center', gap: '8px',
                   cursor: remoteAccess && !tsBusy ? 'pointer' : 'not-allowed',
                   color: remoteAccess ? '#ccc' : '#666',
-                  fontSize: '12px', fontFamily: 'monospace',
+                  fontSize: '12px', fontFamily: 'inherit',
                 }}>
                   <input
                     type="checkbox"
@@ -573,7 +574,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   Expose over HTTPS via Tailscale Serve
                 </label>
                 {!remoteAccess && (
-                  <div style={{ color: '#666', fontSize: '10px', fontFamily: 'monospace', marginTop: '4px' }}>
+                  <div style={{ color: '#666', fontSize: '10px', fontFamily: 'inherit', marginTop: '4px' }}>
                     Enable Remote Access above first.
                   </div>
                 )}
@@ -589,12 +590,12 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     {tsStatus.serveUrl}
                   </div>
                 )}
-                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginTop: '4px', lineHeight: 1.5 }}>
+                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '4px', lineHeight: 1.5 }}>
                   Uses `tailscale serve --https=443`. Issues a Let's Encrypt cert on your tailnet name.
                   Note: disabling runs `tailscale serve reset`, which clears all serve rules on this machine.
                 </div>
                 {tsError && (
-                  <div style={{ color: '#ef4444', fontSize: '11px', fontFamily: 'monospace', marginTop: '6px' }}>
+                  <div style={{ color: '#ef4444', fontSize: '11px', fontFamily: 'inherit', marginTop: '6px' }}>
                     {tsError}
                   </div>
                 )}
@@ -603,7 +604,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           </div>
 
           <div style={{ marginBottom: '12px' }}>
-            <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '6px' }}>
+            <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
               Favorite Folders (for remote session creation)
             </label>
             {favoriteFolders.map((f) => (
@@ -615,13 +616,15 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 </span>
                 <button onClick={() => handleRemoveFavorite(f)} style={{
                   background: 'none', border: 'none', color: '#666', cursor: 'pointer',
-                  fontSize: '14px', padding: '0 4px', flexShrink: 0,
-                }}>×</button>
+                  padding: '0 4px', display: 'flex', alignItems: 'center', flexShrink: 0,
+                }}>
+                  <X width={12} height={12} />
+                </button>
               </div>
             ))}
             <button onClick={handleAddFavorite} style={{
               background: '#ffffff08', border: '1px solid #333', borderRadius: '4px',
-              padding: '4px 10px', color: '#888', fontSize: '11px', fontFamily: 'monospace',
+              padding: '4px 10px', color: '#888', fontSize: '11px', fontFamily: 'inherit',
               cursor: 'pointer', marginTop: '4px',
             }}>
               + Add Folder
@@ -633,30 +636,30 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
         {/* Claude Config tab */}
         {tab === 'claude config' && ccLoaded && (<>
-          <h3 style={{ color: '#e0e0e0', margin: '0 0 16px', fontSize: '14px', fontFamily: 'monospace' }}>
+          <h3 style={{ color: '#e0e0e0', margin: '0 0 16px', fontSize: '14px', fontFamily: 'inherit' }}>
             Claude CLI Config
           </h3>
 
           {/* Global Settings */}
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', marginBottom: '10px' }}>
-              Global Settings <span style={{ color: '#555' }}>~/.claude/settings.json</span>
+            <div style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', marginBottom: '10px' }}>
+              Global Settings <span style={{ color: '#555', fontFamily: 'Menlo, Consolas, monospace' }}>~/.claude/settings.json</span>
             </div>
 
             {/* Disable Bypass */}
             <div style={{ marginBottom: '10px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#ccc', fontSize: '12px', fontFamily: 'monospace' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#ccc', fontSize: '12px', fontFamily: 'inherit' }}>
                 <input type="checkbox" checked={ccDisableBypass} onChange={(e) => setCcDisableBypass(e.target.checked)} style={{ accentColor: '#22c55e' }} />
                 Disable bypass permissions mode
               </label>
-              <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginTop: '2px', marginLeft: '24px' }}>
+              <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '2px', marginLeft: '24px' }}>
                 Blocks --dangerously-skip-permissions and Shift+Tab bypass
               </div>
             </div>
 
             {/* Default Mode */}
             <div style={{ marginBottom: '10px' }}>
-              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '4px' }}>
                 Default Permission Mode
               </label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
@@ -666,7 +669,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     border: ccDefaultMode === m ? '1px solid #22c55e' : '1px solid #333',
                     borderRadius: '4px', padding: '3px 8px',
                     color: ccDefaultMode === m ? '#22c55e' : '#aaa',
-                    fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer',
+                    fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer',
                   }}>{m}</button>
                 ))}
               </div>
@@ -674,7 +677,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
             {/* Effort Level */}
             <div style={{ marginBottom: '10px' }}>
-              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '4px' }}>
                 Effort Level
               </label>
               <div style={{ display: 'flex', gap: '4px' }}>
@@ -684,7 +687,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     border: ccEffort === e ? '1px solid #22c55e' : '1px solid #333',
                     borderRadius: '4px', padding: '4px 10px',
                     color: ccEffort === e ? '#22c55e' : '#aaa',
-                    fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer',
+                    fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer',
                   }}>{e}</button>
                 ))}
               </div>
@@ -692,7 +695,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
             {/* Model Override */}
             <div style={{ marginBottom: '10px' }}>
-              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '4px' }}>
                 Model Override
               </label>
               <input type="text" value={ccModel} onChange={(e) => setCcModel(e.target.value)}
@@ -706,7 +709,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
             {/* Auto Updates Channel */}
             <div style={{ marginBottom: '12px' }}>
-              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '4px' }}>
                 Auto Updates Channel
               </label>
               <div style={{ display: 'flex', gap: '4px' }}>
@@ -716,7 +719,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     border: ccAutoUpdates === ch ? '1px solid #22c55e' : '1px solid #333',
                     borderRadius: '4px', padding: '4px 10px',
                     color: ccAutoUpdates === ch ? '#22c55e' : '#aaa',
-                    fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer',
+                    fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer',
                   }}>{ch}</button>
                 ))}
               </div>
@@ -724,18 +727,20 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
             {/* Global Allow rules */}
             <div style={{ marginBottom: '10px' }}>
-              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '4px' }}>
                 Permission Allow Rules
               </label>
               {ccGlobalAllow.length === 0 && (
-                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginBottom: '4px' }}>No rules</div>
+                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginBottom: '4px' }}>No rules</div>
               )}
               {ccGlobalAllow.map((r, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0' }}>
                   <span style={{ color: '#ccc', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r}</span>
                   <button onClick={() => setCcGlobalAllow(ccGlobalAllow.filter((_, j) => j !== i))} style={{
-                    background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '14px', padding: '0 4px', flexShrink: 0,
-                  }}>×</button>
+                    background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '0 4px', display: 'flex', alignItems: 'center', flexShrink: 0,
+                  }}>
+                    <X width={12} height={12} />
+                  </button>
                 </div>
               ))}
               {ccAddTarget === 'global-allow' ? (
@@ -744,31 +749,33 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     onKeyDown={(e) => { if (e.key === 'Enter') handleAddRule('global-allow'); if (e.key === 'Escape') setCcAddTarget(null) }}
                     autoFocus placeholder='e.g. Bash(npm:*)'
                     style={{ flex: 1, background: '#0d1117', border: '1px solid #333', borderRadius: '4px', padding: '4px 8px', color: '#e0e0e0', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', outline: 'none' }} />
-                  <button onClick={() => handleAddRule('global-allow')} style={{ background: '#22c55e', color: '#000', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Add</button>
-                  <button onClick={() => setCcAddTarget(null)} style={{ background: '#333', color: '#999', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={() => handleAddRule('global-allow')} style={{ background: '#22c55e', color: '#000', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer' }}>Add</button>
+                  <button onClick={() => setCcAddTarget(null)} style={{ background: '#333', color: '#999', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer' }}>Cancel</button>
                 </div>
               ) : (
                 <button onClick={() => { setCcNewRule(''); setCcAddTarget('global-allow') }} style={{
                   background: '#ffffff08', border: '1px solid #333', borderRadius: '4px', padding: '3px 8px',
-                  color: '#888', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer', marginTop: '4px',
+                  color: '#888', fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer', marginTop: '4px',
                 }}>+ Add Rule</button>
               )}
             </div>
 
             {/* Global Deny rules */}
             <div style={{ marginBottom: '10px' }}>
-              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '4px' }}>
                 Permission Deny Rules
               </label>
               {ccGlobalDeny.length === 0 && (
-                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginBottom: '4px' }}>No rules</div>
+                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginBottom: '4px' }}>No rules</div>
               )}
               {ccGlobalDeny.map((r, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0' }}>
                   <span style={{ color: '#ccc', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r}</span>
                   <button onClick={() => setCcGlobalDeny(ccGlobalDeny.filter((_, j) => j !== i))} style={{
-                    background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '14px', padding: '0 4px', flexShrink: 0,
-                  }}>×</button>
+                    background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '0 4px', display: 'flex', alignItems: 'center', flexShrink: 0,
+                  }}>
+                    <X width={12} height={12} />
+                  </button>
                 </div>
               ))}
               {ccAddTarget === 'global-deny' ? (
@@ -777,13 +784,13 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     onKeyDown={(e) => { if (e.key === 'Enter') handleAddRule('global-deny'); if (e.key === 'Escape') setCcAddTarget(null) }}
                     autoFocus placeholder='e.g. Bash(rm -rf:*)'
                     style={{ flex: 1, background: '#0d1117', border: '1px solid #333', borderRadius: '4px', padding: '4px 8px', color: '#e0e0e0', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', outline: 'none' }} />
-                  <button onClick={() => handleAddRule('global-deny')} style={{ background: '#22c55e', color: '#000', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Add</button>
-                  <button onClick={() => setCcAddTarget(null)} style={{ background: '#333', color: '#999', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={() => handleAddRule('global-deny')} style={{ background: '#22c55e', color: '#000', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer' }}>Add</button>
+                  <button onClick={() => setCcAddTarget(null)} style={{ background: '#333', color: '#999', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer' }}>Cancel</button>
                 </div>
               ) : (
                 <button onClick={() => { setCcNewRule(''); setCcAddTarget('global-deny') }} style={{
                   background: '#ffffff08', border: '1px solid #333', borderRadius: '4px', padding: '3px 8px',
-                  color: '#888', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer', marginTop: '4px',
+                  color: '#888', fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer', marginTop: '4px',
                 }}>+ Add Rule</button>
               )}
             </div>
@@ -791,24 +798,26 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
           {/* Local Settings */}
           <div style={{ borderTop: '1px solid #333', paddingTop: '16px' }}>
-            <div style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', marginBottom: '10px' }}>
-              Local Settings <span style={{ color: '#555' }}>~/.claude/settings.local.json</span>
+            <div style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', marginBottom: '10px' }}>
+              Local Settings <span style={{ color: '#555', fontFamily: 'Menlo, Consolas, monospace' }}>~/.claude/settings.local.json</span>
             </div>
 
             {/* Local Allow rules */}
             <div style={{ marginBottom: '10px' }}>
-              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '4px' }}>
                 Permission Allow Rules
               </label>
               {ccLocalAllow.length === 0 && (
-                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginBottom: '4px' }}>No rules</div>
+                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginBottom: '4px' }}>No rules</div>
               )}
               {ccLocalAllow.map((r, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0' }}>
                   <span style={{ color: '#ccc', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r}</span>
                   <button onClick={() => setCcLocalAllow(ccLocalAllow.filter((_, j) => j !== i))} style={{
-                    background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '14px', padding: '0 4px', flexShrink: 0,
-                  }}>×</button>
+                    background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '0 4px', display: 'flex', alignItems: 'center', flexShrink: 0,
+                  }}>
+                    <X width={12} height={12} />
+                  </button>
                 </div>
               ))}
               {ccAddTarget === 'local-allow' ? (
@@ -817,31 +826,33 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     onKeyDown={(e) => { if (e.key === 'Enter') handleAddRule('local-allow'); if (e.key === 'Escape') setCcAddTarget(null) }}
                     autoFocus placeholder='e.g. Bash(ssh:*)'
                     style={{ flex: 1, background: '#0d1117', border: '1px solid #333', borderRadius: '4px', padding: '4px 8px', color: '#e0e0e0', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', outline: 'none' }} />
-                  <button onClick={() => handleAddRule('local-allow')} style={{ background: '#22c55e', color: '#000', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Add</button>
-                  <button onClick={() => setCcAddTarget(null)} style={{ background: '#333', color: '#999', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={() => handleAddRule('local-allow')} style={{ background: '#22c55e', color: '#000', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer' }}>Add</button>
+                  <button onClick={() => setCcAddTarget(null)} style={{ background: '#333', color: '#999', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer' }}>Cancel</button>
                 </div>
               ) : (
                 <button onClick={() => { setCcNewRule(''); setCcAddTarget('local-allow') }} style={{
                   background: '#ffffff08', border: '1px solid #333', borderRadius: '4px', padding: '3px 8px',
-                  color: '#888', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer', marginTop: '4px',
+                  color: '#888', fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer', marginTop: '4px',
                 }}>+ Add Rule</button>
               )}
             </div>
 
             {/* Local Deny rules */}
             <div style={{ marginBottom: '10px' }}>
-              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'monospace', display: 'block', marginBottom: '4px' }}>
+              <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '4px' }}>
                 Permission Deny Rules
               </label>
               {ccLocalDeny.length === 0 && (
-                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'monospace', marginBottom: '4px' }}>No rules</div>
+                <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginBottom: '4px' }}>No rules</div>
               )}
               {ccLocalDeny.map((r, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0' }}>
                   <span style={{ color: '#ccc', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r}</span>
                   <button onClick={() => setCcLocalDeny(ccLocalDeny.filter((_, j) => j !== i))} style={{
-                    background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '14px', padding: '0 4px', flexShrink: 0,
-                  }}>×</button>
+                    background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '0 4px', display: 'flex', alignItems: 'center', flexShrink: 0,
+                  }}>
+                    <X width={12} height={12} />
+                  </button>
                 </div>
               ))}
               {ccAddTarget === 'local-deny' ? (
@@ -850,13 +861,13 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     onKeyDown={(e) => { if (e.key === 'Enter') handleAddRule('local-deny'); if (e.key === 'Escape') setCcAddTarget(null) }}
                     autoFocus placeholder='e.g. Bash(rm -rf:*)'
                     style={{ flex: 1, background: '#0d1117', border: '1px solid #333', borderRadius: '4px', padding: '4px 8px', color: '#e0e0e0', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace', outline: 'none' }} />
-                  <button onClick={() => handleAddRule('local-deny')} style={{ background: '#22c55e', color: '#000', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Add</button>
-                  <button onClick={() => setCcAddTarget(null)} style={{ background: '#333', color: '#999', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={() => handleAddRule('local-deny')} style={{ background: '#22c55e', color: '#000', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer' }}>Add</button>
+                  <button onClick={() => setCcAddTarget(null)} style={{ background: '#333', color: '#999', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer' }}>Cancel</button>
                 </div>
               ) : (
                 <button onClick={() => { setCcNewRule(''); setCcAddTarget('local-deny') }} style={{
                   background: '#ffffff08', border: '1px solid #333', borderRadius: '4px', padding: '3px 8px',
-                  color: '#888', fontSize: '11px', fontFamily: 'monospace', cursor: 'pointer', marginTop: '4px',
+                  color: '#888', fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer', marginTop: '4px',
                 }}>+ Add Rule</button>
               )}
             </div>
@@ -865,10 +876,10 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
         {/* About tab */}
         {tab === 'about' && (
-          <div style={{ fontFamily: 'Menlo, Consolas, monospace', fontSize: '12px', color: '#ccc', lineHeight: '1.6' }}>
+          <div style={{ fontFamily: 'inherit', fontSize: '12px', color: '#ccc', lineHeight: '1.6' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '4px' }}>
               <span style={{ color: '#e0e0e0', fontSize: '14px', fontWeight: 600 }}>CmdCLD</span>
-              <span style={{ color: '#555', fontSize: '11px' }}>{appVersion ? `v${appVersion}` : ''}</span>
+              <span style={{ color: '#555', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace' }}>{appVersion ? `v${appVersion}` : ''}</span>
             </div>
             <div style={{ color: '#888', fontSize: '11px', marginBottom: '16px' }}>Multi-terminal Claude launcher</div>
 
@@ -919,7 +930,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             ].map(([label, value]) => (
               <div key={label as string} style={{ display: 'flex', gap: '12px', marginBottom: '3px' }}>
                 <span style={{ color: '#555', fontSize: '11px', width: '70px', flexShrink: 0 }}>{label}</span>
-                <span style={{ color: '#aaa', fontSize: '11px' }}>{value ?? '—'}</span>
+                <span style={{ color: '#aaa', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace' }}>{value ?? '—'}</span>
               </div>
             ))}
           </div>
@@ -934,7 +945,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 style={{
                   background: '#333', color: '#ccc', border: 'none',
                   borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
-                  fontSize: '12px', fontFamily: 'monospace',
+                  fontSize: '12px', fontFamily: 'inherit',
                 }}
               >
                 Cancel
@@ -944,7 +955,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 style={{
                   background: '#22c55e', color: '#000', border: 'none',
                   borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
-                  fontSize: '12px', fontFamily: 'monospace', fontWeight: 600,
+                  fontSize: '12px', fontFamily: 'inherit', fontWeight: 600,
                 }}
               >
                 Save
@@ -958,7 +969,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 style={{
                   background: '#333', color: '#ccc', border: 'none',
                   borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
-                  fontSize: '12px', fontFamily: 'monospace',
+                  fontSize: '12px', fontFamily: 'inherit',
                 }}
               >
                 Cancel
@@ -968,7 +979,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 style={{
                   background: ccSaved ? '#166534' : '#22c55e', color: ccSaved ? '#ccc' : '#000', border: 'none',
                   borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
-                  fontSize: '12px', fontFamily: 'monospace', fontWeight: 600,
+                  fontSize: '12px', fontFamily: 'inherit', fontWeight: 600,
                   transition: 'background 0.2s',
                 }}
               >
@@ -982,7 +993,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               style={{
                 background: '#333', color: '#ccc', border: 'none',
                 borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
-                fontSize: '12px', fontFamily: 'monospace',
+                fontSize: '12px', fontFamily: 'inherit',
               }}
             >
               Close
