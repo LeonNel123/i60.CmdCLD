@@ -48,6 +48,7 @@ export default function App() {
   const [newProjectName, setNewProjectName] = useState('')
   const [markdownFile, setMarkdownFile] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; kind: 'info' | 'warn' } | null>(null)
+  const [favoriteFolders, setFavoriteFolders] = useState<string[]>([])
 
   // Track terminal busy/idle state + notification sound
   const notifyRef = useRef(false)
@@ -90,6 +91,7 @@ export default function App() {
         setNotifyOnIdle(settings.notifyOnIdle)
         setProjectsRoot(settings.projectsRoot)
         setDefaultViewMode(settings.defaultViewMode)
+        setFavoriteFolders(settings.favoriteFolders ?? [])
       }
       setRecentFolders(recent)
       setLoaded(true)
@@ -241,6 +243,14 @@ export default function App() {
     }))
     setLayouts(newLayouts)
   }, [defaultViewMode, terminals])
+
+  const handleToggleFavorite = useCallback((path: string) => {
+    setFavoriteFolders((prev) => {
+      const next = prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]
+      window.api.settingsSet('favoriteFolders', next)
+      return next
+    })
+  }, [])
 
   const handleOpenRecent = useCallback(async (folderPath: string) => {
     let status: 'ok' | 'missing' | 'unmounted' = 'ok'
@@ -400,6 +410,8 @@ export default function App() {
         onNewProject={() => setShowNewProject(true)}
         onCloseAll={handleCloseAll}
         hasProjectsRoot={!!projectsRoot}
+        favoriteFolders={favoriteFolders}
+        onToggleFavorite={handleToggleFavorite}
       />
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {terminals.length === 0 && (
