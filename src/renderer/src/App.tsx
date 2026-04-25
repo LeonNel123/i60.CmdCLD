@@ -314,31 +314,36 @@ export default function App() {
   }, [])
 
   const handleReopenSavedSession = useCallback(() => {
-    for (const p of savedSessionProjects) {
-      if (p.isPlainShell) {
+    if (savedSessionProjects.length === 0) {
+      setWelcomeDismissed(true)
+      return
+    }
+    // Single batched setTerminals so all saved projects survive — calling
+    // createTerminal in a loop would use a stale `terminals` closure and
+    // each iteration would overwrite the last. Build all entries up front
+    // against the live `prev` and apply once.
+    setTerminals((prev) => {
+      const usedColors = [...prev.map((t) => t.color)]
+      const newEntries: TerminalEntry[] = savedSessionProjects.map((p) => {
         const folderName = p.path.split(/[\\/]/).pop() || p.path
-        setTerminals((prev) => {
-          const usedColors = prev.map((t) => t.color)
-          const newEntry: TerminalEntry = {
-            id: crypto.randomUUID(),
-            path: p.path,
-            name: `${folderName} (shell)`,
-            color: assignColor(usedColors),
-            isPlainShell: true,
-          }
-          const next = [...prev, newEntry]
-          if (prev.length === 0 && defaultViewMode === 'focused') {
-            setViewMode({ type: 'focused', terminalId: newEntry.id })
-          }
-          setLayouts(calculateLayout(next.length).map((pos, i) => ({ ...pos, i: next[i].id })))
-          return next
-        })
-      } else {
-        createTerminal(p.path, p.claudeArgs)
+        const color = assignColor(usedColors)
+        usedColors.push(color)
+        return p.isPlainShell
+          ? { id: crypto.randomUUID(), path: p.path, name: `${folderName} (shell)`, color, isPlainShell: true }
+          : { id: crypto.randomUUID(), path: p.path, name: folderName, color, claudeArgs: p.claudeArgs }
+      })
+      const next = [...prev, ...newEntries]
+      if (prev.length === 0 && defaultViewMode === 'focused' && newEntries.length > 0) {
+        setViewMode({ type: 'focused', terminalId: newEntries[0].id })
       }
+      setLayouts(calculateLayout(next.length).map((pos, i) => ({ ...pos, i: next[i].id })))
+      return next
+    })
+    for (const p of savedSessionProjects) {
+      window.api.recentAdd(p.path).catch(() => {})
     }
     setWelcomeDismissed(true)
-  }, [savedSessionProjects, createTerminal, defaultViewMode])
+  }, [savedSessionProjects, defaultViewMode])
 
   const handleOpenRecent = useCallback(async (folderPath: string) => {
     let status: 'ok' | 'missing' | 'unmounted' = 'ok'
