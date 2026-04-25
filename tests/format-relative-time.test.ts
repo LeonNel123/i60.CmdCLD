@@ -45,6 +45,12 @@ describe('formatRelativeTime', () => {
     expect(formatRelativeTime(now - 3 * WEEK, now)).toBe('3w')
   })
 
+  it('returns weeks for the 28-29 day boundary (no zero-month bucket)', () => {
+    expect(formatRelativeTime(now - 28 * DAY, now)).toBe('4w')
+    expect(formatRelativeTime(now - 29 * DAY, now)).toBe('4w')
+    expect(formatRelativeTime(now - 30 * DAY, now)).toBe('1mo')
+  })
+
   it('returns months for under a year', () => {
     expect(formatRelativeTime(now - 1 * MONTH, now)).toBe('1mo')
     expect(formatRelativeTime(now - 6 * MONTH, now)).toBe('6mo')

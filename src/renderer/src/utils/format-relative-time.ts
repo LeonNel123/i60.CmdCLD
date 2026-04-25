@@ -17,7 +17,7 @@ export function formatRelativeTime(timestamp: number, now: number = Date.now()):
   if (days < 7) return `${days}d`
 
   const weeks = Math.floor(days / 7)
-  if (weeks < 4) return `${weeks}w`
+  if (days < 30) return `${weeks}w`
 
   const months = Math.floor(days / 30)
   if (months < 12) return `${months}mo`
