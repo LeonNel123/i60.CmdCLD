@@ -23,6 +23,7 @@ interface SidebarProps {
   onOpenRecent: (path: string) => void
   onOpenSettings: () => void
   onQuickClaude: () => void
+  onQuickShell: () => void
   onNewProject: () => void
   onCloseAll: () => void
   hasProjectsRoot: boolean
@@ -42,6 +43,7 @@ export function Sidebar({
   busyTerminals,
   onOpenRecent,
   onQuickClaude,
+  onQuickShell,
   onOpenSettings,
   onNewProject,
   onCloseAll,
@@ -115,6 +117,10 @@ export function Sidebar({
         <button onClick={onQuickClaude} style={btnStyle()} title="Quick Claude (no folder)">
           <span style={{ color: '#fb923c', fontSize: '13px', lineHeight: 1 }}>&gt;</span>
           {!collapsed && <span>Quick Claude</span>}
+        </button>
+        <button onClick={onQuickShell} style={btnStyle()} title="Quick Shell — plain shell in your home folder">
+          <span style={{ color: '#94a3b8', fontSize: '11px', lineHeight: 1, fontFamily: 'monospace' }}>&gt;_</span>
+          {!collapsed && <span>Quick Shell</span>}
         </button>
         <button onClick={onNewWindow} style={btnStyle()} title="New Window">
           <span style={{ fontSize: '13px', lineHeight: 1 }}>&#8862;</span>

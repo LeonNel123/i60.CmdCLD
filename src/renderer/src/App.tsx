@@ -218,6 +218,30 @@ export default function App() {
     }
   }, [claudeArgs, askBeforeLaunch, createTerminal])
 
+  // Open a plain shell in the user's home folder — no Claude.
+  const handleQuickShell = useCallback(async () => {
+    const homeDir = await window.api.getHomeDir()
+    const folderName = homeDir.split(/[\\/]/).pop() || homeDir
+    const usedColors = terminals.map((t) => t.color)
+    const newEntry: TerminalEntry = {
+      id: crypto.randomUUID(),
+      path: homeDir,
+      name: `${folderName} (shell)`,
+      color: assignColor(usedColors),
+      isPlainShell: true,
+    }
+    const newTerminals = [...terminals, newEntry]
+    setTerminals(newTerminals)
+    if (terminals.length === 0 && defaultViewMode === 'focused') {
+      setViewMode({ type: 'focused', terminalId: newEntry.id })
+    }
+    const newLayouts = calculateLayout(newTerminals.length).map((pos, i) => ({
+      ...pos,
+      i: newTerminals[i].id,
+    }))
+    setLayouts(newLayouts)
+  }, [defaultViewMode, terminals])
+
   const handleOpenRecent = useCallback(async (folderPath: string) => {
     let status: 'ok' | 'missing' | 'unmounted' = 'ok'
     try {
@@ -371,6 +395,7 @@ export default function App() {
         recentFolders={recentFolders}
         onOpenRecent={handleOpenRecent}
         onQuickClaude={handleQuickClaude}
+        onQuickShell={handleQuickShell}
         onOpenSettings={() => setShowSettings(true)}
         onNewProject={() => setShowNewProject(true)}
         onCloseAll={handleCloseAll}
