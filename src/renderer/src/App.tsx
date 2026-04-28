@@ -13,6 +13,7 @@ import { Toast } from './components/Toast'
 import { WelcomeBackCard } from './components/WelcomeBackCard'
 import { EmptyWorkspace } from './components/EmptyWorkspace'
 import { ContextMenu } from './components/ContextMenu'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { CommandPalette } from './components/CommandPalette'
 import { FolderOpen, AppWindow, Star, FolderSearch, Code, Copy, Trash2 } from './components/icons'
 import { assignColor } from './utils/colors'
@@ -550,6 +551,7 @@ export default function App() {
         onContextMenu={(path, x, y) => setContextMenu({ path, x, y })}
       />
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+        <ErrorBoundary>
         {terminals.length === 0 && savedSessionProjects.length > 0 && !welcomeDismissed && (
           <WelcomeBackCard
             count={savedSessionProjects.length}
@@ -614,6 +616,7 @@ export default function App() {
             />
           </div>
         ))}
+        </ErrorBoundary>
       </div>
 
       {closingId && (

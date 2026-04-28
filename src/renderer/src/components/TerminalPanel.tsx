@@ -143,11 +143,16 @@ export function TerminalPanel({
     term.loadAddon(webLinksAddon)
     term.loadAddon(searchAddon)
     term.open(termRef.current)
+    let webglAddon: WebglAddon | null = null
     try {
-      const webgl = new WebglAddon()
-      webgl.onContextLoss(() => { try { webgl.dispose() } catch {} })
-      term.loadAddon(webgl)
+      webglAddon = new WebglAddon()
+      webglAddon.onContextLoss(() => {
+        try { webglAddon?.dispose() } catch {}
+        webglAddon = null
+      })
+      term.loadAddon(webglAddon)
     } catch {
+      webglAddon = null
       // WebGL unavailable (very old GPU or virtualized env) — fall back to default canvas renderer silently
     }
 
@@ -401,7 +406,12 @@ export function TerminalPanel({
         cleanupRef.current.removeDragDrop()
         cleanupRef.current = null
       }
-      term.dispose()
+      // Dispose WebGL addon BEFORE the terminal — addon internals reference
+      // the terminal's renderer; if the terminal disposes first the addon's
+      // own dispose throws "Cannot read _isDisposed of undefined".
+      try { webglAddon?.dispose() } catch {}
+      webglAddon = null
+      try { term.dispose() } catch {}
     }
   }, [id, folderPath])
 
