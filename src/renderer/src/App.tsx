@@ -117,16 +117,17 @@ export default function App() {
       try {
         const saved = await window.api.sessionLoadLast()
         if (cancelled || !saved) return
-        const valid: typeof saved.projects = []
-        for (const p of saved.projects) {
+        const checks = await Promise.all(saved.projects.map(async (p) => {
           try {
             const status = await window.api.recentCheckPath(p.path)
-            if (status === 'ok') valid.push(p)
+            return status === 'ok' ? p : null
           } catch {
-            // skip
+            return null
           }
-        }
-        if (!cancelled) setSavedSessionProjects(valid)
+        }))
+        if (cancelled) return
+        const valid = checks.filter((p): p is typeof saved.projects[number] => p !== null)
+        setSavedSessionProjects(valid)
       } catch {
         // best-effort
       }

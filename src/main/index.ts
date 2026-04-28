@@ -430,13 +430,22 @@ ipcMain.handle('remote:status', () => {
 
 // Tailscale HTTPS exposure — shells out to the user's tailscale CLI.
 // Requires: tailscale installed, signed in, and HTTPS enabled on the tailnet.
+let tsCache: { value: unknown; at: number } | null = null
+const TS_CACHE_TTL_MS = 60_000
+
 ipcMain.handle('tailscale:status', async () => {
+  if (tsCache && Date.now() - tsCache.at < TS_CACHE_TTL_MS) {
+    return tsCache.value
+  }
   const status = await tsGetStatus()
   const serve = status.installed ? await tsGetServeStatus() : { active: false, url: null as string | null }
-  return { ...status, serveActive: serve.active, serveUrl: serve.url }
+  const result = { ...status, serveActive: serve.active, serveUrl: serve.url }
+  tsCache = { value: result, at: Date.now() }
+  return result
 })
 
 ipcMain.handle('tailscale:serveStart', async () => {
+  tsCache = null
   if (!remoteServer.isRunning()) {
     return { ok: false, error: 'Enable Remote Access first.' }
   }
@@ -445,6 +454,7 @@ ipcMain.handle('tailscale:serveStart', async () => {
 })
 
 ipcMain.handle('tailscale:serveStop', async () => {
+  tsCache = null
   return tsStopServe()
 })
 

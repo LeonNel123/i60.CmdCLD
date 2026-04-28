@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
+import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { onTerminalDataReceived, removeTerminalActivity } from '../utils/terminal-activity'
 import { formatPaths } from '../utils/format-paths'
@@ -142,6 +143,13 @@ export function TerminalPanel({
     term.loadAddon(webLinksAddon)
     term.loadAddon(searchAddon)
     term.open(termRef.current)
+    try {
+      const webgl = new WebglAddon()
+      webgl.onContextLoss(() => { try { webgl.dispose() } catch {} })
+      term.loadAddon(webgl)
+    } catch {
+      // WebGL unavailable (very old GPU or virtualized env) — fall back to default canvas renderer silently
+    }
 
     // Make file paths clickable — opens in configured editor
     term.registerLinkProvider({
