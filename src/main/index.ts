@@ -79,6 +79,9 @@ let lastSessionStore: LastSessionStore
 const registry = new WindowRegistry()
 let remoteServer: RemoteServer
 const newWindowIds = new Set<string>()
+// Tracks windows that have already passed the "are you sure?" close dialog,
+// so the cascading close event after dialog-OK doesn't re-prompt.
+const confirmedClose = new WeakSet<BrowserWindow>()
 
 try {
   ptyManager = new PtyManager()
@@ -177,6 +180,32 @@ function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: s
   }
   win.on('resize', saveBounds)
   win.on('move', saveBounds)
+
+  // Confirmation handler — runs FIRST. Only blocks close when the window
+  // owns active terminals; otherwise close proceeds straight through.
+  // After the user confirms, we mark the window so the second close event
+  // (triggered by win.close() below) skips this dialog.
+  win.on('close', (e) => {
+    if (confirmedClose.has(win)) return
+    const owned = ptyManager.listByWebContents(win.webContents)
+    if (owned.length === 0) return // nothing running, allow close
+
+    e.preventDefault()
+    dialog.showMessageBox(win, {
+      type: 'question',
+      buttons: ['Close', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      title: 'Close window',
+      message: 'Close this window?',
+      detail: `${owned.length} terminal session${owned.length === 1 ? '' : 's'} will be terminated.`,
+    }).then((result) => {
+      if (result.response === 0) {
+        confirmedClose.add(win)
+        win.close()
+      }
+    }).catch(() => {})
+  })
 
   win.on('close', () => {
     clearTimeout(boundsTimer)
