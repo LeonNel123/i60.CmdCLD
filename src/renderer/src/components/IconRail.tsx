@@ -1,6 +1,7 @@
 import {
   FolderOpen, Sparkles, TerminalSquare, AppWindow, FolderPlus, Settings,
 } from './icons'
+import { Tooltip } from './Tooltip'
 
 interface IconRailProps {
   onAddFolder: () => void
@@ -65,27 +66,28 @@ function RailButton({
   title, color, onClick, children,
 }: { title: string; color: string; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
-      onClick={onClick}
-      title={title}
-      style={{
-        width: 28,
-        height: 28,
-        marginBottom: 6,
-        background: 'none',
-        border: 'none',
-        borderRadius: 4,
-        color,
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 0,
-      }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)' }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'none' }}
-    >
-      {children}
-    </button>
+    <Tooltip label={title} side="right">
+      <button
+        onClick={onClick}
+        style={{
+          width: 28,
+          height: 28,
+          marginBottom: 6,
+          background: 'none',
+          border: 'none',
+          borderRadius: 4,
+          color,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 0,
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)' }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'none' }}
+      >
+        {children}
+      </button>
+    </Tooltip>
   )
 }
