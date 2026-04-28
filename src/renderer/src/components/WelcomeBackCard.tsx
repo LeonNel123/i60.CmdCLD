@@ -25,7 +25,7 @@ export function WelcomeBackCard({ count, onReopen, onDismiss }: WelcomeBackCardP
       fontFamily: 'inherit',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-        <span style={{ color: '#a78bfa', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <span style={{ color: '#a78bfa', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
           <RotateCcw width={14} height={14} /> Welcome back
         </span>
         <button

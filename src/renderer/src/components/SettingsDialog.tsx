@@ -246,6 +246,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 fontFamily: 'inherit',
                 cursor: 'pointer',
                 textTransform: 'capitalize',
+                fontWeight: tab === t ? 600 : 400,
               }}
             >
               {t}
@@ -255,7 +256,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
         {tab === 'settings' && (
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '0 0 16px 0' }}>
-          <h3 style={{ color: '#e0e0e0', margin: 0, fontSize: '14px', fontFamily: 'inherit' }}>
+          <h3 style={{ color: '#e0e0e0', margin: 0, fontSize: '14px', fontFamily: 'inherit', fontWeight: 600 }}>
             Claude CLI Settings
           </h3>
           {appVersion && (
@@ -465,7 +466,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
         {/* Remote Access */}
         <div style={{ borderTop: '1px solid #333', paddingTop: '16px', marginTop: '16px' }}>
-          <h4 style={{ color: '#e0e0e0', margin: '0 0 12px', fontSize: '13px', fontFamily: 'inherit' }}>
+          <h4 style={{ color: '#e0e0e0', margin: '0 0 12px', fontSize: '13px', fontFamily: 'inherit', fontWeight: 600 }}>
             Remote Access
           </h4>
 
@@ -636,7 +637,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
         {/* Claude Config tab */}
         {tab === 'claude config' && ccLoaded && (<>
-          <h3 style={{ color: '#e0e0e0', margin: '0 0 16px', fontSize: '14px', fontFamily: 'inherit' }}>
+          <h3 style={{ color: '#e0e0e0', margin: '0 0 16px', fontSize: '14px', fontFamily: 'inherit', fontWeight: 600 }}>
             Claude CLI Config
           </h3>
 

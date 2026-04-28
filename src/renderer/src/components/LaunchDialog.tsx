@@ -53,7 +53,7 @@ export function LaunchDialog({ folderName, defaultArgs, onLaunch, onCancel }: La
           border: '1px solid #333',
         }}
       >
-        <h3 style={{ color: '#e0e0e0', margin: '0 0 14px 0', fontSize: '14px', fontFamily: 'inherit' }}>
+        <h3 style={{ color: '#e0e0e0', margin: '0 0 14px 0', fontSize: '14px', fontFamily: 'inherit', fontWeight: 600 }}>
           Launch Claude in {folderName}
         </h3>
 

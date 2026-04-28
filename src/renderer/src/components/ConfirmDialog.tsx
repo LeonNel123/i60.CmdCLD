@@ -23,7 +23,7 @@ export function ConfirmDialog({ message, onConfirm, onCancel }: ConfirmDialogPro
         width: '90%',
         border: '1px solid #333',
       }}>
-        <p style={{ color: '#e0e0e0', marginBottom: '20px' }}>{message}</p>
+        <p style={{ color: '#e0e0e0', marginBottom: '20px', fontWeight: 600 }}>{message}</p>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button
             onClick={onCancel}
@@ -38,7 +38,7 @@ export function ConfirmDialog({ message, onConfirm, onCancel }: ConfirmDialogPro
             onClick={onConfirm}
             style={{
               background: '#ef4444', color: '#fff', border: 'none',
-              borderRadius: '6px', padding: '8px 16px', cursor: 'pointer',
+              borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', fontWeight: 600,
             }}
           >
             Close Terminal
