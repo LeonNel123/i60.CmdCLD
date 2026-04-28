@@ -13,6 +13,7 @@ import { Toast } from './components/Toast'
 import { WelcomeBackCard } from './components/WelcomeBackCard'
 import { EmptyWorkspace } from './components/EmptyWorkspace'
 import { ContextMenu } from './components/ContextMenu'
+import { CommandPalette } from './components/CommandPalette'
 import { FolderOpen, AppWindow, Star, FolderSearch, Code, Copy, Trash2 } from './components/icons'
 import { assignColor } from './utils/colors'
 import { calculateLayout, getRowCount } from './utils/grid-layout'
@@ -58,6 +59,7 @@ export default function App() {
   const [savedSessionProjects, setSavedSessionProjects] = useState<Array<{ path: string; claudeArgs: string; isPlainShell: boolean }>>([])
   const [welcomeDismissed, setWelcomeDismissed] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ path: string; x: number; y: number } | null>(null)
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   // Track terminal busy/idle state + notification sound
   const notifyRef = useRef(false)
@@ -457,6 +459,20 @@ export default function App() {
     }
   }, [newProjectName, startAddFolder])
 
+  // Cmd+P / Ctrl+P opens the fuzzy command palette.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isMac = window.api.platform === 'darwin'
+      const mod = isMac ? e.metaKey : e.ctrlKey
+      if (mod && !e.shiftKey && !e.altKey && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault()
+        setPaletteOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   // Global keyboard shortcuts (Cmd on macOS, Ctrl on Windows/Linux)
   useEffect(() => {
     const isMac = window.api.platform === 'darwin'
@@ -662,6 +678,15 @@ export default function App() {
           />
         )
       })()}
+
+      {paletteOpen && (
+        <CommandPalette
+          recentFolders={recentFolders}
+          favoriteFolders={favoriteFolders}
+          onOpen={handleOpenRecent}
+          onClose={() => setPaletteOpen(false)}
+        />
+      )}
 
       {showNewProject && (
         <div style={{
