@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, memo } from 'react'
 import type { RecentFolder } from '../types/api'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { ChevronLeft, ChevronRight, ChevronDown, Star, X, LayoutGrid } from './icons'
@@ -29,6 +29,80 @@ interface SidebarProps {
 
 const EXPANDED_WIDTH = 180
 const COLLAPSED_WIDTH = 36
+
+interface RecentRowProps {
+  folder: RecentFolder
+  isOpen: boolean
+  isFav: boolean
+  isFavoriteSection: boolean
+  onOpen: (path: string) => void
+  onToggleFavorite: (path: string) => void
+  onContextMenu: (path: string, x: number, y: number) => void
+}
+
+const RecentRow = memo(function RecentRow({
+  folder,
+  isOpen,
+  isFav,
+  isFavoriteSection,
+  onOpen,
+  onToggleFavorite,
+  onContextMenu,
+}: RecentRowProps) {
+  return (
+    <div
+      className="recent-row"
+      onClick={() => { if (!isOpen) onOpen(folder.path) }}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        onContextMenu(folder.path, e.clientX, e.clientY)
+      }}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        width: '100%',
+        padding: '6px 10px',
+        background: 'none',
+        cursor: isOpen ? 'default' : 'pointer',
+        opacity: isOpen ? 0.5 : 1,
+        fontFamily: 'inherit',
+        fontSize: '12px',
+        borderRadius: '3px',
+      }}
+      title={isOpen ? `${folder.path} (already open)` : folder.path}
+    >
+      <span
+        onClick={(e) => { e.stopPropagation(); onToggleFavorite(folder.path) }}
+        className="recent-star"
+        style={{
+          color: isFav ? '#fbbf24' : '#666',
+          cursor: 'pointer',
+          width: '14px',
+          flexShrink: 0,
+          opacity: isFavoriteSection ? 1 : 0,
+          display: 'flex',
+          alignItems: 'center',
+        }}
+        title={isFav ? 'Unfavorite' : 'Add to favorites'}
+      >
+        <Star width={12} height={12} fill={isFavoriteSection ? 'currentColor' : 'none'} />
+      </span>
+      <span style={{
+        flex: 1,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+        color: '#ccc',
+      }}>
+        {folder.name}
+      </span>
+      <span style={{ color: '#666', fontSize: '10px', flexShrink: 0, fontFamily: 'Menlo, Consolas, monospace' }}>
+        {formatRelativeTime(folder.lastOpened)}
+      </span>
+    </div>
+  )
+})
 
 export function Sidebar({
   terminals,
@@ -119,64 +193,6 @@ export function Sidebar({
     textAlign: 'left',
   }
 
-  const renderRow = useCallback((f: RecentFolder, isFavoriteSection: boolean) => {
-    const isOpen = activePaths.has(f.path)
-    const isFav = favoriteFolders.includes(f.path)
-    return (
-      <div
-        key={f.path}
-        className="recent-row"
-        onClick={() => { if (!isOpen) onOpenRecent(f.path) }}
-        onContextMenu={(e) => {
-          e.preventDefault()
-          onContextMenu(f.path, e.clientX, e.clientY)
-        }}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          width: '100%',
-          padding: '6px 10px',
-          background: 'none',
-          cursor: isOpen ? 'default' : 'pointer',
-          opacity: isOpen ? 0.5 : 1,
-          fontFamily: 'inherit',
-          fontSize: '12px',
-          borderRadius: '3px',
-        }}
-        title={isOpen ? `${f.path} (already open)` : f.path}
-      >
-        <span
-          onClick={(e) => { e.stopPropagation(); onToggleFavorite(f.path) }}
-          className="recent-star"
-          style={{
-            color: isFav ? '#fbbf24' : '#666',
-            cursor: 'pointer',
-            width: '14px',
-            flexShrink: 0,
-            opacity: isFavoriteSection ? 1 : 0,
-            display: 'flex',
-            alignItems: 'center',
-          }}
-          title={isFav ? 'Unfavorite' : 'Add to favorites'}
-        >
-          <Star width={12} height={12} fill={isFavoriteSection ? 'currentColor' : 'none'} />
-        </span>
-        <span style={{
-          flex: 1,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          color: '#ccc',
-        }}>
-          {f.name}
-        </span>
-        <span style={{ color: '#666', fontSize: '10px', flexShrink: 0, fontFamily: 'Menlo, Consolas, monospace' }}>
-          {formatRelativeTime(f.lastOpened)}
-        </span>
-      </div>
-    )
-  }, [activePaths, favoriteFolders, onOpenRecent, onContextMenu, onToggleFavorite])
 
   return (
     <div style={{
@@ -260,7 +276,18 @@ export function Sidebar({
                   <span>FAVORITES</span>
                   {favoritesExpanded ? <ChevronDown width={12} height={12} /> : <ChevronRight width={12} height={12} />}
                 </button>
-                {favoritesExpanded && favorites.map((f) => renderRow(f, true))}
+                {favoritesExpanded && favorites.map((f) => (
+                  <RecentRow
+                    key={f.path}
+                    folder={f}
+                    isOpen={activePaths.has(f.path)}
+                    isFav={true}
+                    isFavoriteSection={true}
+                    onOpen={onOpenRecent}
+                    onToggleFavorite={onToggleFavorite}
+                    onContextMenu={onContextMenu}
+                  />
+                ))}
               </div>
             )}
             {recents.length > 0 && (
@@ -273,7 +300,18 @@ export function Sidebar({
                   <span>RECENT</span>
                   {recentExpanded ? <ChevronDown width={12} height={12} /> : <ChevronRight width={12} height={12} />}
                 </button>
-                {recentExpanded && recents.map((f) => renderRow(f, false))}
+                {recentExpanded && recents.map((f) => (
+                  <RecentRow
+                    key={f.path}
+                    folder={f}
+                    isOpen={activePaths.has(f.path)}
+                    isFav={false}
+                    isFavoriteSection={false}
+                    onOpen={onOpenRecent}
+                    onToggleFavorite={onToggleFavorite}
+                    onContextMenu={onContextMenu}
+                  />
+                ))}
               </div>
             )}
           </div>
