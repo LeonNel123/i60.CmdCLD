@@ -143,6 +143,10 @@ contextBridge.exposeInMainWorld('api', {
   sessionClearLast: (): Promise<void> =>
     ipcRenderer.invoke('session:clearLast'),
 
+  // Git status (cached, 30s TTL)
+  gitStatus: (path: string): Promise<{ isRepo: boolean; branch: string | null; dirty: boolean }> =>
+    ipcRenderer.invoke('git:status', path),
+
   // Build info for About tab
   getBuildInfo: (): Promise<{ electron: string; chrome: string; node: string; platform: string; release: string }> =>
     ipcRenderer.invoke('get-build-info'),

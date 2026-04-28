@@ -14,6 +14,7 @@ import { detectEditors, getDefaultEditor } from './editor-detect'
 import { RemoteServer } from './remote-server'
 import { hardenGlobalSettings, trustFolder, readClaudeConfig, writeClaudeConfig } from './claude-config'
 import { getStatus as tsGetStatus, getServeStatus as tsGetServeStatus, startServe as tsStartServe, stopServe as tsStopServe } from './tailscale'
+import { getGitStatus } from './git-status'
 import type { TerminalMeta } from './pty-manager'
 
 // File logger for debugging startup issues
@@ -383,6 +384,11 @@ ipcMain.handle('session:loadLast', () => {
 
 ipcMain.handle('session:clearLast', () => {
   lastSessionStore.clear()
+})
+
+ipcMain.handle('git:status', (_event, path: string) => {
+  if (typeof path !== 'string' || !path) return { isRepo: false, branch: null, dirty: false }
+  return getGitStatus(path)
 })
 
 // Keep the app process from being suspended while remote access is on, so a

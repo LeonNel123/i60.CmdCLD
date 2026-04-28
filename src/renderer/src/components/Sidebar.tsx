@@ -1,4 +1,4 @@
-import { useState, memo } from 'react'
+import { useState, memo, useEffect, useRef } from 'react'
 import type { RecentFolder } from '../types/api'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { ChevronLeft, ChevronRight, ChevronDown, Star, X, LayoutGrid } from './icons'
@@ -49,8 +49,37 @@ const RecentRow = memo(function RecentRow({
   onToggleFavorite,
   onContextMenu,
 }: RecentRowProps) {
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [git, setGit] = useState<{ isRepo: boolean; branch: string | null; dirty: boolean } | null>(null)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    if (!rootRef.current) return
+    const obs = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) setVisible(true)
+      }
+    }, { rootMargin: '100px' })
+    obs.observe(rootRef.current)
+    return () => obs.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!visible) return
+    let cancelled = false
+    const fetchOnce = (): void => {
+      window.api.gitStatus(folder.path).then((s) => {
+        if (!cancelled) setGit(s)
+      }).catch(() => {})
+    }
+    fetchOnce()
+    const t = setInterval(fetchOnce, 30_000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [visible, folder.path])
+
   return (
     <div
+      ref={rootRef}
       className="recent-row"
       onClick={() => { if (!isOpen) onOpen(folder.path) }}
       onContextMenu={(e) => {
@@ -97,6 +126,26 @@ const RecentRow = memo(function RecentRow({
       }}>
         {folder.name}
       </span>
+      {git?.isRepo && (
+        <span style={{
+          display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
+          fontFamily: 'Menlo, Consolas, monospace', fontSize: 10, color: '#666',
+        }}>
+          {git.branch && git.branch !== 'main' && git.branch !== 'master' && (
+            <span style={{
+              maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }} title={git.branch}>
+              {git.branch.length > 12 ? git.branch.slice(0, 11) + '…' : git.branch}
+            </span>
+          )}
+          {git.dirty && (
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%', background: '#fbbf24',
+            }} title="Working tree dirty" />
+          )}
+        </span>
+      )}
       <span style={{ color: '#666', fontSize: '10px', flexShrink: 0, fontFamily: 'Menlo, Consolas, monospace' }}>
         {formatRelativeTime(folder.lastOpened)}
       </span>

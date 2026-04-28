@@ -36,6 +36,12 @@ export interface SavedSession {
   projects: SavedProject[]
 }
 
+export interface GitStatus {
+  isRepo: boolean
+  branch: string | null
+  dirty: boolean
+}
+
 export interface ElectronAPI {
   platform: 'win32' | 'darwin' | 'linux'
   createTerminal: (id: string, cwd: string) => Promise<void>
@@ -72,6 +78,7 @@ export interface ElectronAPI {
   sessionSaveLast: (session: SavedSession) => Promise<void>
   sessionLoadLast: () => Promise<SavedSession | null>
   sessionClearLast: () => Promise<void>
+  gitStatus: (path: string) => Promise<GitStatus>
   openExternal: (url: string) => Promise<void>
   openInExplorer: (folderPath: string) => Promise<void>
   openInEditor: (targetPath: string) => Promise<void>
