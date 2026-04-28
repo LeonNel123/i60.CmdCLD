@@ -213,7 +213,11 @@ export default function App() {
     }))
     setLayouts(newLayouts)
 
-    window.api.recentAdd(folderPath).catch(() => {})
+    window.api.recentAdd(folderPath).then(() => {
+      return window.api.recentList()
+    }).then((list) => {
+      setRecentFolders(list)
+    }).catch(() => {})
   }, [defaultViewMode, terminals])
 
   // Start the folder-open flow (may show dialog or launch directly)
@@ -307,6 +311,11 @@ export default function App() {
       i: newTerminals[i].id,
     }))
     setLayouts(newLayouts)
+    window.api.recentAdd(homeDir).then(() => {
+      return window.api.recentList()
+    }).then((list) => {
+      setRecentFolders(list)
+    }).catch(() => {})
   }, [defaultViewMode, terminals])
 
   const handleToggleFavorite = useCallback((path: string) => {

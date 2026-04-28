@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import type { RecentFolder } from '../types/api'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { ChevronLeft, ChevronRight, ChevronDown, Star, X, LayoutGrid } from './icons'
@@ -56,6 +56,12 @@ export function Sidebar({
     } catch { return true }
   })
 
+  const [favoritesExpanded, setFavoritesExpanded] = useState(() => {
+    try {
+      return localStorage.getItem('sidebar-favorites-expanded') !== 'false'
+    } catch { return true }
+  })
+
   const toggleCollapsed = () => {
     const next = !collapsed
     setCollapsed(next)
@@ -68,6 +74,12 @@ export function Sidebar({
     try { localStorage.setItem('sidebar-recent-expanded', String(next)) } catch {}
   }
 
+  const toggleFavorites = () => {
+    const next = !favoritesExpanded
+    setFavoritesExpanded(next)
+    try { localStorage.setItem('sidebar-favorites-expanded', String(next)) } catch {}
+  }
+
   const width = collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH
   const activePaths = new Set(terminals.map((t) => t.path))
 
@@ -78,7 +90,7 @@ export function Sidebar({
     width: '100%',
     padding: collapsed ? '6px 0' : '6px 10px',
     justifyContent: collapsed ? 'center' : 'flex-start',
-    background: active ? 'rgba(255,255,255,0.08)' : 'none',
+    background: active ? 'rgba(255,255,255,0.10)' : 'none',
     border: 'none',
     color: disabled ? '#444' : '#ccc',
     cursor: disabled ? 'default' : 'pointer',
@@ -88,6 +100,83 @@ export function Sidebar({
     textAlign: 'left',
     opacity: disabled ? 0.5 : 1,
   })
+
+  const sectionHeadingStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    padding: '5px 10px',
+    background: 'none',
+    border: 'none',
+    color: '#777',
+    fontSize: '10px',
+    fontFamily: 'inherit',
+    fontWeight: 600,
+    letterSpacing: '0.06em',
+    cursor: 'pointer',
+    borderRadius: '3px',
+    textAlign: 'left',
+  }
+
+  const renderRow = useCallback((f: RecentFolder, isFavoriteSection: boolean) => {
+    const isOpen = activePaths.has(f.path)
+    const isFav = favoriteFolders.includes(f.path)
+    return (
+      <div
+        key={f.path}
+        className="recent-row"
+        onClick={() => { if (!isOpen) onOpenRecent(f.path) }}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          onContextMenu(f.path, e.clientX, e.clientY)
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          width: '100%',
+          padding: '6px 10px',
+          background: 'none',
+          cursor: isOpen ? 'default' : 'pointer',
+          opacity: isOpen ? 0.5 : 1,
+          fontFamily: 'inherit',
+          fontSize: '12px',
+          borderRadius: '3px',
+        }}
+        title={isOpen ? `${f.path} (already open)` : f.path}
+      >
+        <span
+          onClick={(e) => { e.stopPropagation(); onToggleFavorite(f.path) }}
+          className="recent-star"
+          style={{
+            color: isFav ? '#fbbf24' : '#666',
+            cursor: 'pointer',
+            width: '14px',
+            flexShrink: 0,
+            opacity: isFavoriteSection ? 1 : 0,
+            display: 'flex',
+            alignItems: 'center',
+          }}
+          title={isFav ? 'Unfavorite' : 'Add to favorites'}
+        >
+          <Star width={12} height={12} fill={isFavoriteSection ? 'currentColor' : 'none'} />
+        </span>
+        <span style={{
+          flex: 1,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          color: '#ccc',
+        }}>
+          {f.name}
+        </span>
+        <span style={{ color: '#666', fontSize: '10px', flexShrink: 0, fontFamily: 'Menlo, Consolas, monospace' }}>
+          {formatRelativeTime(f.lastOpened)}
+        </span>
+      </div>
+    )
+  }, [activePaths, favoriteFolders, onOpenRecent, onContextMenu, onToggleFavorite])
 
   return (
     <div style={{
@@ -104,7 +193,8 @@ export function Sidebar({
     }}>
       <style>{`
         .recent-row:hover .recent-star { opacity: 1 !important; }
-        .recent-row:hover { background: rgba(255,255,255,0.04); }
+        .recent-row:hover { background: rgba(255,255,255,0.06); }
+        .sidebar-btn:hover { background: rgba(255,255,255,0.06) !important; }
       `}</style>
       {/* Active terminals */}
       <div style={{ overflowY: 'auto', padding: '4px', flexShrink: 0 }}>
@@ -116,6 +206,7 @@ export function Sidebar({
               key={t.id}
               onClick={() => onSelectTerminal(t.id)}
               style={btnStyle(isActive)}
+              className="sidebar-btn"
               title={t.name}
             >
               {t.isPlainShell ? (
@@ -152,106 +243,56 @@ export function Sidebar({
         })}
       </div>
 
-      {/* Recent folders — favorites pin to top, then non-favorites sorted by recency */}
-      {!collapsed && recentFolders.length > 0 && (
-        <div style={{ flex: 1, overflowY: 'auto', borderTop: '1px solid #2d2d2d' }}>
-          <button
-            onClick={toggleRecent}
-            style={{
-              ...btnStyle(),
-              padding: '6px 10px',
-              color: '#888',
-              fontSize: '11px',
-              justifyContent: 'space-between',
-            }}
-          >
-            <span>Recent</span>
-            {recentExpanded ? <ChevronDown width={12} height={12} /> : <ChevronRight width={12} height={12} />}
-          </button>
-          {recentExpanded && (() => {
-            const favSet = new Set(favoriteFolders)
-            const sorted = [...recentFolders].sort((a, b) => {
-              const aFav = favSet.has(a.path)
-              const bFav = favSet.has(b.path)
-              if (aFav !== bFav) return aFav ? -1 : 1
-              if (aFav && bFav) return a.name.localeCompare(b.name)
-              return b.lastOpened - a.lastOpened
-            })
-            return sorted.map((f) => {
-              const isOpen = activePaths.has(f.path)
-              const isFav = favSet.has(f.path)
-              return (
-                <div
-                  key={f.path}
-                  className="recent-row"
-                  onClick={() => { if (!isOpen) onOpenRecent(f.path) }}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    onContextMenu(f.path, e.clientX, e.clientY)
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    width: '100%',
-                    padding: '6px 10px',
-                    background: 'none',
-                    cursor: isOpen ? 'default' : 'pointer',
-                    opacity: isOpen ? 0.5 : 1,
-                    fontFamily: 'inherit',
-                    fontSize: '12px',
-                    borderRadius: '3px',
-                  }}
-                  title={isOpen ? `${f.path} (already open)` : f.path}
+      {/* Favorites and Recent subsections */}
+      {!collapsed && recentFolders.length > 0 && (() => {
+        const favSet = new Set(favoriteFolders)
+        const favorites = recentFolders.filter((f) => favSet.has(f.path)).sort((a, b) => a.name.localeCompare(b.name))
+        const recents = recentFolders.filter((f) => !favSet.has(f.path)).sort((a, b) => b.lastOpened - a.lastOpened)
+        return (
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {favorites.length > 0 && (
+              <div style={{ borderTop: '1px solid #2d2d2d' }}>
+                <button
+                  onClick={toggleFavorites}
+                  style={sectionHeadingStyle}
+                  className="sidebar-btn"
                 >
-                  <span
-                    onClick={(e) => { e.stopPropagation(); onToggleFavorite(f.path) }}
-                    className="recent-star"
-                    style={{
-                      color: isFav ? '#fbbf24' : '#666',
-                      cursor: 'pointer',
-                      width: '14px',
-                      flexShrink: 0,
-                      opacity: isFav ? 1 : 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
-                    title={isFav ? 'Unfavorite' : 'Add to favorites'}
-                  >
-                    <Star width={12} height={12} fill={isFav ? 'currentColor' : 'none'} />
-                  </span>
-                  <span style={{
-                    flex: 1,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    color: '#ccc',
-                  }}>
-                    {f.name}
-                  </span>
-                  <span style={{ color: '#666', fontSize: '10px', flexShrink: 0, fontFamily: 'Menlo, Consolas, monospace' }}>
-                    {formatRelativeTime(f.lastOpened)}
-                  </span>
-                </div>
-              )
-            })
-          })()}
-        </div>
-      )}
+                  <span>FAVORITES</span>
+                  {favoritesExpanded ? <ChevronDown width={12} height={12} /> : <ChevronRight width={12} height={12} />}
+                </button>
+                {favoritesExpanded && favorites.map((f) => renderRow(f, true))}
+              </div>
+            )}
+            {recents.length > 0 && (
+              <div style={{ borderTop: '1px solid #2d2d2d' }}>
+                <button
+                  onClick={toggleRecent}
+                  style={sectionHeadingStyle}
+                  className="sidebar-btn"
+                >
+                  <span>RECENT</span>
+                  {recentExpanded ? <ChevronDown width={12} height={12} /> : <ChevronRight width={12} height={12} />}
+                </button>
+                {recentExpanded && recents.map((f) => renderRow(f, false))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Bottom actions */}
       <div style={{ padding: '6px 4px', borderTop: '1px solid #2d2d2d', flexShrink: 0 }}>
-        <button onClick={onShowAll} style={btnStyle(viewMode.type === 'grid')} title="Show All">
+        <button onClick={onShowAll} style={btnStyle(viewMode.type === 'grid')} className="sidebar-btn" title="Show All">
           <LayoutGrid width={14} height={14} />
           {!collapsed && <span>Show All</span>}
         </button>
         {terminals.length > 0 && (
-          <button onClick={onCloseAll} style={btnStyle()} title="Close All">
+          <button onClick={onCloseAll} style={btnStyle()} className="sidebar-btn" title="Close All">
             <X width={14} height={14} style={{ color: '#f14c4c' }} />
             {!collapsed && <span>Close All</span>}
           </button>
         )}
-        <button onClick={toggleCollapsed} style={btnStyle()} title={collapsed ? 'Expand' : 'Collapse'}>
+        <button onClick={toggleCollapsed} style={btnStyle()} className="sidebar-btn" title={collapsed ? 'Expand' : 'Collapse'}>
           {collapsed ? <ChevronRight width={14} height={14} /> : <ChevronLeft width={14} height={14} />}
           {!collapsed && <span>Collapse</span>}
         </button>
