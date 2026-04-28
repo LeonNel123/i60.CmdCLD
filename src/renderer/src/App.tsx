@@ -11,6 +11,7 @@ import { LaunchDialog } from './components/LaunchDialog'
 import { MarkdownViewer } from './components/MarkdownViewer'
 import { Toast } from './components/Toast'
 import { WelcomeBackCard } from './components/WelcomeBackCard'
+import { EmptyWorkspace } from './components/EmptyWorkspace'
 import { ContextMenu } from './components/ContextMenu'
 import { FolderOpen, AppWindow, Star, FolderSearch, Code, Copy, Trash2 } from './components/icons'
 import { assignColor } from './utils/colors'
@@ -539,17 +540,8 @@ export default function App() {
             onDismiss={() => setWelcomeDismissed(true)}
           />
         )}
-        {terminals.length === 0 && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            color: '#555',
-            fontSize: '16px',
-          }}>
-            Click "+ Add Folder" to start a Claude session
-          </div>
+        {terminals.length === 0 && (savedSessionProjects.length === 0 || welcomeDismissed) && (
+          <EmptyWorkspace />
         )}
 
         {/* Grid mode */}
