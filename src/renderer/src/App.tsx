@@ -15,6 +15,8 @@ import { EmptyWorkspace } from './components/EmptyWorkspace'
 import { ContextMenu } from './components/ContextMenu'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { CommandPalette } from './components/CommandPalette'
+import { AutopilotPanel } from './components/AutopilotPanel'
+import { AutopilotKickoff } from './components/AutopilotKickoff'
 import { FolderOpen, AppWindow, Star, FolderSearch, Code, Copy, Trash2 } from './components/icons'
 import { assignColor } from './utils/colors'
 import { calculateLayout, getRowCount } from './utils/grid-layout'
@@ -61,6 +63,10 @@ export default function App() {
   const [welcomeDismissed, setWelcomeDismissed] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ path: string; x: number; y: number } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [autopilotKickoffFor, setAutopilotKickoffFor] = useState<string | null>(null)  // terminalId
+  const [autopilotRunning, setAutopilotRunning] = useState<Set<string>>(new Set())
+  const [autopilotPanelFor, setAutopilotPanelFor] = useState<string | null>(null)
+  const [autopilotDefaults, setAutopilotDefaults] = useState({ costCap: 1.0, maxIterations: 40 })
 
   // Track terminal busy/idle state + notification sound
   const notifyRef = useRef(false)
@@ -105,6 +111,10 @@ export default function App() {
         setDefaultViewMode(settings.defaultViewMode)
         setFavoriteFolders(settings.favoriteFolders ?? [])
         setRestoreSessionEnabled(settings.restoreSessionEnabled ?? false)
+        setAutopilotDefaults({
+          costCap: settings.autopilotDefaultCostCap ?? 1.0,
+          maxIterations: settings.autopilotDefaultMaxIterations ?? 40,
+        })
       }
       setRecentFolders(recent)
       setLoaded(true)
@@ -474,6 +484,18 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  useEffect(() => {
+    const off = window.api.onAutopilotUpdate((terminalId, state: any) => {
+      setAutopilotRunning((prev) => {
+        const isRunning = state && ['wizard', 'awaiting_goal_review', 'executing', 'paused'].includes(state.phase)
+        const next = new Set(prev)
+        if (isRunning) next.add(terminalId); else next.delete(terminalId)
+        return next
+      })
+    })
+    return () => { off() }
+  }, [])
+
   // Global keyboard shortcuts (Cmd on macOS, Ctrl on Windows/Linux)
   useEffect(() => {
     const isMac = window.api.platform === 'darwin'
@@ -587,6 +609,9 @@ export default function App() {
                   onClose={() => handleRequestClose(t.id)}
                   onSpawnShell={() => handleSpawnShell(t.path, t.color)}
                   onOpenMarkdown={setMarkdownFile}
+                  onStartAutopilot={() => setAutopilotKickoffFor(t.id)}
+                  isAutopilotRunning={autopilotRunning.has(t.id)}
+                  onShowAutopilotPanel={() => setAutopilotPanelFor(t.id)}
                 />
               </div>
             ))}
@@ -613,11 +638,21 @@ export default function App() {
               onClose={() => handleRequestClose(t.id)}
               onSpawnShell={() => handleSpawnShell(t.path, t.color)}
               onOpenMarkdown={setMarkdownFile}
+              onStartAutopilot={() => setAutopilotKickoffFor(t.id)}
+              isAutopilotRunning={autopilotRunning.has(t.id)}
+              onShowAutopilotPanel={() => setAutopilotPanelFor(t.id)}
             />
           </div>
         ))}
         </ErrorBoundary>
       </div>
+
+      {autopilotPanelFor && (
+        <AutopilotPanel
+          terminalId={autopilotPanelFor}
+          onClose={() => setAutopilotPanelFor(null)}
+        />
+      )}
 
       {closingId && (
         <ConfirmDialog
@@ -690,6 +725,29 @@ export default function App() {
           onClose={() => setPaletteOpen(false)}
         />
       )}
+
+      {autopilotKickoffFor && (() => {
+        const t = terminals.find((tt) => tt.id === autopilotKickoffFor)
+        if (!t) return null
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+               onClick={() => setAutopilotKickoffFor(null)}>
+            <div onClick={(e) => e.stopPropagation()} style={{ width: 480, maxWidth: '90%' }}>
+              <AutopilotKickoff
+                terminalId={t.id}
+                projectPath={t.path}
+                defaultCostCap={autopilotDefaults.costCap}
+                defaultMaxIterations={autopilotDefaults.maxIterations}
+                onStarted={() => {
+                  setAutopilotKickoffFor(null)
+                  setAutopilotPanelFor(t.id)
+                }}
+                onCancel={() => setAutopilotKickoffFor(null)}
+              />
+            </div>
+          </div>
+        )
+      })()}
 
       {showNewProject && (
         <div style={{
