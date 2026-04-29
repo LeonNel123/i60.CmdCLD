@@ -7,7 +7,7 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
-  const [tab, setTab] = useState<'settings' | 'claude config' | 'about'>('settings')
+  const [tab, setTab] = useState<'settings' | 'claude config' | 'autopilot' | 'about'>('settings')
   const [claudeArgs, setClaudeArgs] = useState('')
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
@@ -50,6 +50,15 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [ccLoaded, setCcLoaded] = useState(false)
   const [ccSaved, setCcSaved] = useState(false)
 
+  // Autopilot tab state
+  const [apProvider, setApProvider] = useState<'anthropic' | 'openrouter'>('anthropic')
+  const [apModel, setApModel] = useState('claude-sonnet-4-6')
+  const [apCostCap, setApCostCap] = useState(1.0)
+  const [apMaxIter, setApMaxIter] = useState(40)
+  const [apHasAnthKey, setApHasAnthKey] = useState(false)
+  const [apHasORKey, setApHasORKey] = useState(false)
+  const [apKeyInput, setApKeyInput] = useState('')
+
   useEffect(() => {
     window.api.getVersion().then(setAppVersion).catch(() => {})
     window.api.getBuildInfo().then(setBuildInfo).catch(() => {})
@@ -63,6 +72,10 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       setRemotePort(s.remotePort ?? 3456)
       setFavoriteFolders(s.favoriteFolders ?? [])
       setRestoreSessionEnabled(s.restoreSessionEnabled ?? false)
+      setApProvider((s.autopilotApiProvider as any) ?? 'anthropic')
+      setApModel(s.autopilotPlannerModel ?? 'claude-sonnet-4-6')
+      setApCostCap(s.autopilotDefaultCostCap ?? 1.0)
+      setApMaxIter(s.autopilotDefaultMaxIterations ?? 40)
       setLoaded(true)
     })
     window.api.claudeConfigRead().then((cfg) => {
@@ -88,6 +101,13 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       }
     }).catch(() => {})
     window.api.tailscaleStatus().then(setTsStatus).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    Promise.all([
+      window.api.autopilotKeyExists('anthropic'),
+      window.api.autopilotKeyExists('openrouter'),
+    ]).then(([a, o]) => { setApHasAnthKey(a); setApHasORKey(o) })
   }, [])
 
   const refreshTailscale = async () => {
@@ -163,6 +183,10 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       // Clear the saved file so the next launch behaves like a fresh install.
       window.api.sessionClearLast().catch(() => {})
     }
+    window.api.settingsSet('autopilotApiProvider', apProvider)
+    window.api.settingsSet('autopilotPlannerModel', apModel)
+    window.api.settingsSet('autopilotDefaultCostCap', apCostCap)
+    window.api.settingsSet('autopilotDefaultMaxIterations', apMaxIter)
     onClose()
   }
 
@@ -232,7 +256,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       >
         {/* Tab bar */}
         <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
-          {(['settings', 'claude config', 'about'] as const).map((t) => (
+          {(['settings', 'claude config', 'autopilot', 'about'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -875,6 +899,82 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           </div>
         </>)}
 
+        {/* Autopilot tab */}
+        {tab === 'autopilot' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <h3 style={{ color: '#e0e0e0', margin: 0, fontSize: 14, fontWeight: 600 }}>Autopilot</h3>
+
+            <div>
+              <div style={{ color: '#888', fontSize: 11, marginBottom: 4 }}>API Provider</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {(['anthropic', 'openrouter'] as const).map((p) => (
+                  <button key={p} onClick={() => setApProvider(p)}
+                    style={{
+                      background: apProvider === p ? '#22c55e20' : '#ffffff08',
+                      border: apProvider === p ? '1px solid #22c55e' : '1px solid #333',
+                      color: apProvider === p ? '#22c55e' : '#aaa',
+                      padding: '4px 10px', borderRadius: 4, fontSize: 11, cursor: 'pointer',
+                    }}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div style={{ color: '#888', fontSize: 11, marginBottom: 4 }}>API Key ({apProvider})</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  type="password"
+                  value={apKeyInput}
+                  onChange={(e) => setApKeyInput(e.target.value)}
+                  placeholder={(apProvider === 'anthropic' ? apHasAnthKey : apHasORKey) ? '•••••••• (set)' : 'Paste key'}
+                  style={{ flex: 1, background: '#0d1117', border: '1px solid #333', borderRadius: 4, padding: '6px 10px', color: '#e0e0e0', fontSize: 12, fontFamily: 'monospace' }}
+                />
+                <button
+                  onClick={async () => {
+                    if (apKeyInput.trim()) {
+                      await window.api.autopilotKeySet(apProvider, apKeyInput.trim())
+                      setApKeyInput('')
+                      if (apProvider === 'anthropic') setApHasAnthKey(true); else setApHasORKey(true)
+                    }
+                  }}
+                  style={{ background: '#22c55e', border: 'none', color: '#000', borderRadius: 4, padding: '6px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                >Save Key</button>
+                <button
+                  onClick={async () => {
+                    await window.api.autopilotKeyClear(apProvider)
+                    if (apProvider === 'anthropic') setApHasAnthKey(false); else setApHasORKey(false)
+                  }}
+                  style={{ background: '#333', border: 'none', color: '#ccc', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer' }}
+                >Clear</button>
+              </div>
+            </div>
+
+            <div>
+              <div style={{ color: '#888', fontSize: 11, marginBottom: 4 }}>Planner Model</div>
+              <input type="text" value={apModel} onChange={(e) => setApModel(e.target.value)}
+                style={{ width: '100%', background: '#0d1117', border: '1px solid #333', borderRadius: 4, padding: '6px 10px', color: '#e0e0e0', fontSize: 12, fontFamily: 'monospace', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 12 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: '#888' }}>
+                Default cost cap (USD)
+                <input type="number" step="0.1" min="0.1" value={apCostCap} onChange={(e) => setApCostCap(Number(e.target.value) || 1)}
+                  style={{ width: 100, background: '#0d1117', border: '1px solid #333', borderRadius: 4, padding: '4px 8px', color: '#ccc', fontSize: 12, fontFamily: 'monospace' }}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: '#888' }}>
+                Default max iterations
+                <input type="number" min="1" value={apMaxIter} onChange={(e) => setApMaxIter(Number(e.target.value) || 40)}
+                  style={{ width: 100, background: '#0d1117', border: '1px solid #333', borderRadius: 4, padding: '4px 8px', color: '#ccc', fontSize: 12, fontFamily: 'monospace' }}
+                />
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* About tab */}
         {tab === 'about' && (
           <div style={{ fontFamily: 'inherit', fontSize: '12px', color: '#ccc', lineHeight: '1.6' }}>
@@ -985,6 +1085,30 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 }}
               >
                 {ccSaved ? 'Saved' : 'Save'}
+              </button>
+            </>
+          )}
+          {tab === 'autopilot' && (
+            <>
+              <button
+                onClick={onClose}
+                style={{
+                  background: '#333', color: '#ccc', border: 'none',
+                  borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
+                  fontSize: '12px', fontFamily: 'inherit',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={save}
+                style={{
+                  background: '#22c55e', color: '#000', border: 'none',
+                  borderRadius: '4px', padding: '6px 14px', cursor: 'pointer',
+                  fontSize: '12px', fontFamily: 'inherit', fontWeight: 600,
+                }}
+              >
+                Save
               </button>
             </>
           )}
