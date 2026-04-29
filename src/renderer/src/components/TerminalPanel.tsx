@@ -57,6 +57,9 @@ interface TerminalPanelProps {
   onClose: () => void
   onSpawnShell?: () => void
   onOpenMarkdown?: (filePath: string) => void
+  onStartAutopilot?: () => void
+  isAutopilotRunning?: boolean
+  onShowAutopilotPanel?: () => void
 }
 
 export function TerminalPanel({
@@ -69,6 +72,9 @@ export function TerminalPanel({
   onClose,
   onSpawnShell,
   onOpenMarkdown,
+  onStartAutopilot,
+  isAutopilotRunning,
+  onShowAutopilotPanel,
 }: TerminalPanelProps) {
   const termRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -557,7 +563,27 @@ export function TerminalPanel({
           </button>
         </div>
 
-        {/* Col 3: Close */}
+        {/* Col 3: Autopilot */}
+        {onStartAutopilot && !isAutopilotRunning && (
+          <button
+            onClick={onStartAutopilot}
+            title="Start Autopilot"
+            style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', padding: '0 6px', fontSize: 12 }}
+          >
+            🤖 Autopilot
+          </button>
+        )}
+        {isAutopilotRunning && onShowAutopilotPanel && (
+          <button
+            onClick={onShowAutopilotPanel}
+            title="Show autopilot panel"
+            style={{ background: 'rgba(167,139,250,0.2)', border: 'none', color: '#a78bfa', cursor: 'pointer', padding: '0 8px', fontSize: 11, borderRadius: 4 }}
+          >
+            🤖 Active
+          </button>
+        )}
+
+        {/* Col 4: Close */}
         <button
           onClick={onClose}
           onMouseDown={(e) => e.stopPropagation()}
