@@ -12,6 +12,10 @@ export interface AppSettings {
   remotePort: number
   favoriteFolders: string[]
   restoreSessionEnabled: boolean
+  autopilotApiProvider: 'anthropic' | 'openrouter'
+  autopilotPlannerModel: string
+  autopilotDefaultCostCap: number
+  autopilotDefaultMaxIterations: number
 }
 
 const DEFAULTS: AppSettings = {
@@ -25,6 +29,10 @@ const DEFAULTS: AppSettings = {
   remotePort: 3456,
   favoriteFolders: [],
   restoreSessionEnabled: false,
+  autopilotApiProvider: 'anthropic',
+  autopilotPlannerModel: 'claude-sonnet-4-6',
+  autopilotDefaultCostCap: 1.0,
+  autopilotDefaultMaxIterations: 40,
 }
 
 export class Settings {
