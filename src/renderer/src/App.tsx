@@ -17,7 +17,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { CommandPalette } from './components/CommandPalette'
 import { AutopilotPanel } from './components/AutopilotPanel'
 import { AutopilotKickoff } from './components/AutopilotKickoff'
-import { FolderOpen, AppWindow, Star, FolderSearch, Code, Copy, Trash2 } from './components/icons'
+import { FolderOpen, AppWindow, Star, FolderSearch, Code, Copy, Trash2, Sparkles } from './components/icons'
 import { assignColor } from './utils/colors'
 import { calculateLayout, getRowCount } from './utils/grid-layout'
 import { onActivityChange } from './utils/terminal-activity'
@@ -706,6 +706,15 @@ export default function App() {
             items={[
               { label: 'Open', icon: FolderOpen, onClick: () => handleOpenRecent(path), disabled: isOpen },
               { label: 'Open in new window', icon: AppWindow, onClick: () => { window.api.windowCreate().catch(() => {}) } },
+              { label: 'Start with Autopilot', icon: Sparkles, onClick: () => {
+                // Open the project (this creates a terminal), then trigger kickoff for that terminal.
+                handleOpenRecent(path)
+                // Defer until terminal is created; pick up via the most recent terminal of this path.
+                setTimeout(() => {
+                  const t = terminals.find((tt) => tt.path === path)
+                  if (t) setAutopilotKickoffFor(t.id)
+                }, 200)
+              }},
               { label: isFav ? 'Remove from favorites' : 'Add to favorites', icon: Star, onClick: () => handleToggleFavorite(path) },
               { label: 'Open in Explorer', icon: FolderSearch, onClick: () => { window.api.openInExplorer(path).catch(() => {}) } },
               { label: 'Open in Editor', icon: Code, onClick: () => { window.api.openInEditor(path).catch(() => {}) } },
