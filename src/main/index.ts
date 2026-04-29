@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Menu, powerSaveBlocker } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Menu, powerSaveBlocker, safeStorage } from 'electron'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { spawn, execSync } from 'child_process'
@@ -16,6 +16,8 @@ import { hardenGlobalSettings, trustFolder, readClaudeConfig, writeClaudeConfig 
 import { getStatus as tsGetStatus, getServeStatus as tsGetServeStatus, startServe as tsStartServe, stopServe as tsStopServe } from './tailscale'
 import { getGitStatus } from './git-status'
 import type { TerminalMeta } from './pty-manager'
+import { createAutopilot, type AutopilotHandle, type AutopilotState } from './autopilot'
+import type { AutopilotOptions } from './autopilot/types'
 
 // File logger for debugging startup issues
 const logPath = join(app.getPath('userData'), 'cmdcld.log')
@@ -25,6 +27,34 @@ function log(msg: string): void {
 }
 
 log('=== App starting ===')
+
+function autopilotKeyPath(provider: 'anthropic' | 'openrouter'): string {
+  return join(app.getPath('userData'), `autopilot-${provider}-key.bin`)
+}
+
+function readAutopilotKey(provider: 'anthropic' | 'openrouter'): string | null {
+  const path = autopilotKeyPath(provider)
+  if (!existsSync(path)) return null
+  if (!safeStorage.isEncryptionAvailable()) return null
+  try {
+    const raw = readFileSync(path)
+    return safeStorage.decryptString(raw)
+  } catch {
+    return null
+  }
+}
+
+function writeAutopilotKey(provider: 'anthropic' | 'openrouter', key: string): void {
+  const path = autopilotKeyPath(provider)
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('safeStorage unavailable')
+  const enc = safeStorage.encryptString(key)
+  writeFileSync(path, enc)
+}
+
+function clearAutopilotKey(provider: 'anthropic' | 'openrouter'): void {
+  const path = autopilotKeyPath(provider)
+  try { if (existsSync(path)) require('fs').unlinkSync(path) } catch {}
+}
 
 // Hydrate PATH and env from the user's login shell when launched from Finder/Dock.
 // Packaged macOS apps start with a bare environment (PATH ≈ /usr/bin:/bin:/usr/sbin:/sbin),
@@ -82,6 +112,15 @@ const newWindowIds = new Set<string>()
 // Tracks windows that have already passed the "are you sure?" close dialog,
 // so the cascading close event after dialog-OK doesn't re-prompt.
 const confirmedClose = new WeakSet<BrowserWindow>()
+
+const autopilots = new Map<string, AutopilotHandle>()  // keyed by terminalId
+
+function broadcastAutopilotUpdate(terminalId: string, state: AutopilotState): void {
+  for (const wcId of registry.list().map((w) => w.id)) {
+    const wc = registry.getWebContents(wcId)
+    if (wc) wc.send('autopilot:update', terminalId, state)
+  }
+}
 
 try {
   ptyManager = new PtyManager()
@@ -418,6 +457,61 @@ ipcMain.handle('session:clearLast', () => {
 ipcMain.handle('git:status', (_event, path: string) => {
   if (typeof path !== 'string' || !path) return { isRepo: false, branch: null, dirty: false }
   return getGitStatus(path)
+})
+
+ipcMain.handle('autopilot:keyExists', (_event, provider: 'anthropic' | 'openrouter') => {
+  return existsSync(autopilotKeyPath(provider))
+})
+ipcMain.handle('autopilot:keySet', (_event, provider: 'anthropic' | 'openrouter', key: string) => {
+  writeAutopilotKey(provider, key)
+})
+ipcMain.handle('autopilot:keyClear', (_event, provider: 'anthropic' | 'openrouter') => {
+  clearAutopilotKey(provider)
+})
+
+ipcMain.handle('autopilot:start', async (_event, args: { terminalId: string; projectPath: string; freeTextIdea: string; costCapUsd: number; maxIterations: number }) => {
+  const provider = settings.get('autopilotApiProvider')
+  const apiKey = readAutopilotKey(provider)
+  if (!apiKey) return { ok: false, error: `No API key for ${provider}. Add one in Settings.` }
+  if (autopilots.has(args.terminalId)) return { ok: false, error: 'Autopilot already running for this terminal.' }
+
+  const opts: AutopilotOptions = {
+    terminalId: args.terminalId,
+    projectPath: args.projectPath,
+    freeTextIdea: args.freeTextIdea,
+    costCapUsd: args.costCapUsd,
+    maxIterations: args.maxIterations,
+    apiProvider: provider,
+    apiKey,
+    plannerModel: settings.get('autopilotPlannerModel'),
+    writeToPty: (terminalId, data) => { ptyManager.write(terminalId, data) },
+    onPtyData: (terminalId, listener) => ptyManager.subscribeOutput(terminalId, listener),
+    onUpdate: (state) => broadcastAutopilotUpdate(args.terminalId, state),
+  }
+  const handle = createAutopilot(opts)
+  autopilots.set(args.terminalId, handle)
+  await handle.start()
+  return { ok: true }
+})
+
+ipcMain.handle('autopilot:pause', (_event, terminalId: string) => {
+  autopilots.get(terminalId)?.pause()
+})
+ipcMain.handle('autopilot:resume', (_event, terminalId: string) => {
+  autopilots.get(terminalId)?.resume()
+})
+ipcMain.handle('autopilot:stop', (_event, terminalId: string) => {
+  autopilots.get(terminalId)?.stop()
+  autopilots.delete(terminalId)
+})
+ipcMain.handle('autopilot:approveGoal', (_event, terminalId: string) => {
+  autopilots.get(terminalId)?.approveGoal()
+})
+ipcMain.handle('autopilot:replyToWaiting', (_event, terminalId: string, text: string) => {
+  autopilots.get(terminalId)?.replyToWaiting(text)
+})
+ipcMain.handle('autopilot:getStatus', (_event, terminalId: string) => {
+  return autopilots.get(terminalId)?.state ?? null
 })
 
 // Keep the app process from being suspended while remote access is on, so a

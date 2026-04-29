@@ -181,4 +181,30 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('remote:session-created', listener)
     return () => { ipcRenderer.removeListener('remote:session-created', listener) }
   },
+
+  autopilotKeyExists: (provider: 'anthropic' | 'openrouter'): Promise<boolean> =>
+    ipcRenderer.invoke('autopilot:keyExists', provider),
+  autopilotKeySet: (provider: 'anthropic' | 'openrouter', key: string): Promise<void> =>
+    ipcRenderer.invoke('autopilot:keySet', provider, key),
+  autopilotKeyClear: (provider: 'anthropic' | 'openrouter'): Promise<void> =>
+    ipcRenderer.invoke('autopilot:keyClear', provider),
+  autopilotStart: (args: { terminalId: string; projectPath: string; freeTextIdea: string; costCapUsd: number; maxIterations: number }): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('autopilot:start', args),
+  autopilotPause: (terminalId: string): Promise<void> =>
+    ipcRenderer.invoke('autopilot:pause', terminalId),
+  autopilotResume: (terminalId: string): Promise<void> =>
+    ipcRenderer.invoke('autopilot:resume', terminalId),
+  autopilotStop: (terminalId: string): Promise<void> =>
+    ipcRenderer.invoke('autopilot:stop', terminalId),
+  autopilotApproveGoal: (terminalId: string): Promise<void> =>
+    ipcRenderer.invoke('autopilot:approveGoal', terminalId),
+  autopilotReplyToWaiting: (terminalId: string, text: string): Promise<void> =>
+    ipcRenderer.invoke('autopilot:replyToWaiting', terminalId, text),
+  autopilotGetStatus: (terminalId: string): Promise<unknown> =>
+    ipcRenderer.invoke('autopilot:getStatus', terminalId),
+  onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void): (() => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, terminalId: string, state: unknown) => callback(terminalId, state)
+    ipcRenderer.on('autopilot:update', listener)
+    return () => { ipcRenderer.removeListener('autopilot:update', listener) }
+  },
 })

@@ -101,6 +101,17 @@ export interface ElectronAPI {
   tailscaleServeStart: () => Promise<{ ok: boolean; url?: string; error?: string }>
   tailscaleServeStop: () => Promise<{ ok: boolean; error?: string }>
   onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string }) => void) => () => void
+  autopilotKeyExists: (provider: 'anthropic' | 'openrouter') => Promise<boolean>
+  autopilotKeySet: (provider: 'anthropic' | 'openrouter', key: string) => Promise<void>
+  autopilotKeyClear: (provider: 'anthropic' | 'openrouter') => Promise<void>
+  autopilotStart: (args: { terminalId: string; projectPath: string; freeTextIdea: string; costCapUsd: number; maxIterations: number }) => Promise<{ ok: boolean; error?: string }>
+  autopilotPause: (terminalId: string) => Promise<void>
+  autopilotResume: (terminalId: string) => Promise<void>
+  autopilotStop: (terminalId: string) => Promise<void>
+  autopilotApproveGoal: (terminalId: string) => Promise<void>
+  autopilotReplyToWaiting: (terminalId: string, text: string) => Promise<void>
+  autopilotGetStatus: (terminalId: string) => Promise<unknown>
+  onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void) => () => void
 }
 
 declare global {

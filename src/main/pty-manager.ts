@@ -78,9 +78,20 @@ const PTY_FLUSH_MS = 16
 
 export class PtyManager extends EventEmitter {
   private ptys = new Map<string, PtyEntry>()
+  private localOutputListeners = new Map<string, Set<(data: string) => void>>()
 
   constructor() {
     super()
+  }
+
+  subscribeOutput(id: string, listener: (data: string) => void): () => void {
+    let set = this.localOutputListeners.get(id)
+    if (!set) { set = new Set(); this.localOutputListeners.set(id, set) }
+    set.add(listener)
+    return () => {
+      const s = this.localOutputListeners.get(id)
+      if (s) { s.delete(listener); if (s.size === 0) this.localOutputListeners.delete(id) }
+    }
   }
 
   create(id: string, cwd: string, webContents: WebContents, meta: TerminalMeta): void {
@@ -120,6 +131,9 @@ export class PtyManager extends EventEmitter {
           entry.webContents.send(`pty:data:${id}`, data)
         }
       } catch {}
+      // Fan out to local (main-process) subscribers (e.g. autopilot)
+      const localSet = this.localOutputListeners.get(id)
+      if (localSet) for (const l of localSet) { try { l(data) } catch {} }
     }
 
     entry.dataDisposable = ptyProcess.onData((data) => {
