@@ -56,6 +56,8 @@ export function parsePhases(planMarkdown: string): PhaseDescriptor[] {
         description,
         done,
       }
+      // Counter increments per task position, NOT per "next free ID" — auto IDs
+      // are independent of any explicit T<n> labels the user wrote.
       autoIdCounter++
       current.tasks.push(task)
     }

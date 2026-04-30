@@ -193,4 +193,17 @@ Description prose here.
     expect(tasks[1].id).toBe('T2')
     expect(tasks[2].id).toBe('T7')
   })
+
+  it('auto-ID counter resets between phases', () => {
+    const md = `## Phase 1: a
+- [ ] first
+- [ ] second
+## Phase 2: b
+- [ ] third
+- [ ] fourth
+`
+    const ps = parsePhases(md)
+    expect(ps[0].tasks.map((t) => t.id)).toEqual(['T1', 'T2'])
+    expect(ps[1].tasks.map((t) => t.id)).toEqual(['T1', 'T2'])
+  })
 })
