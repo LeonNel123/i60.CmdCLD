@@ -207,6 +207,14 @@ export function appendLog(projectPath: string, entry: ActivityEntry): void {
   appendFileSync(path, line)
 }
 
+// ---- transcript.md (verbatim doer Q + orchestrator A per cycle) ----
+
+export function appendTranscript(projectPath: string, blockMarkdown: string): void {
+  const path = join(projectPath, DIR, 'transcript.md')
+  mkdirSync(dirname(path), { recursive: true })
+  appendFileSync(path, blockMarkdown.endsWith('\n') ? blockMarkdown : blockMarkdown + '\n')
+}
+
 // ---- state.md (overwrite each time) ----
 
 export function readState(projectPath: string): string {

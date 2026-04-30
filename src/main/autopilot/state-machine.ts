@@ -4,7 +4,7 @@ import type {
 } from './types'
 import { PtyWatcher } from './pty-watcher'
 import { CostTracker } from './cost-tracker'
-import { readGoal, readMilestones, writeMilestone, appendLog, autopilotDirExists, readLearnings, readSteering } from './state-files'
+import { readGoal, readMilestones, writeMilestone, appendLog, appendTranscript, autopilotDirExists, readLearnings, readSteering } from './state-files'
 import { discoverValidation } from './validation'
 import { decide } from './decision'
 import { runResetSequence } from './reset'
@@ -96,6 +96,7 @@ export class AutopilotStateMachine {
   replyToWaiting(text: string): void {
     this.opts.writeToPty(this.opts.terminalId, text + '\r')
     this.appendActivity('orchestrator-reply', `Manual reply: ${text.slice(0, 80)}`)
+    this.recordUserManualTranscript(text)
   }
 
   private async onSettled(snap: SettledSnapshot): Promise<void> {
@@ -184,27 +185,80 @@ export class AutopilotStateMachine {
       return
     }
 
-    this.handleDecision(out.result)
+    this.handleDecision(out.result, snap)
     this.notify()
   }
 
-  private handleDecision(d: DecideResult): void {
+  private handleDecision(d: DecideResult, snap?: SettledSnapshot): void {
     switch (d.kind) {
       case 'reply':
         this.opts.writeToPty(this.opts.terminalId, d.text + '\r')
         this.state.lastDecisionText = `Replied: ${d.text.slice(0, 80)}`
         this.appendActivity('orchestrator-reply', d.text.slice(0, 100))
+        if (snap) this.recordTranscript(snap, 'reply', d.text)
         return
       case 'reset':
+        if (snap) this.recordTranscript(snap, 'reset', 'orchestrator decided to reset')
         void this.reset('orchestrator decided to reset')
         return
       case 'done':
+        if (snap) this.recordTranscript(snap, 'done', d.evidence)
         this.transition('completed', `done: ${d.evidence}`)
         return
       case 'escalate':
+        if (snap) this.recordTranscript(snap, 'escalate', d.reason)
         this.transition('escalated', d.reason)
         return
     }
+  }
+
+  /**
+   * Append one verbatim block to .autopilot/transcript.md per orchestrator action.
+   * The log.md timeline is terse (truncated); transcript captures the full Q + A.
+   */
+  private recordTranscript(
+    snap: SettledSnapshot,
+    action: 'reply' | 'reset' | 'done' | 'escalate' | 'debug-retry' | 'user-manual',
+    body: string,
+  ): void {
+    const ts = new Date().toISOString()
+    const cycle = this.state.cycleCount
+    const m = snap.marker
+    const doerQuestion = (m.question || m.text || '').trim()
+    const subId = m.subgoalId ? ` ${m.subgoalId} ${m.status ?? ''}`.trimEnd() : ''
+    const cost = `$${this.state.costUsd.toFixed(4)}`
+    const model = this.opts.plannerModel
+
+    const lines: string[] = []
+    lines.push(`## ${ts} — Cycle ${cycle} — ${action}`)
+    lines.push('')
+    lines.push(`**Doer (${m.kind}${subId}):**`)
+    lines.push('')
+    lines.push(doerQuestion ? `> ${doerQuestion.replace(/\n/g, '\n> ')}` : '> (no question text)')
+    lines.push('')
+    lines.push(`**Orchestrator → ${action}** (model: ${model}, cost so far: ${cost})`)
+    lines.push('')
+    lines.push(body ? `> ${body.replace(/\n/g, '\n> ')}` : '> (no body)')
+    lines.push('')
+    lines.push('---')
+    lines.push('')
+    appendTranscript(this.opts.projectPath, lines.join('\n'))
+  }
+
+  private recordUserManualTranscript(text: string): void {
+    const ts = new Date().toISOString()
+    const cost = `$${this.state.costUsd.toFixed(4)}`
+    const lines = [
+      `## ${ts} — User manual reply`,
+      '',
+      `**User typed** (cost so far: ${cost})`,
+      '',
+      text ? `> ${text.replace(/\n/g, '\n> ')}` : '> (empty)',
+      '',
+      '---',
+      '',
+    ]
+    appendTranscript(this.opts.projectPath, lines.join('\n'))
   }
 
   private async tryDebugThenEscalate(
@@ -228,6 +282,7 @@ export class AutopilotStateMachine {
       this.opts.writeToPty(this.opts.terminalId, out.result.instruction + '\r')
       this.state.lastDecisionText = `Debug retry: ${out.result.instruction.slice(0, 80)}`
       this.appendActivity('orchestrator-reply', `debug retry: ${out.result.instruction.slice(0, 100)}`)
+      this.recordTranscript(snap, 'debug-retry', out.result.instruction)
       this.notify()
       return
     }
@@ -235,6 +290,7 @@ export class AutopilotStateMachine {
     const reason = out.result.kind === 'block'
       ? `block: ${out.result.reason}`
       : `human: ${out.result.reason}`
+    this.recordTranscript(snap, 'escalate', `${trigger} → ${reason}`)
     this.state.escalationReason = reason
     this.transition('escalated', `${trigger} → ${reason}`)
   }
