@@ -34,13 +34,13 @@ export function AutopilotKickoff({ terminalId, projectPath, defaultCostCap, defa
 
   return (
     <div style={{
-      background: 'rgba(167,139,250,0.08)',
-      border: '1px solid rgba(167,139,250,0.3)',
-      borderRadius: 6,
-      padding: 12,
-      margin: 8,
-      fontFamily: 'inherit', fontSize: 12, color: '#ccc',
-      display: 'flex', flexDirection: 'column', gap: 8,
+      background: '#1a1a1a',
+      border: '1px solid rgba(167,139,250,0.4)',
+      borderRadius: 8,
+      padding: 20,
+      margin: 12,
+      fontFamily: 'inherit', fontSize: 13, color: '#ccc',
+      display: 'flex', flexDirection: 'column', gap: 12,
     }}>
       <div style={{ color: '#a78bfa', fontWeight: 600 }}>🤖 Start Autopilot</div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11 }}>
@@ -71,8 +71,8 @@ export function AutopilotKickoff({ terminalId, projectPath, defaultCostCap, defa
         onChange={(e) => setIdea(e.target.value)}
         placeholder="Describe what you want to build..."
         style={{
-          width: '100%', minHeight: 80, background: '#0d1117', border: '1px solid #2d2d2d',
-          borderRadius: 4, padding: 8, color: '#ccc', fontSize: 12, fontFamily: 'inherit',
+          width: '100%', minHeight: 200, background: '#0d1117', border: '1px solid #2d2d2d',
+          borderRadius: 4, padding: 12, color: '#ccc', fontSize: 13, fontFamily: 'inherit',
           resize: 'vertical', boxSizing: 'border-box',
         }}
       />
