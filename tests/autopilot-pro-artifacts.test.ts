@@ -43,6 +43,12 @@ describe('autopilot-pro artifacts', () => {
       expect(() => writeArtifact(TMP, 'impl-doc', 'x')).toThrow()
       expect(() => readArtifact(TMP, 'review')).toThrow()
     })
+
+    it('round-trips final-review artifact at .autopilot-pro/final-review.md', () => {
+      writeArtifact(TMP, 'final-review', '# Final Review\n\nAll phases shipped.\n')
+      expect(rfs(join(TMP, '.autopilot-pro', 'final-review.md'), 'utf-8')).toContain('All phases shipped')
+      expect(readArtifact(TMP, 'final-review').content).toContain('Final Review')
+    })
   })
 
   describe('approval state', () => {

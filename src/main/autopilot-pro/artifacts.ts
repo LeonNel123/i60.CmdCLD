@@ -34,6 +34,7 @@ function relativePath(kind: ArtifactKind, phaseId?: string): string {
     case 'review':
       if (!phaseId) throw new Error(`artifact kind "review" requires phaseId`)
       return `reviews/${phaseId}.md`
+    case 'final-review': return 'final-review.md'
   }
 }
 

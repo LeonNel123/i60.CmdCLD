@@ -607,6 +607,7 @@ export class AutopilotProStateMachine {
   }
 
   private inferArtifactKind(path: string): ArtifactKind {
+    if (/final-review\.md$/.test(path)) return 'final-review'
     if (/spec\.md$/.test(path)) return 'spec'
     if (/plan\.md$/.test(path)) return 'plan'
     if (/impl\//.test(path)) return 'impl-doc'
