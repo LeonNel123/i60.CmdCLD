@@ -10,6 +10,7 @@ import { decide } from './decision'
 import { runResetSequence } from './reset'
 import { makeApiClient } from './api-client'
 import { DOER_SYSTEM_PROMPT, buildWizardKickoff } from './prompts'
+import { debugCall } from './debug'
 
 export class AutopilotStateMachine {
   state: AutopilotState
@@ -107,8 +108,7 @@ export class AutopilotStateMachine {
     }
 
     if (snap.marker.kind === 'STUCK') {
-      this.state.escalationReason = snap.marker.text
-      this.transition('escalated', `STUCK: ${snap.marker.text}`)
+      await this.tryDebugThenEscalate(snap, 'stuck')
       return
     }
 
@@ -129,7 +129,7 @@ export class AutopilotStateMachine {
 
     if (this.partialStreak >= 3) {
       this.partialStreak = 0
-      await this.reset('three consecutive partial markers — likely confusion')
+      await this.tryDebugThenEscalate(snap, 'partial-streak')
       return
     }
 
@@ -205,6 +205,38 @@ export class AutopilotStateMachine {
         this.transition('escalated', d.reason)
         return
     }
+  }
+
+  private async tryDebugThenEscalate(
+    snap: SettledSnapshot,
+    trigger: 'stuck' | 'partial-streak',
+  ): Promise<void> {
+    if (!this.state.goal) {
+      this.transition('escalated', `${trigger}: no goal`)
+      return
+    }
+    const out = await debugCall(this.api, {
+      goal: this.state.goal,
+      currentMilestoneId: this.state.currentMilestoneId,
+      lastSnapshot: snap,
+      trigger,
+    })
+    this.cost.add(out.costUsd)
+    this.state.costUsd = this.cost.totalUsd
+
+    if (out.result.kind === 'retry') {
+      this.opts.writeToPty(this.opts.terminalId, out.result.instruction + '\r')
+      this.state.lastDecisionText = `Debug retry: ${out.result.instruction.slice(0, 80)}`
+      this.appendActivity('orchestrator-reply', `debug retry: ${out.result.instruction.slice(0, 100)}`)
+      this.notify()
+      return
+    }
+    // block or human → escalate with the reason
+    const reason = out.result.kind === 'block'
+      ? `block: ${out.result.reason}`
+      : `human: ${out.result.reason}`
+    this.state.escalationReason = reason
+    this.transition('escalated', `${trigger} → ${reason}`)
   }
 
   private async reset(reason: string): Promise<void> {

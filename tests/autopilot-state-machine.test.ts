@@ -56,7 +56,8 @@ describe('AutopilotStateMachine', () => {
     sm.feedPty('[ORCH:STUCK] cannot find git\n')
     await waitForPhase(sm, 'escalated')
     expect(sm.state.phase).toBe('escalated')
-    expect(sm.state.escalationReason).toContain('cannot find git')
+    // debug call wraps the STUCK reason; makeApi returns kind:'human', reason:'unused'
+    expect(sm.state.escalationReason).toMatch(/human|cannot find git/)
   })
 
   it('updates checklist on PROGRESS done', async () => {
@@ -87,7 +88,7 @@ describe('AutopilotStateMachine', () => {
   })
 })
 
-function makeSm(idea: string, api: ApiClient): AutopilotStateMachine {
+function makeSm(idea: string, api: ApiClient, writes?: string[]): AutopilotStateMachine {
   const opts: AutopilotOptions = {
     terminalId: 't',
     projectPath: TMP,
@@ -97,7 +98,7 @@ function makeSm(idea: string, api: ApiClient): AutopilotStateMachine {
     apiProvider: 'anthropic',
     apiKey: 'test',
     plannerModel: 'claude-sonnet-4-6',
-    writeToPty: () => {},
+    writeToPty: (_id, data) => { writes?.push(data) },
     onPtyData: () => () => {},
     onUpdate: () => {},
   }
@@ -159,4 +160,67 @@ it('passes learnings into decide() so the planner sees them', async () => {
   sm.feedPty('[ORCH:WAITING] q\n')
   await waitForFlush()
   expect(captured.learnings).toEqual(expect.arrayContaining([expect.stringContaining('npm install first')]))
+})
+
+it('STUCK marker triggers debug call; on retry stays in executing and types instruction', async () => {
+  writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+  const writes: string[] = []
+  const api: ApiClient = {
+    decide: vi.fn(),
+    debug: vi.fn(async () => ({
+      result: { kind: 'retry' as const, instruction: 'try npm install first' },
+      usage: { inputTokens: 100, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 30 } as ApiUsage,
+    })),
+    estimateCost: () => 0.0001,
+  }
+  const sm = makeSm('idea', api, writes)
+  await sm.start()
+  sm.approveGoal()
+  sm.feedPty('[ORCH:STUCK] cannot find npm\n')
+  await waitForFlush()
+  expect(api.debug).toHaveBeenCalledTimes(1)
+  expect(sm.state.phase).toBe('executing')
+  expect(writes.some((w) => w.includes('npm install'))).toBe(true)
+})
+
+it('STUCK marker with debug result human escalates with reason', async () => {
+  writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+  const api: ApiClient = {
+    decide: vi.fn(),
+    debug: vi.fn(async () => ({
+      result: { kind: 'human' as const, reason: 'tradeoff' },
+      usage: { inputTokens: 50, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 20 } as ApiUsage,
+    })),
+    estimateCost: () => 0.0001,
+  }
+  const sm = makeSm('idea', api)
+  await sm.start()
+  sm.approveGoal()
+  sm.feedPty('[ORCH:STUCK] reason\n')
+  await waitForPhase(sm, 'escalated')
+  expect(sm.state.phase).toBe('escalated')
+  expect(sm.state.escalationReason).toMatch(/tradeoff|reason/)
+})
+
+it('partial-streak triggers debug call; on retry stays executing', async () => {
+  writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+  const api: ApiClient = {
+    decide: vi.fn(async () => ({ result: { kind: 'reply' as const, text: 'go' }, usage: { inputTokens: 1, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 1 } as ApiUsage })),
+    debug: vi.fn(async () => ({
+      result: { kind: 'retry' as const, instruction: 'split the subgoal' },
+      usage: { inputTokens: 1, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 1 } as ApiUsage,
+    })),
+    estimateCost: () => 0.0001,
+  }
+  const sm = makeSm('idea', api)
+  await sm.start()
+  sm.approveGoal()
+  sm.feedPty('[ORCH:PROGRESS] m1/s1 partial\n')
+  await waitForFlush()
+  sm.feedPty('[ORCH:PROGRESS] m1/s1 partial\n')
+  await waitForFlush()
+  sm.feedPty('[ORCH:PROGRESS] m1/s1 partial\n')
+  await waitForFlush()
+  expect(api.debug).toHaveBeenCalledTimes(1)
+  expect(sm.state.phase).toBe('executing')
 })
