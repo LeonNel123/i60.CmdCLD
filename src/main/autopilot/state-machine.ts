@@ -22,13 +22,20 @@ export class AutopilotStateMachine {
   private settleResolvers: Array<() => void> = []
   private outputVolumeSinceReset = 0
   private partialStreak = 0
+  // Long-silence escalate: if no PTY bytes arrive for this long while we're
+  // executing or in wizard phase, escalate. Catches truly-hung doer / dead
+  // subagent / network stalls. 30 minutes is generous enough for legitimate
+  // long-running subagent work; bump for projects that genuinely run longer.
+  private silenceTimer: ReturnType<typeof setTimeout> | null = null
+  private maxSilenceMs: number
 
-  constructor(opts: AutopilotOptions, apiOverride?: ApiClient, ptyIdleMs = 1500) {
+  constructor(opts: AutopilotOptions, apiOverride?: ApiClient, ptyIdleMs = 1500, maxSilenceMs = 30 * 60 * 1000) {
     this.opts = opts
     this.api = apiOverride ?? makeApiClient(opts.apiProvider, opts.apiKey, opts.plannerModel)
     this.cost = new CostTracker(opts.projectPath, opts.costCapUsd, (pct) => {
       if (pct === 100) this.transition('paused', 'cost cap reached')
     })
+    this.maxSilenceMs = maxSilenceMs
 
     this.state = {
       phase: 'idle',
@@ -54,6 +61,7 @@ export class AutopilotStateMachine {
   async start(): Promise<void> {
     this.detachPty = this.opts.onPtyData(this.opts.terminalId, (data) => {
       this.outputVolumeSinceReset += data.length
+      this.armSilenceTimer()
       this.watcher.feed(data)
     })
 
@@ -68,9 +76,14 @@ export class AutopilotStateMachine {
       this.opts.writeToPty(this.opts.terminalId, buildWizardKickoff(this.opts.freeTextIdea) + '\r')
       this.transition('wizard', 'wizard kickoff sent')
     }
+
+    this.armSilenceTimer()
   }
 
-  pause(reason = 'user pause'): void { this.transition('paused', reason) }
+  pause(reason = 'user pause'): void {
+    this.clearSilenceTimer()
+    this.transition('paused', reason)
+  }
   resume(): void {
     if (this.state.phase !== 'paused') return
     if (this.state.goal && this.state.milestones.length > 0) {
@@ -78,9 +91,11 @@ export class AutopilotStateMachine {
     } else {
       this.transition('wizard', 'resumed')
     }
+    this.armSilenceTimer()
   }
   stop(): void {
     if (this.detachPty) { this.detachPty(); this.detachPty = null }
+    this.clearSilenceTimer()
     this.transition('stopped', 'user stopped')
   }
   approveGoal(): void {
@@ -331,6 +346,12 @@ export class AutopilotStateMachine {
 
   private transition(phase: AutopilotPhase, reason: string): void {
     this.state.phase = phase
+    // Stop the silence timer when we've reached a non-running phase. start() /
+    // resume() re-arm it. pause() / stop() clear it directly already, but
+    // belt-and-braces: any transition into a non-active phase clears here too.
+    if (phase === 'escalated' || phase === 'completed' || phase === 'stopped' || phase === 'paused') {
+      this.clearSilenceTimer()
+    }
     this.appendActivity(phase === 'paused' ? 'orchestrator-pause' : phase === 'escalated' ? 'escalation' : 'orchestrator-resume', `→ ${phase}: ${reason}`)
     this.notify()
   }
@@ -346,6 +367,36 @@ export class AutopilotStateMachine {
     try { this.opts.onUpdate(this.state) } catch { /* best effort */ }
   }
 
-  // For tests
-  feedPty(data: string): void { this.watcher.feed(data) }
+  // ---- silence timer (escalates if doer goes truly silent for too long) ----
+
+  private armSilenceTimer(): void {
+    if (this.silenceTimer) clearTimeout(this.silenceTimer)
+    this.silenceTimer = setTimeout(() => this.onSilenceExceeded(), this.maxSilenceMs)
+    // Don't keep the Node event loop alive solely for this timer — it's an
+    // observability backstop, not a critical path.
+    if (typeof (this.silenceTimer as any)?.unref === 'function') {
+      (this.silenceTimer as any).unref()
+    }
+  }
+
+  private clearSilenceTimer(): void {
+    if (this.silenceTimer) {
+      clearTimeout(this.silenceTimer)
+      this.silenceTimer = null
+    }
+  }
+
+  private onSilenceExceeded(): void {
+    if (this.state.phase !== 'executing' && this.state.phase !== 'wizard') return
+    const minutes = Math.round(this.maxSilenceMs / 60000)
+    this.state.escalationReason = `doer silent for ${minutes}+ minutes`
+    this.transition('escalated', `silence: doer produced no output for ${minutes}+ minutes`)
+  }
+
+  // For tests — mirrors the production onPtyData listener (volume + silence + watcher feed)
+  feedPty(data: string): void {
+    this.outputVolumeSinceReset += data.length
+    this.armSilenceTimer()
+    this.watcher.feed(data)
+  }
 }

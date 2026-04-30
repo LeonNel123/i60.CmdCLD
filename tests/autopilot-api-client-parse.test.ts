@@ -124,6 +124,56 @@ describe('parseDecision', () => {
       expect(parseDecision('[1,2,3]').kind).toBe('reply')
     })
   })
+
+  describe('embedded JSON recovery (prose-before / prose-after)', () => {
+    it('extracts JSON when prose precedes it', () => {
+      const r = parseDecision('Sure, here is my decision: {"kind":"reply","text":"go"}')
+      expect(r).toEqual({ kind: 'reply', text: 'go' })
+    })
+
+    it('extracts JSON when prose follows it', () => {
+      const r = parseDecision('{"kind":"reply","text":"go"} (and that\'s my answer)')
+      expect(r).toEqual({ kind: 'reply', text: 'go' })
+    })
+
+    it('extracts JSON sandwiched between prose blocks', () => {
+      const r = parseDecision('Analysis:\n\n{"kind":"reset"}\n\nDone.')
+      expect(r).toEqual({ kind: 'reset' })
+    })
+
+    it('handles braces inside strings without confusing the brace-matcher', () => {
+      const r = parseDecision('Note: {"kind":"reply","text":"use {brace} here"}')
+      expect(r).toEqual({ kind: 'reply', text: 'use {brace} here' })
+    })
+
+    it('handles escaped quotes inside strings', () => {
+      const r = parseDecision('{"kind":"reply","text":"say \\"hi\\""}')
+      expect(r).toEqual({ kind: 'reply', text: 'say "hi"' })
+    })
+
+    it('handles nested objects (picks the outer balanced block)', () => {
+      const r = parseDecision('{"kind":"reply","text":"x","extra":{"a":1,"b":[2,3]}}')
+      expect(r).toEqual({ kind: 'reply', text: 'x' })
+    })
+
+    it('extracts JSON from inside a markdown fence even with leading prose', () => {
+      const r = parseDecision('Here:\n```json\n{"kind":"done","evidence":"all green"}\n```')
+      expect(r).toEqual({ kind: 'done', evidence: 'all green' })
+    })
+
+    it('still falls back to prose-as-reply when no balanced object exists', () => {
+      // Pure prose, no JSON at all → safe fallback unchanged.
+      const r = parseDecision('I think you should commit now.')
+      expect(r).toEqual({ kind: 'reply', text: 'I think you should commit now.' })
+    })
+
+    it('falls back when prose contains an opening { but no matching close', () => {
+      // Truncated/unbalanced — extractor returns null, safe fallback fires.
+      const r = parseDecision('Maybe {"kind":"reply", oops')
+      expect(r.kind).toBe('reply')
+      if (r.kind === 'reply') expect(r.text).toContain('Maybe')
+    })
+  })
 })
 
 describe('parseDebug', () => {
@@ -209,6 +259,28 @@ describe('parseDebug', () => {
     it('rejects null and array roots', () => {
       expect(parseDebug('null').kind).toBe('human')
       expect(parseDebug('[1,2,3]').kind).toBe('human')
+    })
+  })
+
+  describe('embedded JSON recovery (prose-before / prose-after)', () => {
+    it('extracts retry from prose-before-JSON', () => {
+      const r = parseDebug('My analysis: {"kind":"retry","instruction":"npm i"}')
+      expect(r).toEqual({ kind: 'retry', instruction: 'npm i' })
+    })
+
+    it('extracts block from prose-after-JSON', () => {
+      const r = parseDebug('{"kind":"block","reason":"untestable"} — escalating now.')
+      expect(r).toEqual({ kind: 'block', reason: 'untestable' })
+    })
+
+    it('handles braces inside the instruction string', () => {
+      const r = parseDebug('{"kind":"retry","instruction":"run {{cmd}} first"}')
+      expect(r).toEqual({ kind: 'retry', instruction: 'run {{cmd}} first' })
+    })
+
+    it('still falls back to human when there is no balanced object', () => {
+      const r = parseDebug('I think you should retry with npm install.')
+      expect(r.kind).toBe('human')
     })
   })
 })

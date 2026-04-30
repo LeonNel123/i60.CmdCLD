@@ -132,37 +132,80 @@ export class AnthropicClient implements ApiClient {
   }
 }
 
+/**
+ * Find the first balanced {...} block in text. Honours JSON string semantics
+ * (escaped quotes, embedded braces inside strings). Returns null if no balanced
+ * block exists. Used to recover from prose-before-JSON or prose-after-JSON
+ * model outputs (common with Kimi K2, DeepSeek when system prompt is mild).
+ */
+function extractFirstJsonObject(text: string): string | null {
+  const start = text.indexOf('{')
+  if (start < 0) return null
+  let depth = 0
+  let inString = false
+  let escape = false
+  for (let i = start; i < text.length; i++) {
+    const c = text[i]
+    if (escape) { escape = false; continue }
+    if (c === '\\') { escape = true; continue }
+    if (c === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (c === '{') depth++
+    else if (c === '}') {
+      depth--
+      if (depth === 0) return text.slice(start, i + 1)
+    }
+  }
+  return null
+}
+
 export function parseDecision(text: string): DecideResult {
   const trimmed = text.trim()
   const stripped = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
-  try {
-    const obj = JSON.parse(stripped)
-    if (obj && typeof obj === 'object' && typeof obj.kind === 'string') {
-      switch (obj.kind) {
-        case 'reply':    return { kind: 'reply', text: String(obj.text ?? '') }
-        case 'reset':    return { kind: 'reset' }
-        case 'done':     return { kind: 'done', evidence: String(obj.evidence ?? '') }
-        case 'escalate': return { kind: 'escalate', reason: String(obj.reason ?? 'unknown') }
+
+  // Try the stripped string directly first (cheapest path); on failure or
+  // unrecognised shape, try extracting the first balanced {...} block. This
+  // recovers from "Sure, here is my decision: {...}" or "{...} — done!" style
+  // outputs.
+  const candidates = [stripped]
+  const extracted = extractFirstJsonObject(stripped)
+  if (extracted && extracted !== stripped) candidates.push(extracted)
+
+  for (const candidate of candidates) {
+    try {
+      const obj = JSON.parse(candidate)
+      if (obj && typeof obj === 'object' && typeof obj.kind === 'string') {
+        switch (obj.kind) {
+          case 'reply':    return { kind: 'reply', text: String(obj.text ?? '') }
+          case 'reset':    return { kind: 'reset' }
+          case 'done':     return { kind: 'done', evidence: String(obj.evidence ?? '') }
+          case 'escalate': return { kind: 'escalate', reason: String(obj.reason ?? 'unknown') }
+        }
       }
-    }
-  } catch {
-    // fall through
+    } catch { /* try next candidate */ }
   }
   return { kind: 'reply', text: stripped.slice(0, 1000) }
 }
 
 export function parseDebug(text: string): DebugResult {
   const stripped = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
-  try {
-    const obj = JSON.parse(stripped)
-    if (obj && typeof obj === 'object' && typeof obj.kind === 'string') {
-      switch (obj.kind) {
-        case 'retry': return { kind: 'retry', instruction: String(obj.instruction ?? '').slice(0, 500) }
-        case 'block': return { kind: 'block', reason: String(obj.reason ?? 'unknown') }
-        case 'human': return { kind: 'human', reason: String(obj.reason ?? 'unknown') }
+
+  const candidates = [stripped]
+  const extracted = extractFirstJsonObject(stripped)
+  if (extracted && extracted !== stripped) candidates.push(extracted)
+
+  for (const candidate of candidates) {
+    try {
+      const obj = JSON.parse(candidate)
+      if (obj && typeof obj === 'object' && typeof obj.kind === 'string') {
+        switch (obj.kind) {
+          case 'retry': return { kind: 'retry', instruction: String(obj.instruction ?? '').slice(0, 500) }
+          case 'block': return { kind: 'block', reason: String(obj.reason ?? 'unknown') }
+          case 'human': return { kind: 'human', reason: String(obj.reason ?? 'unknown') }
+        }
       }
-    }
-  } catch { /* fall through */ }
+    } catch { /* try next candidate */ }
+  }
   return { kind: 'human', reason: 'debug parse failed' }
 }
 

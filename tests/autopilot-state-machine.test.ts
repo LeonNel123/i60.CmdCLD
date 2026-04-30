@@ -88,7 +88,7 @@ describe('AutopilotStateMachine', () => {
   })
 })
 
-function makeSm(idea: string, api: ApiClient, writes?: string[]): AutopilotStateMachine {
+function makeSm(idea: string, api: ApiClient, writes?: string[], maxSilenceMs?: number): AutopilotStateMachine {
   const opts: AutopilotOptions = {
     terminalId: 't',
     projectPath: TMP,
@@ -102,7 +102,10 @@ function makeSm(idea: string, api: ApiClient, writes?: string[]): AutopilotState
     onPtyData: () => () => {},
     onUpdate: () => {},
   }
-  return new AutopilotStateMachine(opts, api, 10) // 10ms idle for fast test settling
+  // Default maxSilenceMs to a huge value (24h) so existing tests aren't
+  // affected by the silence-escalate guard. Tests that exercise the guard
+  // pass a small value explicitly.
+  return new AutopilotStateMachine(opts, api, 10, maxSilenceMs ?? 24 * 60 * 60 * 1000)
 }
 
 function makeGoal(): Goal {
@@ -251,4 +254,66 @@ it('writes a user-manual transcript block when replyToWaiting is called', async 
   const transcript = readFileSync(join(TMP, '.autopilot', 'transcript.md'), 'utf-8')
   expect(transcript).toContain('User manual reply')
   expect(transcript).toContain('Use 8080 instead.')
+})
+
+// ---- silence-escalate guard ----
+
+it('escalates after maxSilenceMs of zero PTY output', async () => {
+  vi.useFakeTimers()
+  writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+  // 200ms silence cap for the test
+  const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })), undefined, 200)
+  await sm.start()
+  sm.approveGoal()
+  // No data fed — let the silence timer fire
+  await vi.advanceTimersByTimeAsync(250)
+  expect(sm.state.phase).toBe('escalated')
+  expect(sm.state.escalationReason).toMatch(/silent/i)
+  vi.useRealTimers()
+})
+
+it('does not escalate when data keeps arriving inside the silence window', async () => {
+  vi.useFakeTimers()
+  writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+  const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })), undefined, 300)
+  await sm.start()
+  sm.approveGoal()
+  // Periodic data well within the 300ms cap — each feed re-arms the timer
+  for (let i = 0; i < 5; i++) {
+    sm.feedPty('progress: still working\n')
+    await vi.advanceTimersByTimeAsync(150)
+  }
+  // 750ms total elapsed but no single gap exceeded 300ms
+  expect(sm.state.phase).not.toBe('escalated')
+  vi.useRealTimers()
+})
+
+it('clears the silence timer on stop()', async () => {
+  vi.useFakeTimers()
+  writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+  const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })), undefined, 200)
+  await sm.start()
+  sm.approveGoal()
+  sm.stop()
+  // Advance past the silence cap — should NOT escalate because we stopped.
+  await vi.advanceTimersByTimeAsync(500)
+  expect(sm.state.phase).toBe('stopped')
+  vi.useRealTimers()
+})
+
+it('clears and re-arms the silence timer across pause/resume', async () => {
+  vi.useFakeTimers()
+  writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+  const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })), undefined, 200)
+  await sm.start()
+  sm.approveGoal()
+  sm.pause()
+  // While paused, even a long silence shouldn't escalate
+  await vi.advanceTimersByTimeAsync(500)
+  expect(sm.state.phase).toBe('paused')
+  // Resume re-arms; another silence window will then escalate
+  sm.resume()
+  await vi.advanceTimersByTimeAsync(250)
+  expect(sm.state.phase).toBe('escalated')
+  vi.useRealTimers()
 })
