@@ -299,3 +299,20 @@ export function buildMetaReflectPrompt(input: MetaReflectInput): string {
 // Re-exported helper so meta.ts can use the classification union without
 // importing it from types separately.
 export type { MetaClassification }
+
+// ----- Stage 3 / Stage 4 kickoffs (Wave 3.1) -----
+
+export function stage3Kickoff(phaseId: string): string {
+  return `STAGE 3 — PHASE REVIEW for ${phaseId}. ` +
+    `Run the code-reviewer skill on the diff for this phase. ` +
+    `Write findings to .autopilot-pro/reviews/${phaseId}.md. ` +
+    `When complete, emit DECISION_SHAPE: approve, ARTIFACT: reviews/${phaseId}.md.`
+}
+
+export function stage4Kickoff(): string {
+  return `STAGE 4 — FINAL REVIEW. ` +
+    `Read all .autopilot-pro/reviews/*.md plus spec.md and plan.md. ` +
+    `Synthesize a cross-phase summary at .autopilot-pro/final-review.md covering: ` +
+    `(a) what shipped, (b) what's deferred, (c) any cross-phase concerns surfaced. ` +
+    `When complete, emit DECISION_SHAPE: transition, action: final-review.`
+}

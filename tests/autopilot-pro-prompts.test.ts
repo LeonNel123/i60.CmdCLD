@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   DOER_SYSTEM_PROMPT_PRO, PRINCIPLES_BLOCK,
   buildPlannerPrompt, META_REFLECT_SYSTEM_PROMPT, buildMetaReflectPrompt,
+  stage3Kickoff, stage4Kickoff,
 } from '../src/main/autopilot-pro/prompts'
 import type { ProDecideInput, ProSettledSnapshot } from '../src/main/autopilot-pro/types'
 
@@ -141,5 +142,39 @@ describe('META_REFLECT_SYSTEM_PROMPT + buildMetaReflectPrompt', () => {
       spec: 's', plan: 'p', reviews: [], transcriptExcerpt: 't', costUsd: 0,
     })
     expect(p).toContain('(no reviews produced)')
+  })
+})
+
+describe('Wave 3.1 stage kickoffs', () => {
+  it('stage3Kickoff includes the phaseId twice (instruction + artifact path)', () => {
+    const k = stage3Kickoff('phase-2')
+    expect(k).toContain('STAGE 3')
+    expect(k).toContain('phase-2')
+    expect(k).toContain('reviews/phase-2.md')
+    expect(k).toContain('DECISION_SHAPE: approve')
+    expect(k).toContain('ARTIFACT: reviews/phase-2.md')
+  })
+
+  it('stage3Kickoff names the code-reviewer skill', () => {
+    expect(stage3Kickoff('p')).toMatch(/code-reviewer/i)
+  })
+
+  it('stage4Kickoff names final-review.md', () => {
+    const k = stage4Kickoff()
+    expect(k).toContain('STAGE 4')
+    expect(k).toContain('final-review.md')
+  })
+
+  it('stage4Kickoff lists the three required sections', () => {
+    const k = stage4Kickoff()
+    expect(k).toContain('what shipped')
+    expect(k).toContain('deferred')
+    expect(k).toContain('cross-phase')
+  })
+
+  it('stage4Kickoff instructs to emit transition action=final-review', () => {
+    const k = stage4Kickoff()
+    expect(k).toContain('DECISION_SHAPE: transition')
+    expect(k).toContain('final-review')
   })
 })
