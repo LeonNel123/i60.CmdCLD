@@ -5,6 +5,7 @@ import { AutopilotProStateMachine, enrichProMarker } from '../src/main/autopilot
 import type { AutopilotProOptions, ProDecideResult } from '../src/main/autopilot-pro/types'
 import type { ApiClient, ApiUsage } from '../src/main/autopilot/types'
 import { writeArtifact, markApproved, readState } from '../src/main/autopilot-pro/artifacts'
+import { formatPtyWrite } from '../src/main/autopilot/pty-write'
 
 const TMP = join(__dirname, '.tmp-autopilot-pro-sm')
 
@@ -776,5 +777,65 @@ describe('spec-update DELTA application (Wave 3.1 G2 logic)', () => {
     expect((spec.match(/## Updates \(/g) ?? []).length).toBe(2)
     expect(spec).toContain('delta one')
     expect(spec).toContain('delta two')
+  })
+})
+
+describe('IPC writeToPty wraps multiline writes in bracketed-paste (Wave 3.2)', () => {
+  it('the kickoff routed through formatPtyWrite is wrapped in BP markers', async () => {
+    const writes: string[] = []
+    const opts: AutopilotProOptions = {
+      terminalId: 't',
+      projectPath: TMP,
+      freeTextIdea: 'a small thing',
+      costCapUsd: 1.0,
+      apiProvider: 'anthropic',
+      apiKey: 'fake',
+      plannerModel: 'claude-sonnet-4-6',
+      // Mirror the production IPC handler exactly
+      writeToPty: (_id, data) => { writes.push(formatPtyWrite(data)) },
+      onPtyData: () => () => {},
+      onUpdate: () => {},
+    }
+    const sm = new AutopilotProStateMachine(opts, fakeChatClient(() => ({ shape: 'reply', text: 'x' })), 10, 24 * 60 * 60 * 1000)
+    await sm.start()
+
+    // The DOER system prompt (multiline) must be wrapped.
+    const doerPromptWrite = writes.find((w) => w.includes('DOER') || w.includes('autonomous orchestrator'))
+    expect(doerPromptWrite).toBeDefined()
+    expect(doerPromptWrite!.startsWith('\x1b[200~')).toBe(true)
+    expect(doerPromptWrite!.endsWith('\x1b[201~\r')).toBe(true)
+
+    // The Stage 0 kickoff (multiline) must also be wrapped.
+    const kickoffWrite = writes.find((w) => w.includes('STAGE 0') || w.includes('DISCOVERY'))
+    expect(kickoffWrite).toBeDefined()
+    expect(kickoffWrite!.startsWith('\x1b[200~')).toBe(true)
+  })
+
+  it('a single-line reply is NOT wrapped', async () => {
+    writeArtifact(TMP, 'spec', '# spec'); markApproved(TMP, 'spec')
+    writeArtifact(TMP, 'plan', '# plan'); markApproved(TMP, 'plan')
+    const writes: string[] = []
+    const opts: AutopilotProOptions = {
+      terminalId: 't',
+      projectPath: TMP,
+      freeTextIdea: 'x',
+      costCapUsd: 1.0,
+      apiProvider: 'anthropic',
+      apiKey: 'fake',
+      plannerModel: 'claude-sonnet-4-6',
+      writeToPty: (_id, data) => { writes.push(formatPtyWrite(data)) },
+      onPtyData: () => () => {},
+      onUpdate: () => {},
+    }
+    const sm = new AutopilotProStateMachine(opts, fakeChatClient(() => ({ shape: 'reply', text: 'continue' })), 10, 24 * 60 * 60 * 1000)
+    await sm.start()
+    writes.length = 0  // discard kickoff noise
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    const replyWrite = writes.find((w) => w.includes('continue'))
+    expect(replyWrite).toBeDefined()
+    // Single-line reply: no BP wrap, just the text + \r.
+    expect(replyWrite!.includes('\x1b[200~')).toBe(false)
+    expect(replyWrite!.includes('\x1b[201~')).toBe(false)
   })
 })
