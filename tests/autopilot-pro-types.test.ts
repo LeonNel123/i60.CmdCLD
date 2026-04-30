@@ -4,7 +4,7 @@ import {
 } from '../src/main/autopilot-pro/types'
 import type {
   DecisionShape, ProStage, ArtifactKind, ProMarker, ProState,
-  ProDecideResult, MetaClassification,
+  ProDecideResult, MetaClassification, PhaseDescriptor, TaskDescriptor,
 } from '../src/main/autopilot-pro/types'
 
 describe('autopilot-pro types', () => {
@@ -82,5 +82,27 @@ describe('autopilot-pro types', () => {
       subagentEtaMs: 0,
     }
     expect(s.stage).toBe('discovery')
+  })
+})
+
+describe('Wave 3.1 type extensions', () => {
+  it('ArtifactKind allows "final-review"', () => {
+    const k: ArtifactKind = 'final-review'
+    expect(k).toBe('final-review')
+  })
+
+  it('PhaseDescriptor has expected shape', () => {
+    const t: TaskDescriptor = { id: 'T1', description: 'do thing', done: false }
+    const p: PhaseDescriptor = { id: 'phase-1', name: 'first', tasks: [t], status: 'pending' }
+    expect(p.tasks[0].id).toBe('T1')
+    expect(p.status).toBe('pending')
+  })
+
+  it('ProMarker has optional proStatus field', () => {
+    const m: ProMarker = {
+      kind: 'WAITING', text: 'q', raw: '[ORCH:WAITING] q',
+      proStatus: 'spec-update-request',
+    }
+    expect(m.proStatus).toBe('spec-update-request')
   })
 })

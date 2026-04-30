@@ -25,7 +25,7 @@ export const ALL_DECISION_SHAPES: DecisionShape[] = [
 
 // ----- Artifacts -----
 
-export type ArtifactKind = 'spec' | 'plan' | 'impl-doc' | 'review'
+export type ArtifactKind = 'spec' | 'plan' | 'impl-doc' | 'review' | 'final-review'
 
 export interface ArtifactState {
   path: string
@@ -39,12 +39,13 @@ export interface ArtifactState {
 // ----- Marker (extends classic DoerMarker) -----
 
 export interface ProMarker extends DoerMarker {
+  proStatus?: string              // raw STATUS: line value (e.g. 'spec-update-request', 'subagent-running')
   shape?: DecisionShape           // DECISION_SHAPE field in Status Report
   artifactPath?: string           // ARTIFACT — when shape=approve
   options?: string[]              // OPTIONS — when shape=choose (each element "<letter>: <description>")
   assumption?: string             // ASSUMPTION — when shape=validate
-  delta?: string                  // DELTA — when STATUS=spec-update-request
-  subagentEtaMin?: number         // SUBAGENT_ETA_MIN — when STATUS=subagent-running
+  delta?: string                  // DELTA — when proStatus=spec-update-request
+  subagentEtaMin?: number         // SUBAGENT_ETA_MIN — when proStatus=subagent-running
 }
 
 // ----- Settled snapshot for PRO (just retypes marker) -----
@@ -178,6 +179,21 @@ export const PRINCIPLES: Principle[] = [
     appliesToShapes: ['validate', 'approve'],
   },
 ]
+
+// ----- Phase tracker (Wave 3.1) -----
+
+export interface TaskDescriptor {
+  id: string                    // 'T1', 'T2', etc.
+  description: string
+  done: boolean                 // checkbox state
+}
+
+export interface PhaseDescriptor {
+  id: string                    // 'phase-1', 'phase-2', etc.
+  name: string                  // human-readable title
+  tasks: TaskDescriptor[]
+  status: 'pending' | 'in-progress' | 'done'
+}
 
 // ----- Options for the public factory -----
 
