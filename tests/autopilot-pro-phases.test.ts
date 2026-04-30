@@ -207,3 +207,60 @@ Description prose here.
     expect(ps[1].tasks.map((t) => t.id)).toEqual(['T1', 'T2'])
   })
 })
+
+describe('parsePhases edge cases', () => {
+  it('handles deeply numeric phase ids', () => {
+    expect(parsePhases('## Phase 99: nines\n- [ ] T1: x\n')[0].id).toBe('phase-99')
+  })
+
+  it('parses tasks with mixed casing of explicit T<id>', () => {
+    const md = `## Phase 1: x
+- [ ] T1: first
+- [ ] T2: second
+`
+    const ts = parsePhases(md)[0].tasks
+    expect(ts.map((t) => t.id)).toEqual(['T1', 'T2'])
+  })
+
+  it('handles phases with zero tasks (status="pending")', () => {
+    const md = `## Phase 1: empty
+## Phase 2: also empty
+`
+    const ps = parsePhases(md)
+    expect(ps).toHaveLength(2)
+    expect(ps[0].tasks).toEqual([])
+    expect(ps[0].status).toBe('pending')
+    expect(ps[1].status).toBe('pending')
+  })
+
+  it('handles phase header followed immediately by next phase header', () => {
+    const md = `## Phase 1: a
+## Phase 2: b
+- [ ] T1: only-in-2
+`
+    const ps = parsePhases(md)
+    expect(ps).toHaveLength(2)
+    expect(ps[0].tasks).toEqual([])
+    expect(ps[1].tasks).toHaveLength(1)
+  })
+
+  it('preserves task order even when CRLF + tab indentation are mixed', () => {
+    const md = `## Phase 1: x\r\n- [ ] T1: a\r\n  - [ ] T2: indented\r\n`
+    const ps = parsePhases(md)
+    expect(ps[0].tasks).toHaveLength(2)
+    expect(ps[0].tasks[0].id).toBe('T1')
+    expect(ps[0].tasks[1].id).toBe('T2')
+  })
+
+  it('treats whitespace-only plan as empty', () => {
+    expect(parsePhases('   \n\n   \n')).toEqual([])
+  })
+
+  it('strips leading whitespace from task description', () => {
+    const md = `## Phase 1: x
+- [ ]    T1: spaced
+`
+    const ps = parsePhases(md)
+    expect(ps[0].tasks[0].description).toBe('spaced')
+  })
+})

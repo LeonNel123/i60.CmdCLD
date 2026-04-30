@@ -198,4 +198,35 @@ describe('appendSpecUpdate', () => {
     expect(log.trim().split('\n')).toHaveLength(1)
     expect(log).toContain('line one')
   })
+
+  it('handles unicode in delta body', () => {
+    writeArtifact(TMP, 'spec', '# v1\n'); markApproved(TMP, 'spec')
+    appendSpecUpdate(TMP, 'add 你好 endpoint')
+    expect(rfs(join(TMP, '.autopilot-pro', 'spec.md'), 'utf-8')).toContain('你好')
+  })
+
+  it('handles empty delta body without crashing', () => {
+    writeArtifact(TMP, 'spec', '# v1\n'); markApproved(TMP, 'spec')
+    appendSpecUpdate(TMP, '')
+    const spec = rfs(join(TMP, '.autopilot-pro', 'spec.md'), 'utf-8')
+    expect(spec).toMatch(/## Updates \(/)
+  })
+
+  it('changelog line is exactly one line even for multi-line delta', () => {
+    writeArtifact(TMP, 'spec', '# v1\n'); markApproved(TMP, 'spec')
+    appendSpecUpdate(TMP, `line1
+line2
+line3`)
+    const log = rfs(join(TMP, '.autopilot-pro', 'spec-changelog.md'), 'utf-8')
+    expect(log.trim().split('\n')).toHaveLength(1)
+  })
+
+  it('flat changelog body is at most 100 chars after the prefix', () => {
+    writeArtifact(TMP, 'spec', '# v1\n'); markApproved(TMP, 'spec')
+    const longDelta = 'x'.repeat(500)
+    appendSpecUpdate(TMP, longDelta)
+    const log = rfs(join(TMP, '.autopilot-pro', 'spec-changelog.md'), 'utf-8').trim()
+    const idx = log.indexOf(' applied: ') + ' applied: '.length
+    expect(log.slice(idx).length).toBeLessThanOrEqual(100)
+  })
 })
