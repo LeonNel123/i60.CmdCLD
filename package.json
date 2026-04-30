@@ -1,6 +1,6 @@
 {
   "name": "cmdcld",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Multi-terminal Claude launcher",
   "main": "./out/main/index.js",
   "scripts": {

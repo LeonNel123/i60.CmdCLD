@@ -956,6 +956,52 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               <input type="text" value={apModel} onChange={(e) => setApModel(e.target.value)}
                 style={{ width: '100%', background: '#0d1117', border: '1px solid #333', borderRadius: 4, padding: '6px 10px', color: '#e0e0e0', fontSize: 12, fontFamily: 'monospace', boxSizing: 'border-box' }}
               />
+              <div style={{ color: '#666', fontSize: 10, marginTop: 6, marginBottom: 4 }}>
+                Quick picks for {apProvider} (click to fill — ★ = recommended):
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {(apProvider === 'anthropic'
+                  ? [
+                      { id: 'claude-haiku-4-5',           label: 'Haiku 4.5',      cost: '$1 / $5',        star: true,  hint: 'fast & cheap, premium JSON' },
+                      { id: 'claude-sonnet-4-6',          label: 'Sonnet 4.6',     cost: '$3 / $15',       star: false, hint: 'balanced default' },
+                      { id: 'claude-opus-4-7',            label: 'Opus 4.7',       cost: '$15 / $75',      star: false, hint: 'overkill for orchestrator' },
+                    ]
+                  : [
+                      { id: 'moonshotai/kimi-k2-0905',    label: 'Kimi K2 0905',   cost: '$0.40 / $2.00',  star: true,  hint: 'best value, agentic, 262K ctx' },
+                      { id: 'moonshotai/kimi-k2.6',       label: 'Kimi K2.6',      cost: '$0.75 / $3.50',  star: false, hint: 'newer flagship, multimodal' },
+                      { id: 'google/gemini-2.5-flash',    label: 'Gemini 2.5 Flash', cost: '$0.30 / $2.50', star: false, hint: 'cheap & very fast' },
+                      { id: 'google/gemini-2.5-pro',      label: 'Gemini 2.5 Pro', cost: '$1.25 / $10',    star: false, hint: 'premium reasoning' },
+                      { id: 'openai/gpt-5-mini',          label: 'GPT-5 mini',     cost: '$0.25 / $2.00',  star: false, hint: 'cheap OpenAI value pick' },
+                      { id: 'openai/gpt-5',               label: 'GPT-5',          cost: '$1.25 / $10',    star: false, hint: 'premium OpenAI' },
+                      { id: 'deepseek/deepseek-v3.2-exp', label: 'DeepSeek V3.2',  cost: '$0.27 / $1.10',  star: false, hint: 'very cheap, strong reasoning' },
+                      { id: 'qwen/qwen3-coder',           label: 'Qwen3 Coder',    cost: '$0.20 / $0.80',  star: false, hint: 'cheapest, agentic-tuned' },
+                      { id: 'x-ai/grok-4',                label: 'Grok 4',         cost: '$3 / $15',       star: false, hint: 'xAI premium' },
+                    ]
+                ).map((m) => {
+                  const active = apModel === m.id
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => setApModel(m.id)}
+                      title={m.hint}
+                      style={{
+                        background: active ? '#22c55e20' : '#ffffff05',
+                        border: active ? '1px solid #22c55e' : '1px solid #2a2a2a',
+                        color: active ? '#22c55e' : '#aaa',
+                        padding: '3px 7px',
+                        borderRadius: 3,
+                        fontSize: 10,
+                        fontFamily: 'inherit',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {m.star && <span style={{ color: '#fbbf24', marginRight: 3 }}>★</span>}
+                      {m.label} <span style={{ color: '#555' }}>{m.cost}</span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: 12 }}>
