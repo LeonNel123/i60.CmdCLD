@@ -221,6 +221,44 @@ export function writeState(projectPath: string, content: string): void {
   writeFileSync(path, content)
 }
 
+// ---- learnings.md (append-only, doer-driven) ----
+
+export function appendLearning(projectPath: string, oneLiner: string): void {
+  const path = join(projectPath, DIR, 'learnings.md')
+  mkdirSync(dirname(path), { recursive: true })
+  const cleaned = oneLiner.replace(/\r?\n/g, ' ').trim()
+  if (!cleaned) return
+  const line = `- ${new Date().toISOString()} ${cleaned}\n`
+  appendFileSync(path, line)
+}
+
+export function readLearnings(projectPath: string): string[] {
+  const path = join(projectPath, DIR, 'learnings.md')
+  if (!existsSync(path)) return []
+  return readFileSync(path, 'utf-8')
+    .split(/\r?\n/)
+    .filter((l) => l.startsWith('- '))
+}
+
+// ---- steering files (read-only, optional, human-authored) ----
+
+const STEERING_MAX_BYTES = 2048
+
+function readSteeringFile(projectPath: string, name: string): string | null {
+  const path = join(projectPath, DIR, 'project', name)
+  if (!existsSync(path)) return null
+  const raw = readFileSync(path, 'utf-8')
+  if (Buffer.byteLength(raw, 'utf-8') <= STEERING_MAX_BYTES) return raw
+  return raw.slice(0, STEERING_MAX_BYTES) + '\n... (truncated)'
+}
+
+export function readSteering(projectPath: string): { tech: string | null; structure: string | null } {
+  return {
+    tech: readSteeringFile(projectPath, 'tech.md'),
+    structure: readSteeringFile(projectPath, 'structure.md'),
+  }
+}
+
 // ---- helpers ----
 
 export function autopilotDirExists(projectPath: string): boolean {

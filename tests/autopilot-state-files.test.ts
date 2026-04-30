@@ -3,6 +3,7 @@ import { writeFileSync, mkdirSync, rmSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import {
   readGoal, writeGoal, readMilestones, writeMilestone, appendLog,
+  appendLearning, readLearnings, readSteering,
 } from '../src/main/autopilot/state-files'
 import type { Goal, Milestone, ActivityEntry } from '../src/main/autopilot/types'
 
@@ -121,6 +122,46 @@ describe('autopilot state-files', () => {
     it('creates .autopilot/milestones/ if missing on writeMilestone', () => {
       writeMilestone(TMP, { id: 'm1', name: 'X', status: 'pending', subgoals: [], notes: '' })
       expect(existsSync(join(TMP, '.autopilot/milestones'))).toBe(true)
+    })
+  })
+
+  describe('learnings', () => {
+    it('appendLearning writes a single bullet line and readLearnings returns them in order', () => {
+      appendLearning(TMP, 'first thing learned')
+      appendLearning(TMP, 'second thing learned')
+      const lines = readLearnings(TMP)
+      expect(lines).toHaveLength(2)
+      expect(lines[0]).toMatch(/^- \d{4}-\d{2}-\d{2}T.+ first thing learned$/)
+      expect(lines[1]).toMatch(/second thing learned$/)
+    })
+
+    it('readLearnings returns empty array when file is missing', () => {
+      expect(readLearnings(TMP)).toEqual([])
+    })
+  })
+
+  describe('steering', () => {
+    it('readSteering returns nulls when files missing', () => {
+      const s = readSteering(TMP)
+      expect(s.tech).toBeNull()
+      expect(s.structure).toBeNull()
+    })
+
+    it('readSteering reads tech.md and structure.md when present', () => {
+      mkdirSync(join(TMP, '.autopilot', 'project'), { recursive: true })
+      writeFileSync(join(TMP, '.autopilot', 'project', 'tech.md'), '# Tech\nNode 20, TypeScript')
+      writeFileSync(join(TMP, '.autopilot', 'project', 'structure.md'), '# Structure\nsrc/, tests/')
+      const s = readSteering(TMP)
+      expect(s.tech).toContain('Node 20')
+      expect(s.structure).toContain('src/, tests/')
+    })
+
+    it('readSteering truncates files larger than 2KB with a marker', () => {
+      mkdirSync(join(TMP, '.autopilot', 'project'), { recursive: true })
+      writeFileSync(join(TMP, '.autopilot', 'project', 'tech.md'), 'x'.repeat(3000))
+      const s = readSteering(TMP)
+      expect(s.tech!.length).toBeLessThanOrEqual(2048 + 50)  // 2KB + marker
+      expect(s.tech).toContain('(truncated)')
     })
   })
 })
