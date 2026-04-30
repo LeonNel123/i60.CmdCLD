@@ -442,6 +442,174 @@ describe('Stage 3 phase-review pipeline (Wave 3.1 G3)', () => {
   })
 })
 
+describe('Stage 4 final-review + auto-meta (Wave 3.1 G4 + G5)', () => {
+  function setupAllReviewsApproved() {
+    writeArtifact(TMP, 'spec', '# s'); markApproved(TMP, 'spec')
+    writeArtifact(TMP, 'plan', `## Phase 1: only
+- [x] T1: done
+`); markApproved(TMP, 'plan')
+    writeArtifact(TMP, 'review', '# r', 'phase-1'); markApproved(TMP, 'review', 'phase-1')
+  }
+
+  it('writes Stage 4 kickoff once when entering final-review', async () => {
+    setupAllReviewsApproved()
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), writes)
+    await sm.start()
+    writes.length = 0
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(sm.state.stage).toBe('final-review')
+    const stage4Writes = writes.filter((w) => w.includes('STAGE 4'))
+    expect(stage4Writes.length).toBe(1)
+  })
+
+  it('does not re-fire Stage 4 kickoff on subsequent cycles', async () => {
+    setupAllReviewsApproved()
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), writes)
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q1\nDECISION_SHAPE: reply\n')
+    await flush()
+    sm.feedPty('[ORCH:WAITING] q2\nDECISION_SHAPE: reply\n')
+    await flush()
+    // Filter specifically for the stage4Kickoff() text (not the system-prompt's "STAGE 4" mention).
+    const stage4Writes = writes.filter((w) => w.includes('STAGE 4') && w.includes('Synthesize'))
+    expect(stage4Writes.length).toBe(1)
+  })
+
+  it('transition action=final-review while stage=final-review sets stage=done', async () => {
+    setupAllReviewsApproved()
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'transition', action: 'final-review', why: 'all reviews in' })))
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(sm.state.stage).toBe('final-review')
+    sm.feedPty([
+      '[ORCH:WAITING] final review complete',
+      'DECISION_SHAPE: transition',
+      '',
+    ].join('\n'))
+    await flush()
+    await new Promise((r) => setTimeout(r, 100))
+    expect(sm.state.stage).toBe('done')
+  })
+
+  it('auto-fires meta when stage transitions to done', async () => {
+    setupAllReviewsApproved()
+    const chatCalls: Array<{ system: string; user: string }> = []
+    const client: ApiClient = {
+      decide: vi.fn(),
+      debug: vi.fn(),
+      chat: vi.fn(async (args: any) => {
+        chatCalls.push({ system: args.system, user: args.user })
+        if (args.system.includes('Meta-Orchestrator')) {
+          return {
+            text: '{"classification":"done","summary":"all done"}',
+            usage: { inputTokens: 100, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 50 } as ApiUsage,
+          }
+        }
+        return {
+          text: JSON.stringify({ shape: 'transition', action: 'final-review', why: 'go' }),
+          usage: { inputTokens: 100, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 50 } as ApiUsage,
+        }
+      }),
+      estimateCost: () => 0.001,
+    }
+    const sm = makeSm(client)
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: transition\n')
+    await flush()
+    await new Promise((r) => setTimeout(r, 150))
+    expect(sm.state.stage).toBe('done')
+    expect(existsSync(join(TMP, '.autopilot-pro', 'final-summary.md'))).toBe(true)
+    const metaCalled = chatCalls.some((c) => c.system.includes('Meta-Orchestrator'))
+    expect(metaCalled).toBe(true)
+  })
+
+  it('records meta-auto transcript block on auto-fire', async () => {
+    setupAllReviewsApproved()
+    const client: ApiClient = {
+      decide: vi.fn(), debug: vi.fn(),
+      chat: vi.fn(async (args: any) => {
+        if (args.system.includes('Meta-Orchestrator')) {
+          return { text: '{"classification":"done","summary":"clean run"}',
+            usage: { inputTokens: 100, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 50 } as ApiUsage }
+        }
+        return { text: JSON.stringify({ shape: 'transition', action: 'final-review', why: 'go' }),
+          usage: { inputTokens: 100, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 50 } as ApiUsage }
+      }),
+      estimateCost: () => 0.001,
+    }
+    const sm = makeSm(client)
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: transition\n')
+    await flush()
+    await new Promise((r) => setTimeout(r, 150))
+    const transcript = readFileSync(join(TMP, '.autopilot-pro', 'transcript.md'), 'utf-8')
+    expect(transcript).toContain('meta-auto')
+    expect(transcript).toContain('classification=done')
+  })
+
+  it('meta auto-fires only once even with repeated transitions', async () => {
+    setupAllReviewsApproved()
+    let metaCalls = 0
+    const client: ApiClient = {
+      decide: vi.fn(), debug: vi.fn(),
+      chat: vi.fn(async (args: any) => {
+        if (args.system.includes('Meta-Orchestrator')) {
+          metaCalls++
+          return { text: '{"classification":"done","summary":"x"}',
+            usage: { inputTokens: 100, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 50 } as ApiUsage }
+        }
+        return { text: JSON.stringify({ shape: 'transition', action: 'final-review', why: 'go' }),
+          usage: { inputTokens: 100, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 50 } as ApiUsage }
+      }),
+      estimateCost: () => 0.001,
+    }
+    const sm = makeSm(client)
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: transition\n')
+    await flush()
+    await new Promise((r) => setTimeout(r, 150))
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: transition\n')
+    await flush()
+    await new Promise((r) => setTimeout(r, 150))
+    expect(metaCalls).toBe(1)
+  })
+
+  it('meta auto-fire failure surfaces final-summary.md fallback (stage stays done)', async () => {
+    setupAllReviewsApproved()
+    const client: ApiClient = {
+      decide: vi.fn(), debug: vi.fn(),
+      chat: vi.fn(async (args: any) => {
+        if (args.system.includes('Meta-Orchestrator')) {
+          throw new Error('rate limited')
+        }
+        return { text: JSON.stringify({ shape: 'transition', action: 'final-review', why: 'go' }),
+          usage: { inputTokens: 100, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 50 } as ApiUsage }
+      }),
+      estimateCost: () => 0.001,
+    }
+    const sm = makeSm(client)
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: transition\n')
+    await flush()
+    await new Promise((r) => setTimeout(r, 150))
+    expect(sm.state.stage).toBe('done')
+    // runMetaReflect catches API errors and writes a done-fallback final-summary.md
+    expect(existsSync(join(TMP, '.autopilot-pro', 'final-summary.md'))).toBe(true)
+  })
+})
+
 describe('enrichProMarker', () => {
   it('parses DECISION_SHAPE / ARTIFACT / OPTIONS / ASSUMPTION / DELTA / SUBAGENT_ETA_MIN', () => {
     const text = [

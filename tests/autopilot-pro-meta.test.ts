@@ -156,3 +156,21 @@ describe('runMetaReflect', () => {
     expect(r.classification).toBe('done')
   })
 })
+
+describe('runMetaReflect + state-machine auto-fire integration', () => {
+  it('runMetaReflect can be called by state machine without manual IPC', async () => {
+    setupFiles()
+    const client = fakeMetaClient('{"classification":"done","summary":"ok"}')
+    const r = await runMetaReflect(client, TMP)
+    expect(r.classification).toBe('done')
+    expect(existsSync(join(PRO, 'final-summary.md'))).toBe(true)
+  })
+
+  it('runMetaReflect tolerates absent reviews dir (single-phase plan)', async () => {
+    writeFileSync(join(PRO, 'spec.md'), '# spec')
+    writeFileSync(join(PRO, 'plan.md'), '# plan')
+    const client = fakeMetaClient('{"classification":"done","summary":"ok"}')
+    const r = await runMetaReflect(client, TMP)
+    expect(r.classification).toBe('done')
+  })
+})

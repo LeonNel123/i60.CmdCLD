@@ -127,6 +127,8 @@ export class AutopilotProStateMachine {
   private proBuffer = ''
   private phaseTrackerEscalated = false
   private stage3KickoffSentForPhase: string | null = null
+  private stage4KickoffSent = false
+  private metaAutoFired = false
 
   constructor(opts: AutopilotProOptions, apiOverride?: ApiClient, ptyIdleMs = 1500, maxSilenceMs = DEFAULT_MAX_SILENCE_MS) {
     this.opts = opts
@@ -428,14 +430,47 @@ export class AutopilotProStateMachine {
           this.appendActivity('orchestrator-resume', 'cycle')
           this.recordTranscript({ kind: 'transition', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'transition' })
         } else {
-          this.state.stage = 'final-review'
-          const reply = `Advancing to final review. ${result.why}`
-          this.opts.writeToPty(this.opts.terminalId, reply + '\r')
-          this.appendActivity('orchestrator-resume', 'final-review')
-          this.recordTranscript({ kind: 'transition', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'transition' })
+          // action === 'final-review'
+          if (this.state.stage === 'final-review') {
+            // We're already in Stage 4 — the doer is signalling Stage 4 complete.
+            this.state.stage = 'done'
+            const reply = `Final review acknowledged. Run complete. Firing meta-orchestrator…`
+            this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+            this.appendActivity('orchestrator-resume', 'stage→done')
+            this.recordTranscript({ kind: 'transition', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'transition' })
+            void this.fireMetaAutoAsync()
+          } else {
+            // Pre-Stage-4 final-review request (legacy path) — set stage and let next cycle handle kickoff.
+            this.state.stage = 'final-review'
+            const reply = `Advancing to final review. ${result.why}`
+            this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+            this.appendActivity('orchestrator-resume', 'final-review')
+            this.recordTranscript({ kind: 'transition', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'transition' })
+          }
         }
         return
       }
+    }
+  }
+
+  private async fireMetaAutoAsync(): Promise<void> {
+    if (this.metaAutoFired) return
+    this.metaAutoFired = true
+    try {
+      const { runMetaReflect } = await import('./meta')
+      const result = await runMetaReflect(this.api, this.opts.projectPath)
+      this.recordTranscript({
+        kind: 'meta-auto',
+        doerQuestion: '(auto-fire on Stage 4 done)',
+        orchestratorBody: `classification=${result.classification}: ${result.summary}`,
+        shape: 'meta',
+      })
+      this.appendActivity('orchestrator-resume', `meta auto-fired: ${result.classification}`)
+      this.clearSilenceTimer()
+      this.notify()
+    } catch (e: any) {
+      this.appendActivity('escalation', `meta auto-fire failed: ${e?.message ?? 'unknown'}`)
+      this.notify()
     }
   }
 
@@ -485,6 +520,11 @@ export class AutopilotProStateMachine {
       this.state.currentPhaseId = null
       this.state.currentTaskId = null
       this.stage3KickoffSentForPhase = null
+      if (!this.stage4KickoffSent) {
+        this.opts.writeToPty(this.opts.terminalId, stage4Kickoff() + '\r')
+        this.appendActivity('orchestrator-resume', 'stage 4 kickoff')
+        this.stage4KickoffSent = true
+      }
       return
     }
 
