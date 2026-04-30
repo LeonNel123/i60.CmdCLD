@@ -469,12 +469,12 @@ describe('Stage 4 final-review + auto-meta (Wave 3.1 G4 + G5)', () => {
     const writes: string[] = []
     const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), writes)
     await sm.start()
+    writes.length = 0  // clear start-time noise (DOER prompt, etc.)
     sm.feedPty('[ORCH:WAITING] q1\nDECISION_SHAPE: reply\n')
     await flush()
     sm.feedPty('[ORCH:WAITING] q2\nDECISION_SHAPE: reply\n')
     await flush()
-    // Filter specifically for the stage4Kickoff() text (not the system-prompt's "STAGE 4" mention).
-    const stage4Writes = writes.filter((w) => w.includes('STAGE 4') && w.includes('Synthesize'))
+    const stage4Writes = writes.filter((w) => w.includes('STAGE 4'))
     expect(stage4Writes.length).toBe(1)
   })
 
