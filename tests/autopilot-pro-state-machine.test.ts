@@ -298,9 +298,15 @@ describe('phase tracker integration (Wave 3.1 G1)', () => {
   })
 
   it('does not run the phase tracker when stage is "discovery"', async () => {
+    // Even a settled cycle must not set currentPhaseId — the guard
+    // `if (state.stage !== 'implementation') return` blocks the tracker.
     const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })))
     await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(sm.state.stage).toBe('discovery')
     expect(sm.state.currentPhaseId).toBeNull()
+    expect(sm.state.currentTaskId).toBeNull()
   })
 
   it('clears currentPhaseId to null when all phases are done', async () => {
