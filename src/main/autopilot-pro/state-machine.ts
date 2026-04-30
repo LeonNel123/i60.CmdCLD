@@ -21,7 +21,7 @@ import { makeApiClient } from '../autopilot/api-client'
 import { decidePro, applyPrinciplesToApprove } from './decision'
 import {
   readArtifact, writeArtifact, markApproved, markUnapproved,
-  incrementRefineCount, readState, writeState, reconcile,
+  incrementRefineCount, readState, writeState, reconcile, appendSpecUpdate,
 } from './artifacts'
 import { parsePhases, currentPhase, phaseDoneFromTasks } from './phases'
 import { DOER_SYSTEM_PROMPT_PRO, stage3Kickoff, stage4Kickoff } from './prompts'
@@ -82,6 +82,8 @@ function enrichProMarker(rawText: string, base: ProMarker): ProMarker {
         m.assumption = val
       } else if (key === 'DELTA') {
         captureDelta = true
+      } else if (key === 'STATUS') {
+        if (val) m.proStatus = val
       } else if (key === 'SUBAGENT_ETA_MIN') {
         const n = Number(val)
         if (Number.isFinite(n)) m.subagentEtaMin = n
@@ -329,6 +331,32 @@ export class AutopilotProStateMachine {
       }
     }
 
+    // Spec-update interception: if the doer signalled spec-update-request with a
+    // DELTA and the planner approved, apply the delta and bypass normal dispatch.
+    if (m.proStatus === 'spec-update-request' && m.delta && result.shape === 'approve') {
+      if (result.verdict === 'approve') {
+        try {
+          appendSpecUpdate(this.opts.projectPath, m.delta)
+          this.state.artifacts = readState(this.opts.projectPath)
+          this.maybeWarnPhaseSpecOverlap(m.delta)
+          const reply = `Spec-update applied: ${m.delta.slice(0, 60).replace(/\s+/g, ' ').trim()}. Proceed.`
+          this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+          this.appendActivity('orchestrator-reply', 'spec-update applied')
+          this.recordTranscript({
+            kind: 'spec-update',
+            doerQuestion: m.question || m.text,
+            orchestratorBody: reply,
+            shape: 'approve',
+          })
+        } catch (e: any) {
+          this.appendActivity('escalation', `spec-update failed: ${e?.message ?? 'unknown'}`)
+        }
+        this.notify()
+        return
+      }
+      // refine: fall through to normal dispatch (which writes the refine directive)
+    }
+
     await this.dispatch(result, m)
     this.notify()
   }
@@ -539,6 +567,24 @@ export class AutopilotProStateMachine {
     } else {
       this.state.currentPhaseId = null
       this.state.currentTaskId = null
+    }
+  }
+
+  private maybeWarnPhaseSpecOverlap(delta: string): void {
+    if (!this.state.currentPhaseId) return
+    const headings = (delta.match(/^##\s+([^\n]+)/gm) ?? []).map((h) => h.replace(/^##\s+/, '').toLowerCase())
+    if (headings.length === 0) return
+    const { content } = readArtifact(this.opts.projectPath, 'plan')
+    if (!content) return
+    const phases = parsePhases(content)
+    const cp = phases.find((p) => p.id === this.state.currentPhaseId)
+    if (!cp) return
+    const overlap = cp.tasks.some((t) =>
+      headings.some((h) => t.description.toLowerCase().includes(h))
+    )
+    if (overlap) {
+      this.appendActivity('escalation',
+        `delta-warning: phase ${cp.id} tasks may reference modified spec section`)
     }
   }
 

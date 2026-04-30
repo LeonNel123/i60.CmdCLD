@@ -4,7 +4,7 @@ import { join } from 'path'
 import { AutopilotProStateMachine, enrichProMarker } from '../src/main/autopilot-pro/state-machine'
 import type { AutopilotProOptions, ProDecideResult } from '../src/main/autopilot-pro/types'
 import type { ApiClient, ApiUsage } from '../src/main/autopilot/types'
-import { writeArtifact, markApproved } from '../src/main/autopilot-pro/artifacts'
+import { writeArtifact, markApproved, readState } from '../src/main/autopilot-pro/artifacts'
 
 const TMP = join(__dirname, '.tmp-autopilot-pro-sm')
 
@@ -638,5 +638,116 @@ describe('enrichProMarker', () => {
     const text = '[ORCH:WAITING] just a question'
     const m = enrichProMarker(text, { kind: 'WAITING', text: 'just a question', raw: '[ORCH:WAITING] just a question' })
     expect(m.shape).toBeUndefined()
+  })
+})
+
+describe('spec-update DELTA application (Wave 3.1 G2 logic)', () => {
+  function setupSpecUpdateContext() {
+    writeArtifact(TMP, 'spec', '# original spec\n\n## Goal\nbuild a thing\n')
+    markApproved(TMP, 'spec')
+    writeArtifact(TMP, 'plan', `## Phase 1: setup
+- [ ] T1: install
+`)
+    markApproved(TMP, 'plan')
+  }
+
+  it('applies the delta to spec.md when planner approves', async () => {
+    setupSpecUpdateContext()
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'approve', verdict: 'approve', why: 'reasonable' })))
+    await sm.start()
+    sm.feedPty([
+      '[ORCH:WAITING] need to add cancel endpoint',
+      'STATUS: spec-update-request',
+      'DECISION_SHAPE: approve',
+      'DELTA:',
+      '  add POST /v1/cancel for terminating runs',
+      '',
+    ].join('\n'))
+    await flush()
+    const spec = readFileSync(join(TMP, '.autopilot-pro', 'spec.md'), 'utf-8')
+    expect(spec).toContain('# original spec')
+    expect(spec).toMatch(/## Updates \(/)
+    expect(spec).toContain('POST /v1/cancel')
+  })
+
+  it('appends to spec-changelog.md', async () => {
+    setupSpecUpdateContext()
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'approve', verdict: 'approve', why: 'ok' })))
+    await sm.start()
+    sm.feedPty([
+      '[ORCH:WAITING] update needed',
+      'STATUS: spec-update-request',
+      'DECISION_SHAPE: approve',
+      'DELTA:',
+      '  add timeout config',
+      '',
+    ].join('\n'))
+    await flush()
+    expect(existsSync(join(TMP, '.autopilot-pro', 'spec-changelog.md'))).toBe(true)
+    const log = readFileSync(join(TMP, '.autopilot-pro', 'spec-changelog.md'), 'utf-8')
+    expect(log).toContain('add timeout config')
+  })
+
+  it('keeps spec.md approved after applying a delta', async () => {
+    setupSpecUpdateContext()
+    expect(readState(TMP)['spec.md']?.approved).toBe(true)
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'approve', verdict: 'approve', why: 'ok' })))
+    await sm.start()
+    sm.feedPty([
+      '[ORCH:WAITING] update',
+      'STATUS: spec-update-request',
+      'DECISION_SHAPE: approve',
+      'DELTA:',
+      '  add x',
+      '',
+    ].join('\n'))
+    await flush()
+    expect(sm.state.artifacts['spec.md']?.approved).toBe(true)
+  })
+
+  it('does NOT apply the delta when planner refines', async () => {
+    setupSpecUpdateContext()
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'approve', verdict: 'refine', directive: 'too vague' })))
+    await sm.start()
+    sm.feedPty([
+      '[ORCH:WAITING] update',
+      'STATUS: spec-update-request',
+      'DECISION_SHAPE: approve',
+      'DELTA:',
+      '  vague delta',
+      '',
+    ].join('\n'))
+    await flush()
+    const spec = readFileSync(join(TMP, '.autopilot-pro', 'spec.md'), 'utf-8')
+    expect(spec).not.toMatch(/## Updates \(/)
+    expect(existsSync(join(TMP, '.autopilot-pro', 'spec-changelog.md'))).toBe(false)
+  })
+
+  it('multiple sequential deltas append independently', async () => {
+    setupSpecUpdateContext()
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'approve', verdict: 'approve', why: 'ok' })))
+    await sm.start()
+    sm.feedPty([
+      '[ORCH:WAITING] u1',
+      'STATUS: spec-update-request',
+      'DECISION_SHAPE: approve',
+      'DELTA:',
+      '  delta one',
+      '',
+    ].join('\n'))
+    await flush()
+    sm.feedPty([
+      '[ORCH:WAITING] u2',
+      'STATUS: spec-update-request',
+      'DECISION_SHAPE: approve',
+      'DELTA:',
+      '  delta two',
+      '',
+    ].join('\n'))
+    await flush()
+    const spec = readFileSync(join(TMP, '.autopilot-pro', 'spec.md'), 'utf-8')
+    expect((spec.match(/## Updates \(/g) ?? []).length).toBe(2)
+    expect(spec).toContain('delta one')
+    expect(spec).toContain('delta two')
   })
 })

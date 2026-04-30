@@ -159,7 +159,7 @@ export class PtyWatcher {
     // Structured block is allowed: lines starting with KEY: or indented continuations.
     const afterTrimmed = after.split(/\r?\n/).filter((l) => l.trim().length > 0)
     const allStructured = afterTrimmed.every((l) =>
-      /^[A-Z_]+:/.test(l) || /^\s+-\s+/.test(l)
+      /^[A-Z_]+:/.test(l) || /^\s+\S/.test(l)
     )
     if (afterTrimmed.length > 0 && !allStructured) return
     const snapshot: SettledSnapshot = {
