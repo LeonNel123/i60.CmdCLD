@@ -23,6 +23,7 @@ import {
   readArtifact, writeArtifact, markApproved, markUnapproved,
   incrementRefineCount, readState, writeState, reconcile,
 } from './artifacts'
+import { parsePhases, currentPhase } from './phases'
 import { DOER_SYSTEM_PROMPT_PRO } from './prompts'
 import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
@@ -124,6 +125,7 @@ export class AutopilotProStateMachine {
   // structured block AFTER the marker line. The classic SettledSnapshot.text
   // contains only the text BEFORE the marker, which is too narrow for PRO.
   private proBuffer = ''
+  private phaseTrackerEscalated = false
 
   constructor(opts: AutopilotProOptions, apiOverride?: ApiClient, ptyIdleMs = 1500, maxSilenceMs = DEFAULT_MAX_SILENCE_MS) {
     this.opts = opts
@@ -268,6 +270,9 @@ export class AutopilotProStateMachine {
 
     // Reconcile artifact approval state every cycle (auto-unapprove drifted files).
     this.state.artifacts = reconcile(this.opts.projectPath)
+
+    // Phase tracker: derive currentPhaseId / currentTaskId from plan.md.
+    this.updatePhaseTracker()
 
     // Pick the shape (default 'reply' for back-compat).
     const shape = m.shape ?? 'reply'
@@ -431,6 +436,31 @@ export class AutopilotProStateMachine {
 
   // ---- stage transitions ----
 
+  private updatePhaseTracker(): void {
+    if (this.state.stage !== 'implementation') return
+    const { content } = readArtifact(this.opts.projectPath, 'plan')
+    if (!content) return
+    const phases = parsePhases(content)
+    if (phases.length === 0) {
+      if (!this.phaseTrackerEscalated) {
+        this.state.escalationReason = 'plan.md has no parseable phases'
+        this.appendActivity('escalation', this.state.escalationReason)
+        this.phaseTrackerEscalated = true
+      }
+      return
+    }
+    this.phaseTrackerEscalated = false
+    const cp = currentPhase(phases)
+    if (cp) {
+      this.state.currentPhaseId = cp.id
+      const nextTask = cp.tasks.find((t) => !t.done)
+      this.state.currentTaskId = nextTask?.id ?? null
+    } else {
+      this.state.currentPhaseId = null
+      this.state.currentTaskId = null
+    }
+  }
+
   private maybeAdvanceStage(): void {
     const a = this.state.artifacts
     const specOk = a['spec.md']?.approved === true
@@ -440,6 +470,7 @@ export class AutopilotProStateMachine {
     if (this.state.stage === 'planning' && planOk) this.state.stage = 'implementation'
     if (prev !== this.state.stage) {
       this.appendActivity('orchestrator-resume', `stage advance: ${prev} → ${this.state.stage}`)
+      this.phaseTrackerEscalated = false
     }
   }
 

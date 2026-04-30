@@ -240,6 +240,84 @@ describe('AutopilotProStateMachine', () => {
   })
 })
 
+describe('phase tracker integration (Wave 3.1 G1)', () => {
+  function setupImplStage() {
+    writeArtifact(TMP, 'spec', '# spec'); markApproved(TMP, 'spec')
+    writeArtifact(TMP, 'plan', `## Phase 1: setup
+- [x] T1: install deps
+- [ ] T2: configure
+## Phase 2: ship
+- [ ] T1: cut release
+`); markApproved(TMP, 'plan')
+  }
+
+  it('sets currentPhaseId to phase-1 when first phase has unfinished tasks', async () => {
+    setupImplStage()
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })))
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(sm.state.currentPhaseId).toBe('phase-1')
+  })
+
+  it('sets currentTaskId to first non-done task in current phase', async () => {
+    setupImplStage()
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })))
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(sm.state.currentTaskId).toBe('T2')
+  })
+
+  it('advances currentPhaseId to phase-2 when phase-1 tasks all done', async () => {
+    writeArtifact(TMP, 'spec', '# s'); markApproved(TMP, 'spec')
+    writeArtifact(TMP, 'plan', `## Phase 1: a
+- [x] T1: a
+## Phase 2: b
+- [ ] T1: b
+`); markApproved(TMP, 'plan')
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })))
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(sm.state.currentPhaseId).toBe('phase-2')
+  })
+
+  it('escalates exactly once when plan has no parseable phases', async () => {
+    writeArtifact(TMP, 'spec', '# s'); markApproved(TMP, 'spec')
+    writeArtifact(TMP, 'plan', '# Plan\n\nFree-form text. No phase headers.\n'); markApproved(TMP, 'plan')
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })))
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(sm.state.escalationReason).toMatch(/no parseable phases/i)
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    const escalations = sm.state.recentLog.filter((e) => e.kind === 'escalation' && /parseable phases/.test(e.summary))
+    expect(escalations.length).toBe(1)
+  })
+
+  it('does not run the phase tracker when stage is "discovery"', async () => {
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })))
+    await sm.start()
+    expect(sm.state.currentPhaseId).toBeNull()
+  })
+
+  it('clears currentPhaseId to null when all phases are done', async () => {
+    writeArtifact(TMP, 'spec', '# s'); markApproved(TMP, 'spec')
+    writeArtifact(TMP, 'plan', `## Phase 1: a
+- [x] T1: a
+## Phase 2: b
+- [x] T1: b
+`); markApproved(TMP, 'plan')
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })))
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(sm.state.currentPhaseId).toBeNull()
+  })
+})
+
 describe('enrichProMarker', () => {
   it('parses DECISION_SHAPE / ARTIFACT / OPTIONS / ASSUMPTION / DELTA / SUBAGENT_ETA_MIN', () => {
     const text = [
