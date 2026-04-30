@@ -90,4 +90,80 @@ describe('PtyWatcher', () => {
     expect(events[0].marker.text).toBe('really, q?')
     vi.useRealTimers()
   })
+
+  it('parses structured Status Report fields after the marker line', async () => {
+    vi.useFakeTimers()
+    const events: SettledSnapshot[] = []
+    const w = new PtyWatcher({ idleMs: IDLE_MS, nudgeMs: NUDGE_MS, onSettle: (s) => events.push(s) })
+    w.feed([
+      'Did the work.\n',
+      '[ORCH:WAITING]\n',
+      'STATUS: waiting\n',
+      'FILES_CHANGED:\n',
+      '  - src/foo.ts\n',
+      '  - tests/foo.test.ts\n',
+      'TESTS: 134 passed / 0 failed\n',
+      'RED_PHASE: yes\n',
+      'BOUNDARY_OK: yes\n',
+      'EVIDENCE: build green, all 134 pass\n',
+      'QUESTION: continue?\n',
+    ].join(''))
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(events).toHaveLength(1)
+    const m = events[0].marker
+    expect(m.kind).toBe('WAITING')
+    expect(m.filesChanged).toEqual(['src/foo.ts', 'tests/foo.test.ts'])
+    expect(m.tests).toBe('134 passed / 0 failed')
+    expect(m.redPhase).toBe('yes')
+    expect(m.boundaryOk).toBe(true)
+    expect(m.evidence).toBe('build green, all 134 pass')
+    expect(m.question).toBe('continue?')
+    vi.useRealTimers()
+  })
+
+  it('falls back to single-line marker when no structured block follows', async () => {
+    vi.useFakeTimers()
+    const events: SettledSnapshot[] = []
+    const w = new PtyWatcher({ idleMs: IDLE_MS, nudgeMs: NUDGE_MS, onSettle: (s) => events.push(s) })
+    w.feed('[ORCH:WAITING] just a question\n')
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(events).toHaveLength(1)
+    expect(events[0].marker.kind).toBe('WAITING')
+    expect(events[0].marker.text).toBe('just a question')
+    expect(events[0].marker.filesChanged).toBeUndefined()
+    expect(events[0].marker.boundaryOk).toBeUndefined()
+    vi.useRealTimers()
+  })
+
+  it('parses partial structured blocks without throwing', async () => {
+    vi.useFakeTimers()
+    const events: SettledSnapshot[] = []
+    const w = new PtyWatcher({ idleMs: IDLE_MS, nudgeMs: NUDGE_MS, onSettle: (s) => events.push(s) })
+    w.feed([
+      '[ORCH:STUCK]\n',
+      'STATUS: stuck\n',
+      'BLOCKER: cannot find npm\n',
+    ].join(''))
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(events).toHaveLength(1)
+    expect(events[0].marker.kind).toBe('STUCK')
+    expect(events[0].marker.blocker).toBe('cannot find npm')
+    expect(events[0].marker.boundaryOk).toBeUndefined()
+    vi.useRealTimers()
+  })
+
+  it('parses BOUNDARY_OK: no as boolean false', async () => {
+    vi.useFakeTimers()
+    const events: SettledSnapshot[] = []
+    const w = new PtyWatcher({ idleMs: IDLE_MS, nudgeMs: NUDGE_MS, onSettle: (s) => events.push(s) })
+    w.feed([
+      '[ORCH:WAITING]\n',
+      'STATUS: waiting\n',
+      'BOUNDARY_OK: no\n',
+      'QUESTION: I touched a forbidden file, what next?\n',
+    ].join(''))
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(events[0].marker.boundaryOk).toBe(false)
+    vi.useRealTimers()
+  })
 })

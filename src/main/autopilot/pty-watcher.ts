@@ -12,6 +12,71 @@ function stripAnsi(s: string): string {
   return s.replace(ANSI_RE, '')
 }
 
+const STRUCTURED_KEYS = new Set([
+  'STATUS', 'SUBGOAL', 'PROGRESS_STATUS', 'FILES_CHANGED', 'TESTS',
+  'RED_PHASE', 'BOUNDARY_OK', 'EVIDENCE', 'BLOCKER', 'QUESTION',
+])
+
+interface StructuredFields {
+  filesChanged?: string[]
+  tests?: string
+  redPhase?: 'yes' | 'no' | 'na'
+  boundaryOk?: boolean
+  evidence?: string
+  blocker?: string
+  question?: string
+  // also picks up SUBGOAL / PROGRESS_STATUS for cross-check
+  subgoalIdStructured?: string
+  progressStatusStructured?: 'done' | 'partial' | 'blocked'
+}
+
+function parseStructuredBlock(lines: string[]): StructuredFields {
+  const out: StructuredFields = {}
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]
+    const km = line.match(/^([A-Z_]+):\s*(.*)$/)
+    if (!km || !STRUCTURED_KEYS.has(km[1])) { i++; continue }
+    const key = km[1]
+    const val = km[2].trim()
+    if (key === 'FILES_CHANGED') {
+      const files: string[] = []
+      // inline form: "FILES_CHANGED: a, b, c"
+      if (val.length > 0) {
+        for (const p of val.split(',').map((x) => x.trim()).filter(Boolean)) files.push(p)
+      }
+      // multi-line form: indented "  - file" continuation
+      let j = i + 1
+      while (j < lines.length && /^\s+-\s+/.test(lines[j])) {
+        files.push(lines[j].replace(/^\s+-\s+/, '').trim())
+        j++
+      }
+      out.filesChanged = files
+      i = j
+      continue
+    }
+    switch (key) {
+      case 'TESTS': out.tests = val; break
+      case 'RED_PHASE':
+        if (val === 'yes' || val === 'no' || val === 'na') out.redPhase = val
+        break
+      case 'BOUNDARY_OK': out.boundaryOk = (val.toLowerCase() === 'yes' || val.toLowerCase() === 'true'); break
+      case 'EVIDENCE': out.evidence = val; break
+      case 'BLOCKER': out.blocker = val; break
+      case 'QUESTION': out.question = val; break
+      case 'SUBGOAL': out.subgoalIdStructured = val; break
+      case 'PROGRESS_STATUS':
+        if (val === 'done' || val === 'partial' || val === 'blocked') {
+          out.progressStatusStructured = val
+        }
+        break
+      // STATUS is not stored — kind is already extracted from the marker line
+    }
+    i++
+  }
+  return out
+}
+
 export function findLastMarker(text: string): { marker: DoerMarker; before: string } | null {
   const cleaned = stripAnsi(text)
   const lines = cleaned.split(/\r?\n/)
@@ -30,11 +95,32 @@ export function findLastMarker(text: string): { marker: DoerMarker; before: stri
         status = pm[2] as 'done' | 'partial' | 'blocked'
       }
     }
-    const before = lines.slice(0, i).join('\n')
-    return {
-      marker: { kind, text: tail, raw: line, subgoalId, status },
-      before,
+    // Look at the lines AFTER the marker for a structured block
+    const after = lines.slice(i + 1)
+    const struct = parseStructuredBlock(after)
+    // Cross-check: if marker was bare PROGRESS but structured block has SUBGOAL / PROGRESS_STATUS, use those
+    if (kind === 'PROGRESS' && !subgoalId && struct.subgoalIdStructured) {
+      subgoalId = struct.subgoalIdStructured
     }
+    if (kind === 'PROGRESS' && !status && struct.progressStatusStructured) {
+      status = struct.progressStatusStructured
+    }
+    const before = lines.slice(0, i).join('\n')
+    const marker: DoerMarker = {
+      kind,
+      text: tail || struct.question || '',
+      raw: line,
+      subgoalId,
+      status,
+      filesChanged: struct.filesChanged,
+      tests: struct.tests,
+      redPhase: struct.redPhase,
+      boundaryOk: struct.boundaryOk,
+      evidence: struct.evidence,
+      blocker: struct.blocker,
+      question: struct.question,
+    }
+    return { marker, before }
   }
   return null
 }
@@ -70,7 +156,12 @@ export class PtyWatcher {
     const cleaned = stripAnsi(this.buffer)
     const idx = cleaned.lastIndexOf(found.marker.raw)
     const after = cleaned.slice(idx + found.marker.raw.length)
-    if (after.trim().length > 0) return
+    // Structured block is allowed: lines starting with KEY: or indented continuations.
+    const afterTrimmed = after.split(/\r?\n/).filter((l) => l.trim().length > 0)
+    const allStructured = afterTrimmed.every((l) =>
+      /^[A-Z_]+:/.test(l) || /^\s+-\s+/.test(l)
+    )
+    if (afterTrimmed.length > 0 && !allStructured) return
     const snapshot: SettledSnapshot = {
       text: found.before.trim(),
       marker: found.marker,
