@@ -132,7 +132,7 @@ export class AnthropicClient implements ApiClient {
   }
 }
 
-function parseDecision(text: string): DecideResult {
+export function parseDecision(text: string): DecideResult {
   const trimmed = text.trim()
   const stripped = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
   try {
@@ -151,7 +151,7 @@ function parseDecision(text: string): DecideResult {
   return { kind: 'reply', text: stripped.slice(0, 1000) }
 }
 
-function parseDebug(text: string): DebugResult {
+export function parseDebug(text: string): DebugResult {
   const stripped = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
   try {
     const obj = JSON.parse(stripped)
