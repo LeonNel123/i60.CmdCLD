@@ -264,3 +264,32 @@ describe('parsePhases edge cases', () => {
     expect(ps[0].tasks[0].description).toBe('spaced')
   })
 })
+
+describe('parsePhases hyphenated IDs', () => {
+  it('parses hyphenated phase IDs (e.g. pre-alpha)', () => {
+    const md = `## Phase pre-alpha: investigate
+- [ ] T1: dig
+`
+    const ps = parsePhases(md)
+    expect(ps[0].id).toBe('phase-pre-alpha')
+    expect(ps[0].name).toBe('investigate')
+  })
+
+  it('parses hyphenated phase IDs with em-dash separator', () => {
+    const md = `## Phase v2-beta — kickoff
+- [ ] T1: a
+`
+    const ps = parsePhases(md)
+    expect(ps[0].id).toBe('phase-v2-beta')
+    expect(ps[0].name).toBe('kickoff')
+  })
+
+  it('still distinguishes ID-internal hyphens from separator hyphens', () => {
+    const md = `## Phase v1-alpha - description with words
+- [ ] T1: x
+`
+    const ps = parsePhases(md)
+    expect(ps[0].id).toBe('phase-v1-alpha')
+    expect(ps[0].name).toBe('description with words')
+  })
+})

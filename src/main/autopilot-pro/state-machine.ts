@@ -221,6 +221,11 @@ export class AutopilotProStateMachine {
   stop(): void {
     if (this.detachPty) { this.detachPty(); this.detachPty = null }
     this.clearSilenceTimer()
+    // Reset Wave 3.1 lifecycle flags so a subsequent start() re-fires kickoffs.
+    this.phaseTrackerEscalated = false
+    this.stage3KickoffSentForPhase = null
+    this.stage4KickoffSent = false
+    this.metaAutoFired = false
     this.appendActivity('orchestrator-pause', 'stopped')
     this.notify()
   }

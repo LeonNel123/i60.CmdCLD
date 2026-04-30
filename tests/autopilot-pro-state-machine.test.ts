@@ -610,6 +610,33 @@ describe('Stage 4 final-review + auto-meta (Wave 3.1 G4 + G5)', () => {
   })
 })
 
+describe('stop() resets Wave 3.1 lifecycle flags', () => {
+  it('stop() clears stage4KickoffSent so a subsequent start() re-fires the kickoff', async () => {
+    writeArtifact(TMP, 'spec', '# s'); markApproved(TMP, 'spec')
+    writeArtifact(TMP, 'plan', `## Phase 1: only
+- [x] T1: done
+`); markApproved(TMP, 'plan')
+    writeArtifact(TMP, 'review', '# r', 'phase-1'); markApproved(TMP, 'review', 'phase-1')
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), writes)
+    await sm.start()
+    writes.length = 0  // discard kickoff noise (DOER prompt, impl stage kickoff)
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    const firstFireCount = writes.filter((w) => w.includes('STAGE 4')).length
+    expect(firstFireCount).toBe(1)
+    sm.stop()
+    writes.length = 0
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    // stage is 'final-review' on restart; kickoffForStage re-fires the Stage 4 message.
+    // Filter with startsWith to avoid matching 'STAGE 4' inside the DOER_SYSTEM_PROMPT_PRO.
+    const secondFireCount = writes.filter((w) => w.startsWith('STAGE 4')).length
+    expect(secondFireCount).toBe(1)
+  })
+})
+
 describe('enrichProMarker', () => {
   it('parses DECISION_SHAPE / ARTIFACT / OPTIONS / ASSUMPTION / DELTA / SUBAGENT_ETA_MIN', () => {
     const text = [

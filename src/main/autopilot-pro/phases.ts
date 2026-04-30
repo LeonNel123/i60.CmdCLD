@@ -19,7 +19,7 @@
 
 import type { PhaseDescriptor, TaskDescriptor } from './types'
 
-const PHASE_HEADER_RE = /^##\s+Phase\s+([^\s:—-]+)\s*[:—-]\s*(.+?)\s*$/i
+const PHASE_HEADER_RE = /^##\s+Phase\s+(\S+?)(?:\s*[:—]\s*|\s+-\s+)(.+?)\s*$/i
 const TASK_RE = /^\s{0,4}-\s+\[([ xX])\]\s+(?:T(\d+)\s*[:.\-]\s+)?(.+?)\s*$/
 
 export function parsePhases(planMarkdown: string): PhaseDescriptor[] {
