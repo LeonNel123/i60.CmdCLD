@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DOER_SYSTEM_PROMPT, buildDecisionPrompt, buildWizardKickoff } from '../src/main/autopilot/prompts'
+import { DOER_SYSTEM_PROMPT, buildDecisionPrompt, buildWizardKickoff, DEBUG_SYSTEM_PROMPT, buildDebugPrompt } from '../src/main/autopilot/prompts'
 import type { Goal, Milestone, SettledSnapshot, ActivityEntry, ValidationCommands, SteeringDocs } from '../src/main/autopilot/types'
 
 describe('DOER_SYSTEM_PROMPT', () => {
@@ -152,4 +152,25 @@ it('buildWizardKickoff suggests optional steering files', () => {
 it('buildWizardKickoff still includes the user idea verbatim', () => {
   const k = buildWizardKickoff('a small Express server')
   expect(k).toContain('a small Express server')
+})
+
+// ----- DEBUG prompt tests -----
+
+it('DEBUG_SYSTEM_PROMPT teaches retry|block|human classification', () => {
+  expect(DEBUG_SYSTEM_PROMPT).toMatch(/retry/)
+  expect(DEBUG_SYSTEM_PROMPT).toMatch(/block/)
+  expect(DEBUG_SYSTEM_PROMPT).toMatch(/human/)
+})
+
+it('buildDebugPrompt has compact user content (no recent log, no checklist)', () => {
+  const out = buildDebugPrompt({
+    goal,
+    currentMilestoneId: 'm1',
+    lastSnapshot: snap,
+    trigger: 'stuck',
+  })
+  expect(out.user).toMatch(/STUCK|stuck/i)
+  expect(out.user).toMatch(/g/)              // goal text included
+  expect(out.user).not.toMatch(/CHECKLIST/)  // checklist intentionally omitted
+  expect(out.user).not.toMatch(/RECENT ACTIVITY/)
 })

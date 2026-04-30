@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { ApiClient, ApiUsage, DecideInput, DecideResult, ApiProvider } from './types'
+import type { ApiClient, ApiUsage, DecideInput, DecideResult, DebugInput, DebugResult, ApiProvider } from './types'
 import { buildDecisionPrompt } from './prompts'
 
 const RATES: Record<string, { input: number; cachedInput: number; cacheCreation: number; output: number }> = {
@@ -72,6 +72,28 @@ export class AnthropicClient implements ApiClient {
     return { result, usage }
   }
 
+  async debug(input: DebugInput): Promise<{ result: DebugResult; usage: ApiUsage }> {
+    const parts = (await import('./prompts')).buildDebugPrompt(input)
+    const response = await this.client.messages.create({
+      model: this.model,
+      max_tokens: 250,
+      system: [
+        { type: 'text', text: parts.system, cache_control: { type: 'ephemeral' } as any },
+      ] as any,
+      messages: [{ role: 'user', content: parts.user }],
+    })
+    const text = (response.content[0] as any)?.text ?? ''
+    const result = parseDebug(text)
+    const u: any = response.usage as any
+    const usage: ApiUsage = {
+      inputTokens: u?.input_tokens ?? 0,
+      cachedInputTokens: u?.cache_read_input_tokens ?? 0,
+      cacheCreationTokens: u?.cache_creation_input_tokens ?? 0,
+      outputTokens: u?.output_tokens ?? 0,
+    }
+    return { result, usage }
+  }
+
   estimateCost(usage: ApiUsage): number {
     return estimateCostFor(this.model, usage)
   }
@@ -94,6 +116,21 @@ function parseDecision(text: string): DecideResult {
     // fall through
   }
   return { kind: 'reply', text: stripped.slice(0, 1000) }
+}
+
+function parseDebug(text: string): DebugResult {
+  const stripped = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
+  try {
+    const obj = JSON.parse(stripped)
+    if (obj && typeof obj === 'object' && typeof obj.kind === 'string') {
+      switch (obj.kind) {
+        case 'retry': return { kind: 'retry', instruction: String(obj.instruction ?? '').slice(0, 500) }
+        case 'block': return { kind: 'block', reason: String(obj.reason ?? 'unknown') }
+        case 'human': return { kind: 'human', reason: String(obj.reason ?? 'unknown') }
+      }
+    }
+  } catch { /* fall through */ }
+  return { kind: 'human', reason: 'debug parse failed' }
 }
 
 // ----- OpenRouterClient -----
@@ -137,6 +174,31 @@ export class OpenRouterClient implements ApiClient {
     const data = await res.json() as any
     const text = data.choices?.[0]?.message?.content ?? ''
     const result = parseDecision(text)
+    const u = data.usage ?? {}
+    const usage: ApiUsage = {
+      inputTokens: u.prompt_tokens ?? 0,
+      cachedInputTokens: 0,
+      cacheCreationTokens: 0,
+      outputTokens: u.completion_tokens ?? 0,
+    }
+    return { result, usage }
+  }
+
+  async debug(input: DebugInput): Promise<{ result: DebugResult; usage: ApiUsage }> {
+    const parts = (await import('./prompts')).buildDebugPrompt(input)
+    const messages = [
+      { role: 'system', content: parts.system },
+      { role: 'user', content: parts.user },
+    ]
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: this.model, messages, max_tokens: 250 }),
+    })
+    if (!res.ok) throw new Error(`OpenRouter error: ${res.status} ${await res.text()}`)
+    const data = await res.json() as any
+    const text = data.choices?.[0]?.message?.content ?? ''
+    const result = parseDebug(text)
     const u = data.usage ?? {}
     const usage: ApiUsage = {
       inputTokens: u.prompt_tokens ?? 0,

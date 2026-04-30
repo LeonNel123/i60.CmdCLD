@@ -194,6 +194,58 @@ Do NOT include code. Just facts and decisions.
 When the file is written, emit [ORCH:WAITING] ready to clear.
 `
 
+// ----- Debug call (fresh-context) -----
+
+export const DEBUG_SYSTEM_PROMPT = `You are the Debugger for an autonomous coding session.
+You see ONLY the goal and the doer's last settled output. You do NOT see the checklist,
+the recent activity, or any history.
+
+Your job: classify the situation as exactly one of:
+  retry  — the doer is fixable with one short instruction; you provide it
+  block  — the goal as written cannot proceed; orchestrator should escalate
+  human  — only a human can decide
+
+Output ONE JSON object on its own line, no surrounding prose:
+  {"kind":"retry","instruction":"<≤2 sentences telling the doer what to do next>"}
+  {"kind":"block","reason":"<one short sentence>"}
+  {"kind":"human","reason":"<one short sentence>"}
+
+Decision rules:
+- Prefer retry only when there's an obvious next move the doer missed. Examples: "run npm
+  install first", "the test was looking at line 42, the bug is line 41".
+- Use block when the goal seems mis-specified or the work is genuinely impossible as
+  described.
+- Use human for ambiguous tradeoffs that depend on user preference.
+`
+
+export interface DebugPromptParts {
+  system: string
+  user: string
+}
+
+export function buildDebugPrompt(args: {
+  goal: Goal
+  currentMilestoneId: string | null
+  lastSnapshot: SettledSnapshot
+  trigger: 'stuck' | 'partial-streak'
+}): DebugPromptParts {
+  const m = args.lastSnapshot.marker
+  const user = `## GOAL
+${args.goal.goal}
+
+## TRIGGER
+${args.trigger}
+
+## DOER LAST SETTLED
+Marker: ${m.kind}${m.subgoalId ? ` ${m.subgoalId} ${m.status ?? ''}` : ''}
+${m.blocker ? `Blocker: ${m.blocker}\n` : ''}Question/text: ${m.question || m.text}
+
+Context before marker (excerpt):
+${args.lastSnapshot.text.slice(-1200)}
+`
+  return { system: DEBUG_SYSTEM_PROMPT, user }
+}
+
 // ----- Orchestrator decision prompt -----
 
 export interface DecisionPromptParts {
