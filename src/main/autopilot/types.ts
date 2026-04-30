@@ -10,6 +10,14 @@ export interface DoerMarker {
   raw: string                   // the full marker line
   subgoalId?: string            // for PROGRESS
   status?: 'done' | 'partial' | 'blocked'  // for PROGRESS
+  // structured fields parsed from the Status Report block (item 4)
+  filesChanged?: string[]
+  tests?: string                                 // free-text, e.g. "134 passed / 0 failed"
+  redPhase?: 'yes' | 'no' | 'na'
+  boundaryOk?: boolean
+  evidence?: string
+  blocker?: string
+  question?: string
 }
 
 export interface SettledSnapshot {
@@ -18,11 +26,18 @@ export interface SettledSnapshot {
   receivedAt: number            // unix ms
 }
 
+export interface SubgoalBoundary {
+  allowedFiles?: string[]      // glob-ish patterns, doer-readable
+  forbiddenFiles?: string[]
+  allowedDeps?: string[]       // package names (informational)
+}
+
 export interface Subgoal {
   id: string
   description: string
   shell?: string                // optional verification command
   judge?: string                // optional LLM-eval question
+  boundary?: SubgoalBoundary   // NEW
   status: 'pending' | 'partial' | 'done' | 'blocked'
 }
 
@@ -45,6 +60,13 @@ export interface Goal {
   }
 }
 
+export interface ValidationCommands {
+  test?: string
+  build?: string
+  typecheck?: string
+  lint?: string
+}
+
 export interface AutopilotState {
   phase: AutopilotPhase
   goal: Goal | null
@@ -56,6 +78,7 @@ export interface AutopilotState {
   lastDecisionText: string         // for the panel's "last action" line
   recentLog: ActivityEntry[]       // last 10 entries
   escalationReason: string | null
+  validation: ValidationCommands   // NEW; default {}
 }
 
 export interface ActivityEntry {
@@ -71,12 +94,20 @@ export type DecideResult =
   | { kind: 'done'; evidence: string }
   | { kind: 'escalate'; reason: string }
 
+export interface SteeringDocs {
+  tech: string | null
+  structure: string | null
+}
+
 export interface DecideInput {
   goal: Goal
   milestones: Milestone[]
   currentMilestoneId: string | null
   lastSnapshot: SettledSnapshot
   recentLogTail: ActivityEntry[]   // last 5 entries
+  validation: ValidationCommands       // NEW
+  learnings: string[]                  // NEW; tail of recent learnings (≤20 lines)
+  steering: SteeringDocs               // NEW
 }
 
 export interface ApiUsage {
@@ -86,8 +117,21 @@ export interface ApiUsage {
   outputTokens: number
 }
 
+export type DebugResult =
+  | { kind: 'retry'; instruction: string }
+  | { kind: 'block'; reason: string }
+  | { kind: 'human'; reason: string }
+
+export interface DebugInput {
+  goal: Goal
+  currentMilestoneId: string | null
+  lastSnapshot: SettledSnapshot
+  trigger: 'stuck' | 'partial-streak'
+}
+
 export interface ApiClient {
   decide(input: DecideInput): Promise<{ result: DecideResult; usage: ApiUsage }>
+  debug(input: DebugInput): Promise<{ result: DebugResult; usage: ApiUsage }>   // NEW
   /** Cost in USD for a usage record at the client's current model rates. */
   estimateCost(usage: ApiUsage): number
 }
