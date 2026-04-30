@@ -3,6 +3,7 @@ import type { DoerMarker, SettledSnapshot, MarkerKind } from './types'
 interface Options {
   idleMs?: number
   nudgeMs?: number          // currently informational; consumer handles nudging
+  forceSettleMs?: number    // when allStructured fails after a marker, settle anyway after this many ms with no new bytes (default 3000; 0 disables)
   onSettle: (snapshot: SettledSnapshot) => void
 }
 
@@ -129,25 +130,29 @@ export class PtyWatcher {
   private buffer = ''
   private idleMs: number
   private nudgeMs: number
+  private forceSettleMs: number
   private onSettle: Options['onSettle']
   private idleTimer: ReturnType<typeof setTimeout> | null = null
+  private forceSettleTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(opts: Options) {
     this.idleMs = opts.idleMs ?? 1500
     this.nudgeMs = opts.nudgeMs ?? 10000
+    this.forceSettleMs = opts.forceSettleMs ?? 3000
     this.onSettle = opts.onSettle
   }
 
   feed(chunk: string): void {
     this.buffer += chunk
     if (this.idleTimer) clearTimeout(this.idleTimer)
+    if (this.forceSettleTimer) { clearTimeout(this.forceSettleTimer); this.forceSettleTimer = null }
     this.idleTimer = setTimeout(() => this.checkSettled(), this.idleMs)
   }
 
   reset(): void {
     this.buffer = ''
-    if (this.idleTimer) clearTimeout(this.idleTimer)
-    this.idleTimer = null
+    if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null }
+    if (this.forceSettleTimer) { clearTimeout(this.forceSettleTimer); this.forceSettleTimer = null }
   }
 
   private checkSettled(): void {
@@ -161,13 +166,34 @@ export class PtyWatcher {
     const allStructured = afterTrimmed.every((l) =>
       /^[A-Z_]+:/.test(l) || /^\s+\S/.test(l)
     )
-    if (afterTrimmed.length > 0 && !allStructured) return
+    if (afterTrimmed.length > 0 && !allStructured) {
+      // Trailing content fails the structured check (e.g. Claude Code's idle TUI
+      // chrome — `✱ Worked for…`, `>`, `bypass permissions on`). Arm a one-shot
+      // force-settle timer; if no new bytes arrive in forceSettleMs, deliver the
+      // marker anyway. New bytes via feed() cancel the timer.
+      if (this.forceSettleMs > 0 && !this.forceSettleTimer) {
+        this.forceSettleTimer = setTimeout(() => this.forceSettle(), this.forceSettleMs)
+      }
+      return
+    }
+    this.emitSettle(found)
+  }
+
+  private forceSettle(): void {
+    this.forceSettleTimer = null
+    const found = findLastMarker(this.buffer)
+    if (!found) return    // marker disappeared (e.g., reset() between arming and firing)
+    this.emitSettle(found)
+  }
+
+  private emitSettle(found: { marker: DoerMarker; before: string }): void {
     const snapshot: SettledSnapshot = {
       text: found.before.trim(),
       marker: found.marker,
       receivedAt: Date.now(),
     }
     this.buffer = ''
+    if (this.forceSettleTimer) { clearTimeout(this.forceSettleTimer); this.forceSettleTimer = null }
     this.onSettle(snapshot)
   }
 }
