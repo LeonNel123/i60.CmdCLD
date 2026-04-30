@@ -143,9 +143,23 @@ Please:
 2. Once you have enough, write .autopilot/goal.md with goal, non-goals, acceptance criteria,
    and the constraints (use defaults: max_iterations 40, max_api_cost_usd 1.0,
    max_doer_output_per_reset 60000).
+   For each acceptance criterion, prefer EARS form: "WHEN <trigger>, THE SYSTEM SHALL
+   <observable behaviour>". Free-form is fine for criteria that don't fit EARS (e.g.
+   judge-typed criteria).
 3. Decompose into milestones. Write one .autopilot/milestones/mN.md per milestone, with
-   subgoals (each with optional shell verification or judge question).
-4. When all files are written and you've reviewed them, emit exactly: [ORCH:GOAL_READY]
+   subgoals (each with optional shell verification or judge question). For each subgoal you
+   may add a boundary block as sub-bullets:
+     - boundary.allowed: <comma-sep file patterns>
+     - boundary.forbidden: <comma-sep file patterns>
+     - boundary.deps: <comma-sep package names>
+   Boundaries are guardrails — use them where they would clarify scope; omit when they would
+   add noise.
+4. For any milestone whose subgoals span ≥ 3 components or involve non-trivial sequencing,
+   include a Mermaid sequence diagram or flowchart in the milestone's "## Notes" section.
+5. Optionally write .autopilot/project/tech.md and .autopilot/project/structure.md if doing
+   so would help future iterations remember durable project context (language, framework,
+   top-level folder layout). These are optional.
+6. When all files are written and you've reviewed them, emit exactly: [ORCH:GOAL_READY]
 `
 }
 

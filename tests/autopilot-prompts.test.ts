@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DOER_SYSTEM_PROMPT, buildDecisionPrompt } from '../src/main/autopilot/prompts'
+import { DOER_SYSTEM_PROMPT, buildDecisionPrompt, buildWizardKickoff } from '../src/main/autopilot/prompts'
 import type { Goal, Milestone, SettledSnapshot, ActivityEntry, ValidationCommands, SteeringDocs } from '../src/main/autopilot/types'
 
 describe('DOER_SYSTEM_PROMPT', () => {
@@ -125,4 +125,31 @@ it('uncached suffix surfaces structured marker fields when present', () => {
   expect(parts.uncachedRecent).toMatch(/Files changed/i)
   expect(parts.uncachedRecent).toMatch(/src\/x\.ts/)
   expect(parts.uncachedRecent).toMatch(/Boundary OK/i)
+})
+
+// ----- buildWizardKickoff tests -----
+
+it('buildWizardKickoff mentions EARS form', () => {
+  const k = buildWizardKickoff('idea')
+  expect(k).toMatch(/EARS|WHEN .* SHALL/)
+})
+
+it('buildWizardKickoff mentions Mermaid for non-trivial milestones', () => {
+  const k = buildWizardKickoff('idea')
+  expect(k).toMatch(/[Mm]ermaid/)
+})
+
+it('buildWizardKickoff mentions boundary blocks as optional per subgoal', () => {
+  const k = buildWizardKickoff('idea')
+  expect(k).toMatch(/boundary/i)
+})
+
+it('buildWizardKickoff suggests optional steering files', () => {
+  const k = buildWizardKickoff('idea')
+  expect(k).toMatch(/tech\.md|structure\.md/)
+})
+
+it('buildWizardKickoff still includes the user idea verbatim', () => {
+  const k = buildWizardKickoff('a small Express server')
+  expect(k).toContain('a small Express server')
 })
