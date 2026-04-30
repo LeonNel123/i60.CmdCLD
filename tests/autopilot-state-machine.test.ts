@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, rmSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { AutopilotStateMachine } from '../src/main/autopilot/state-machine'
 import type { ApiClient, AutopilotOptions, Goal, Milestone, ApiUsage, DecideResult } from '../src/main/autopilot/types'
@@ -10,6 +10,10 @@ const TMP = join(__dirname, '.tmp-autopilot-sm')
 function makeApi(plan: () => DecideResult): ApiClient {
   return {
     decide: vi.fn(async () => ({ result: plan(), usage: { inputTokens: 100, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 50 } as ApiUsage })),
+    debug: vi.fn(async () => ({
+      result: { kind: 'human' as const, reason: 'unused' },
+      usage: { inputTokens: 0, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 0 } as ApiUsage,
+    })),
     estimateCost: () => 0.001,
   }
 }
@@ -71,6 +75,7 @@ describe('AutopilotStateMachine', () => {
     writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
     const expensiveApi: ApiClient = {
       decide: vi.fn(async () => ({ result: { kind: 'reply' as const, text: 'go' }, usage: { inputTokens: 1, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 1 } as ApiUsage })),
+      debug: vi.fn() as any,
       estimateCost: () => 100, // each call costs $100
     }
     const sm = makeSm('idea', expensiveApi)
@@ -124,3 +129,34 @@ async function waitForPhase(sm: AutopilotStateMachine, phase: string, timeoutMs 
 async function waitForFlush(): Promise<void> {
   await new Promise((r) => setTimeout(r, 50))
 }
+
+it('discovers validation commands on start and exposes them on state', async () => {
+  writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+  writeFileSync(join(TMP, 'package.json'), JSON.stringify({
+    scripts: { test: 'vitest run', build: 'tsc -p .' },
+  }))
+  const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })))
+  await sm.start()
+  expect(sm.state.validation.test).toBe('npm test')
+  expect(sm.state.validation.build).toBe('npm run build')
+})
+
+it('passes learnings into decide() so the planner sees them', async () => {
+  writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+  // Pre-populate a learnings file
+  await import('../src/main/autopilot/state-files').then((mod) => {
+    mod.appendLearning(TMP, 'remember to run npm install first')
+  })
+  let captured: any = null
+  const api: ApiClient = {
+    decide: vi.fn(async (input) => { captured = input; return { result: { kind: 'reply' as const, text: 'ok' }, usage: { inputTokens: 1, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 1 } as ApiUsage } }),
+    debug: vi.fn(),
+    estimateCost: () => 0.001,
+  }
+  const sm = makeSm('idea', api)
+  await sm.start()
+  sm.approveGoal()
+  sm.feedPty('[ORCH:WAITING] q\n')
+  await waitForFlush()
+  expect(captured.learnings).toEqual(expect.arrayContaining([expect.stringContaining('npm install first')]))
+})

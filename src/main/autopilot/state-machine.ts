@@ -4,7 +4,8 @@ import type {
 } from './types'
 import { PtyWatcher } from './pty-watcher'
 import { CostTracker } from './cost-tracker'
-import { readGoal, readMilestones, writeMilestone, appendLog, autopilotDirExists } from './state-files'
+import { readGoal, readMilestones, writeMilestone, appendLog, autopilotDirExists, readLearnings, readSteering } from './state-files'
+import { discoverValidation } from './validation'
 import { decide } from './decision'
 import { runResetSequence } from './reset'
 import { makeApiClient } from './api-client'
@@ -54,6 +55,9 @@ export class AutopilotStateMachine {
       this.outputVolumeSinceReset += data.length
       this.watcher.feed(data)
     })
+
+    // Discover validation once at start
+    this.state.validation = discoverValidation(this.opts.projectPath)
 
     this.opts.writeToPty(this.opts.terminalId, DOER_SYSTEM_PROMPT + '\r')
 
@@ -152,6 +156,8 @@ export class AutopilotStateMachine {
       return
     }
 
+    const learnings = readLearnings(this.opts.projectPath)
+    const steering = readSteering(this.opts.projectPath)
     let out
     try {
       out = await decide(this.api, {
@@ -160,9 +166,9 @@ export class AutopilotStateMachine {
         currentMilestoneId: this.state.currentMilestoneId,
         lastSnapshot: snap,
         recentLogTail: this.state.recentLog.slice(-5),
-        validation: this.state.validation,           // NEW
-        learnings: [],                                // populated in Task 11
-        steering: { tech: null, structure: null },   // populated in Task 11
+        validation: this.state.validation,
+        learnings,
+        steering,
       })
     } catch (e: any) {
       this.appendActivity('escalation', `API error: ${e?.message ?? 'unknown'}`)
