@@ -1,4 +1,7 @@
-import type { Goal, Milestone, ActivityEntry, SettledSnapshot } from './types'
+import type {
+  Goal, Milestone, ActivityEntry, SettledSnapshot,
+  ValidationCommands, SteeringDocs,
+} from './types'
 
 // ----- Doer system prompt -----
 // Injected into the Claude CLI session at session start and after every /clear.
@@ -191,6 +194,9 @@ export function buildDecisionPrompt(args: {
   currentMilestoneId: string | null
   recentLog: ActivityEntry[]
   snapshot: SettledSnapshot
+  validation: ValidationCommands
+  learnings: string[]
+  steering: SteeringDocs
 }): DecisionPromptParts {
   const cachedSystem = `You are the Orchestrator for an autonomous coding session driven by
 CmdCLD Autopilot. A Claude CLI session (the "Doer") is doing the actual work; your job is to
@@ -200,6 +206,9 @@ For each call, you receive:
   - The current goal and milestone checklist
   - The Doer's most recent settled output (what it asked or reported)
   - A short tail of recent activity
+  - Discovered validation commands for this project
+  - Recent learnings the Doer has stashed
+  - Optional steering files (tech.md, structure.md) when present
 
 Reply with EXACTLY ONE of these JSON-formatted decisions, on its own line:
 
@@ -215,27 +224,97 @@ Decision principles:
 - If multiple consecutive PROGRESS partial markers without done — likely confusion; consider RESET.
 - If the Doer signalled STUCK — ESCALATE (do not loop trying to unstick automatically).
 - Choose DONE only when all subgoals across all milestones show done in the checklist.
+- If the Doer's question is about touching files outside the CURRENT SUBGOAL BOUNDARY (when one
+  is given), instruct them to STUCK rather than reply yes — do not silently expand scope.
+- If BOUNDARY_OK in the structured marker is "no", treat that as a soft warning to nudge the
+  Doer back into bounds with a REPLY (not an escalate yet).
 - Keep replies short (≤ 3 sentences). The Doer reads what you say verbatim and acts.
 
 Output format: ONE JSON object, no surrounding text, no markdown fence.
 `
 
-  const cachedGoalAndMilestones = `## GOAL\n${args.goal.goal}\n\n## CHECKLIST\n` +
-    args.milestones.map((m) => {
-      const subs = m.subgoals.map((s) => {
-        const tick = s.status === 'done' ? '✓' : s.status === 'partial' ? '~' : s.status === 'blocked' ? '!' : '☐'
-        return `    ${tick} ${s.id}: ${s.description}`
-      }).join('\n')
-      const here = m.id === args.currentMilestoneId ? ' (CURRENT)' : ''
-      return `  [${m.status}] ${m.id} — ${m.name}${here}\n${subs}`
+  const lines: string[] = []
+  lines.push('## GOAL')
+  lines.push(args.goal.goal)
+  lines.push('')
+  lines.push('## CHECKLIST')
+  for (const m of args.milestones) {
+    const subs = m.subgoals.map((s) => {
+      const tick = s.status === 'done' ? '✓' : s.status === 'partial' ? '~' : s.status === 'blocked' ? '!' : '☐'
+      return `    ${tick} ${s.id}: ${s.description}`
     }).join('\n')
+    const here = m.id === args.currentMilestoneId ? ' (CURRENT)' : ''
+    lines.push(`  [${m.status}] ${m.id} — ${m.name}${here}`)
+    if (subs) lines.push(subs)
+  }
+
+  // Current-subgoal boundary
+  const currentMilestone = args.milestones.find((m) => m.id === args.currentMilestoneId)
+  const currentSubgoal = currentMilestone?.subgoals.find((s) => s.status !== 'done')
+  if (currentSubgoal?.boundary) {
+    lines.push('')
+    lines.push('## CURRENT SUBGOAL BOUNDARY')
+    if (currentSubgoal.boundary.allowedFiles?.length) {
+      lines.push(`allowed: ${currentSubgoal.boundary.allowedFiles.join(', ')}`)
+    }
+    if (currentSubgoal.boundary.forbiddenFiles?.length) {
+      lines.push(`forbidden: ${currentSubgoal.boundary.forbiddenFiles.join(', ')}`)
+    }
+    if (currentSubgoal.boundary.allowedDeps?.length) {
+      lines.push(`deps: ${currentSubgoal.boundary.allowedDeps.join(', ')}`)
+    }
+  }
+
+  // Validation
+  const v = args.validation
+  if (v.test || v.build || v.typecheck || v.lint) {
+    lines.push('')
+    lines.push('## VALIDATION')
+    if (v.test) lines.push(`test: ${v.test}`)
+    if (v.build) lines.push(`build: ${v.build}`)
+    if (v.typecheck) lines.push(`typecheck: ${v.typecheck}`)
+    if (v.lint) lines.push(`lint: ${v.lint}`)
+  }
+
+  // Steering
+  if (args.steering.tech) {
+    lines.push('')
+    lines.push('## TECH STACK')
+    lines.push(args.steering.tech.trim())
+  }
+  if (args.steering.structure) {
+    lines.push('')
+    lines.push('## STRUCTURE')
+    lines.push(args.steering.structure.trim())
+  }
+
+  // Learnings (last 20)
+  const learn = args.learnings.slice(-20)
+  if (learn.length > 0) {
+    lines.push('')
+    lines.push('## LEARNINGS')
+    for (const ln of learn) lines.push(ln)
+  }
+
+  const cachedGoalAndMilestones = lines.join('\n')
 
   const recentTail = args.recentLog.slice(-5).map((e) => `  - ${e.kind}: ${e.summary}`).join('\n')
   const snap = args.snapshot
+  const m = snap.marker
+  const structured: string[] = []
+  if (m.filesChanged?.length) structured.push(`Files changed: ${m.filesChanged.join(', ')}`)
+  if (m.tests) structured.push(`Tests: ${m.tests}`)
+  if (m.redPhase) structured.push(`Red phase: ${m.redPhase}`)
+  if (typeof m.boundaryOk === 'boolean') structured.push(`Boundary OK: ${m.boundaryOk ? 'yes' : 'no'}`)
+  if (m.evidence) structured.push(`Evidence: ${m.evidence}`)
+  if (m.blocker) structured.push(`Blocker: ${m.blocker}`)
+  const structuredBlock = structured.length ? `\nStructured fields:\n${structured.map((s) => '  - ' + s).join('\n')}\n` : ''
+
   const uncachedRecent = `## RECENT ACTIVITY\n${recentTail || '(none)'}\n\n` +
-    `## DOER LAST SETTLED\nMarker: ${snap.marker.kind}` +
-    (snap.marker.subgoalId ? ` ${snap.marker.subgoalId} ${snap.marker.status}` : '') + `\n` +
-    `Question/text: ${snap.marker.text}\n\n` +
+    `## DOER LAST SETTLED\nMarker: ${m.kind}` +
+    (m.subgoalId ? ` ${m.subgoalId} ${m.status}` : '') + `\n` +
+    `Question/text: ${m.question || m.text}\n` +
+    structuredBlock + `\n` +
     `Context before marker (recent excerpt):\n${snap.text.slice(-1500)}`
 
   return { cachedSystem, cachedGoalAndMilestones, uncachedRecent }

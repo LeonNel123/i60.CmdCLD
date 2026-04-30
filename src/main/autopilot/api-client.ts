@@ -41,6 +41,9 @@ export class AnthropicClient implements ApiClient {
       currentMilestoneId: input.currentMilestoneId,
       recentLog: input.recentLogTail,
       snapshot: input.lastSnapshot,
+      validation: input.validation,
+      learnings: input.learnings,
+      steering: input.steering,
     })
 
     const response = await this.client.messages.create({
@@ -111,6 +114,9 @@ export class OpenRouterClient implements ApiClient {
       currentMilestoneId: input.currentMilestoneId,
       recentLog: input.recentLogTail,
       snapshot: input.lastSnapshot,
+      validation: input.validation,
+      learnings: input.learnings,
+      steering: input.steering,
     })
 
     const messages = [

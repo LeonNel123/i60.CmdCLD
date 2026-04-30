@@ -39,6 +39,7 @@ export class AutopilotStateMachine {
       lastDecisionText: '',
       recentLog: [],
       escalationReason: null,
+      validation: {},
     }
     this.state.currentMilestoneId = this.findCurrentMilestoneId()
 
@@ -159,6 +160,9 @@ export class AutopilotStateMachine {
         currentMilestoneId: this.state.currentMilestoneId,
         lastSnapshot: snap,
         recentLogTail: this.state.recentLog.slice(-5),
+        validation: this.state.validation,           // NEW
+        learnings: [],                                // populated in Task 11
+        steering: { tech: null, structure: null },   // populated in Task 11
       })
     } catch (e: any) {
       this.appendActivity('escalation', `API error: ${e?.message ?? 'unknown'}`)

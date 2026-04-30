@@ -30,7 +30,7 @@ function makeMockClient(plan: DecideResult, usage: ApiUsage = { inputTokens: 100
 describe('decide()', () => {
   it('returns a reply decision when API says reply', async () => {
     const client = makeMockClient({ kind: 'reply', text: 'Continue' })
-    const input: DecideInput = { goal, milestones, currentMilestoneId: 'm1', lastSnapshot: makeSnapshot('Should I continue?'), recentLogTail: [] }
+    const input: DecideInput = { goal, milestones, currentMilestoneId: 'm1', lastSnapshot: makeSnapshot('Should I continue?'), recentLogTail: [], validation: {}, learnings: [], steering: { tech: null, structure: null } }
     const out = await decide(client, input)
     expect(out.result.kind).toBe('reply')
     if (out.result.kind === 'reply') expect(out.result.text).toBe('Continue')
@@ -38,7 +38,7 @@ describe('decide()', () => {
 
   it('returns a reset decision when API says reset', async () => {
     const client = makeMockClient({ kind: 'reset' })
-    const input: DecideInput = { goal, milestones, currentMilestoneId: 'm1', lastSnapshot: makeSnapshot('q'), recentLogTail: [] }
+    const input: DecideInput = { goal, milestones, currentMilestoneId: 'm1', lastSnapshot: makeSnapshot('q'), recentLogTail: [], validation: {}, learnings: [], steering: { tech: null, structure: null } }
     const out = await decide(client, input)
     expect(out.result.kind).toBe('reset')
   })
@@ -47,7 +47,7 @@ describe('decide()', () => {
     const client = makeMockClient({ kind: 'reply', text: 'ok' }, {
       inputTokens: 200, cachedInputTokens: 1500, cacheCreationTokens: 0, outputTokens: 100,
     })
-    const input: DecideInput = { goal, milestones, currentMilestoneId: 'm1', lastSnapshot: makeSnapshot('q'), recentLogTail: [] }
+    const input: DecideInput = { goal, milestones, currentMilestoneId: 'm1', lastSnapshot: makeSnapshot('q'), recentLogTail: [], validation: {}, learnings: [], steering: { tech: null, structure: null } }
     const out = await decide(client, input)
     expect(out.usage.inputTokens).toBe(200)
     expect(out.costUsd).toBeCloseTo(0.001)
