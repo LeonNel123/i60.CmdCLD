@@ -67,6 +67,41 @@ describe('autopilot state-files', () => {
       const list = readMilestones(TMP)
       expect(list.map((m) => m.id)).toEqual(['m1', 'm2'])
     })
+
+    it('round-trips Subgoal.boundary through milestone markdown', () => {
+      const m: Milestone = {
+        id: 'm1',
+        name: 'Auth',
+        status: 'pending',
+        subgoals: [
+          {
+            id: 's1',
+            description: 'login form',
+            boundary: {
+              allowedFiles: ['src/auth/login.ts', 'tests/auth/login.test.ts'],
+              forbiddenFiles: ['src/billing/**'],
+              allowedDeps: ['zod'],
+            },
+            status: 'pending',
+          },
+          {
+            id: 's2',
+            description: 'no boundary on this one',
+            status: 'pending',
+          },
+        ],
+        notes: '',
+      }
+      writeMilestone(TMP, m)
+      const read = readMilestones(TMP)
+      expect(read).toHaveLength(1)
+      const s1 = read[0].subgoals.find((s) => s.id === 's1')!
+      expect(s1.boundary?.allowedFiles).toEqual(['src/auth/login.ts', 'tests/auth/login.test.ts'])
+      expect(s1.boundary?.forbiddenFiles).toEqual(['src/billing/**'])
+      expect(s1.boundary?.allowedDeps).toEqual(['zod'])
+      const s2 = read[0].subgoals.find((s) => s.id === 's2')!
+      expect(s2.boundary).toBeUndefined()
+    })
   })
 
   describe('log.md', () => {

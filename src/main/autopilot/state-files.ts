@@ -136,6 +136,17 @@ function formatMilestone(m: Milestone): string {
     lines.push(`- [${tick}] ${s.id}: ${s.description}`)
     if (s.shell) lines.push(`  - shell: ${s.shell}`)
     if (s.judge) lines.push(`  - judge: ${s.judge}`)
+    if (s.boundary) {
+      if (s.boundary.allowedFiles?.length) {
+        lines.push(`  - boundary.allowed: ${s.boundary.allowedFiles.join(', ')}`)
+      }
+      if (s.boundary.forbiddenFiles?.length) {
+        lines.push(`  - boundary.forbidden: ${s.boundary.forbiddenFiles.join(', ')}`)
+      }
+      if (s.boundary.allowedDeps?.length) {
+        lines.push(`  - boundary.deps: ${s.boundary.allowedDeps.join(', ')}`)
+      }
+    }
   }
   lines.push('')
   lines.push('## Notes')
@@ -171,6 +182,15 @@ function parseMilestone(text: string, fileId: string): Milestone | null {
     if (sub && pending) {
       if (sub[1] === 'shell') pending.shell = sub[2].trim()
       else pending.judge = sub[2].trim()
+      continue
+    }
+    const bnd = l.match(/^\s+- boundary\.(allowed|forbidden|deps): (.+)$/)
+    if (bnd && pending) {
+      const items = bnd[2].split(',').map((x) => x.trim()).filter(Boolean)
+      if (!pending.boundary) pending.boundary = {}
+      if (bnd[1] === 'allowed') pending.boundary.allowedFiles = items
+      else if (bnd[1] === 'forbidden') pending.boundary.forbiddenFiles = items
+      else pending.boundary.allowedDeps = items
     }
   }
   if (pending) subgoals.push(pending)
