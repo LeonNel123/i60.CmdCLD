@@ -132,6 +132,13 @@ export interface DebugInput {
 export interface ApiClient {
   decide(input: DecideInput): Promise<{ result: DecideResult; usage: ApiUsage }>
   debug(input: DebugInput): Promise<{ result: DebugResult; usage: ApiUsage }>   // NEW
+  /**
+   * Low-level (system, user) → text call. Used by Autopilot PRO (Wave 3.0+)
+   * which has its own per-shape prompts independent of the goal-oriented
+   * decide() pipeline. Optional so legacy test mocks don't need updating;
+   * production AnthropicClient + OpenRouterClient both implement it.
+   */
+  chat?(args: { system: string; user: string; maxTokens?: number }): Promise<{ text: string; usage: ApiUsage }>
   /** Cost in USD for a usage record at the client's current model rates. */
   estimateCost(usage: ApiUsage): number
 }

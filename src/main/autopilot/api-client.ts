@@ -127,6 +127,26 @@ export class AnthropicClient implements ApiClient {
     return { result, usage }
   }
 
+  async chat(args: { system: string; user: string; maxTokens?: number }): Promise<{ text: string; usage: ApiUsage }> {
+    const response = await this.client.messages.create({
+      model: this.model,
+      max_tokens: args.maxTokens ?? 400,
+      system: [
+        { type: 'text', text: args.system, cache_control: { type: 'ephemeral' } as any },
+      ] as any,
+      messages: [{ role: 'user', content: args.user }],
+    })
+    const text = (response.content[0] as any)?.text ?? ''
+    const u: any = response.usage as any
+    const usage: ApiUsage = {
+      inputTokens: u?.input_tokens ?? 0,
+      cachedInputTokens: u?.cache_read_input_tokens ?? 0,
+      cacheCreationTokens: u?.cache_creation_input_tokens ?? 0,
+      outputTokens: u?.output_tokens ?? 0,
+    }
+    return { text, usage }
+  }
+
   estimateCost(usage: ApiUsage): number {
     return estimateCostFor(this.model, usage)
   }
@@ -283,6 +303,29 @@ export class OpenRouterClient implements ApiClient {
       outputTokens: u.completion_tokens ?? 0,
     }
     return { result, usage }
+  }
+
+  async chat(args: { system: string; user: string; maxTokens?: number }): Promise<{ text: string; usage: ApiUsage }> {
+    const messages = [
+      { role: 'system', content: args.system },
+      { role: 'user', content: args.user },
+    ]
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: this.model, messages, max_tokens: args.maxTokens ?? 400 }),
+    })
+    if (!res.ok) throw new Error(`OpenRouter error: ${res.status} ${await res.text()}`)
+    const data = await res.json() as any
+    const text = data.choices?.[0]?.message?.content ?? ''
+    const u = data.usage ?? {}
+    const usage: ApiUsage = {
+      inputTokens: u.prompt_tokens ?? 0,
+      cachedInputTokens: 0,
+      cacheCreationTokens: 0,
+      outputTokens: u.completion_tokens ?? 0,
+    }
+    return { text, usage }
   }
 
   estimateCost(usage: ApiUsage): number {
