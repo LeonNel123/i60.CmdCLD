@@ -269,7 +269,7 @@ describe('phase tracker integration (Wave 3.1 G1)', () => {
     expect(sm.state.currentTaskId).toBe('T2')
   })
 
-  it('advances currentPhaseId to phase-2 when phase-1 tasks all done', async () => {
+  it('enters phase-review for phase-1 when phase-1 tasks all done (no review yet)', async () => {
     writeArtifact(TMP, 'spec', '# s'); markApproved(TMP, 'spec')
     writeArtifact(TMP, 'plan', `## Phase 1: a
 - [x] T1: a
@@ -280,7 +280,8 @@ describe('phase tracker integration (Wave 3.1 G1)', () => {
     await sm.start()
     sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
     await flush()
-    expect(sm.state.currentPhaseId).toBe('phase-2')
+    expect(sm.state.stage).toBe('phase-review')
+    expect(sm.state.currentPhaseId).toBe('phase-1')
   })
 
   it('escalates exactly once when plan has no parseable phases', async () => {
@@ -309,7 +310,7 @@ describe('phase tracker integration (Wave 3.1 G1)', () => {
     expect(sm.state.currentTaskId).toBeNull()
   })
 
-  it('clears currentPhaseId to null when all phases are done', async () => {
+  it('enters phase-review for phase-1 when all phases tasks are done but no reviews exist', async () => {
     writeArtifact(TMP, 'spec', '# s'); markApproved(TMP, 'spec')
     writeArtifact(TMP, 'plan', `## Phase 1: a
 - [x] T1: a
@@ -320,7 +321,124 @@ describe('phase tracker integration (Wave 3.1 G1)', () => {
     await sm.start()
     sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
     await flush()
-    expect(sm.state.currentPhaseId).toBeNull()
+    expect(sm.state.stage).toBe('phase-review')
+    expect(sm.state.currentPhaseId).toBe('phase-1')
+  })
+})
+
+describe('Stage 3 phase-review pipeline (Wave 3.1 G3)', () => {
+  function setupAllPhase1Done() {
+    writeArtifact(TMP, 'spec', '# s'); markApproved(TMP, 'spec')
+    writeArtifact(TMP, 'plan', `## Phase 1: setup
+- [x] T1: install
+- [x] T2: configure
+## Phase 2: ship
+- [ ] T1: cut release
+`); markApproved(TMP, 'plan')
+  }
+
+  it('enters phase-review stage when phase-1 tasks all done', async () => {
+    setupAllPhase1Done()
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), writes)
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(sm.state.stage).toBe('phase-review')
+    expect(sm.state.currentPhaseId).toBe('phase-1')
+  })
+
+  it('writes Stage 3 kickoff to PTY exactly once per phase', async () => {
+    setupAllPhase1Done()
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), writes)
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q1\nDECISION_SHAPE: reply\n')
+    await flush()
+    sm.feedPty('[ORCH:WAITING] q2\nDECISION_SHAPE: reply\n')
+    await flush()
+    const kickoffs = writes.filter((w) => w.includes('STAGE 3') && w.includes('phase-1'))
+    expect(kickoffs.length).toBe(1)
+  })
+
+  it('approving reviews/phase-1.md returns to implementation and advances tracker', async () => {
+    setupAllPhase1Done()
+    writeArtifact(TMP, 'review', '# review body', 'phase-1')
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'approve', verdict: 'approve', why: 'lgtm' })), writes)
+    await sm.start()
+    sm.feedPty([
+      '[ORCH:WAITING] please review',
+      'DECISION_SHAPE: approve',
+      'ARTIFACT: reviews/phase-1.md',
+      '',
+    ].join('\n'))
+    await flush()
+    expect(sm.state.artifacts['reviews/phase-1.md']?.approved).toBe(true)
+    sm.feedPty('[ORCH:WAITING] cont\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(sm.state.stage).toBe('implementation')
+    expect(sm.state.currentPhaseId).toBe('phase-2')
+  })
+
+  it('after last phase review approved, advances to final-review', async () => {
+    writeArtifact(TMP, 'spec', '# s'); markApproved(TMP, 'spec')
+    writeArtifact(TMP, 'plan', `## Phase 1: only
+- [x] T1: done
+`); markApproved(TMP, 'plan')
+    writeArtifact(TMP, 'review', '# r', 'phase-1'); markApproved(TMP, 'review', 'phase-1')
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })))
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(sm.state.stage).toBe('final-review')
+  })
+
+  it('refine on review increments refineCount', async () => {
+    setupAllPhase1Done()
+    writeArtifact(TMP, 'review', '# review body', 'phase-1')
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'approve', verdict: 'refine', directive: 'sharpen' })))
+    await sm.start()
+    sm.feedPty([
+      '[ORCH:WAITING] please review',
+      'DECISION_SHAPE: approve',
+      'ARTIFACT: reviews/phase-1.md',
+      '',
+    ].join('\n'))
+    await flush()
+    expect(sm.state.artifacts['reviews/phase-1.md']?.refineCount).toBe(1)
+  })
+
+  it('escalates after refine bound (3) on a review', async () => {
+    setupAllPhase1Done()
+    writeArtifact(TMP, 'review', '# r', 'phase-1')
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'approve', verdict: 'refine', directive: 'try again' })))
+    await sm.start()
+    for (let i = 0; i < 4; i++) {
+      sm.feedPty([
+        '[ORCH:WAITING] r',
+        'DECISION_SHAPE: approve',
+        'ARTIFACT: reviews/phase-1.md',
+        '',
+      ].join('\n'))
+      await flush()
+    }
+    expect(sm.state.escalationReason).toMatch(/refinement-bound-exceeded/)
+  })
+
+  it('does not re-fire Stage 3 kickoff after the review is approved', async () => {
+    setupAllPhase1Done()
+    writeArtifact(TMP, 'review', '# r', 'phase-1'); markApproved(TMP, 'review', 'phase-1')
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), writes)
+    await sm.start()
+    writes.length = 0
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    const phase1Kickoffs = writes.filter((w) => w.includes('STAGE 3') && w.includes('phase-1'))
+    expect(phase1Kickoffs.length).toBe(0)
+    expect(sm.state.stage).toBe('implementation')
+    expect(sm.state.currentPhaseId).toBe('phase-2')
   })
 })
 

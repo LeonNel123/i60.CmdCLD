@@ -23,8 +23,8 @@ import {
   readArtifact, writeArtifact, markApproved, markUnapproved,
   incrementRefineCount, readState, writeState, reconcile,
 } from './artifacts'
-import { parsePhases, currentPhase } from './phases'
-import { DOER_SYSTEM_PROMPT_PRO } from './prompts'
+import { parsePhases, currentPhase, phaseDoneFromTasks } from './phases'
+import { DOER_SYSTEM_PROMPT_PRO, stage3Kickoff, stage4Kickoff } from './prompts'
 import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 
@@ -126,6 +126,7 @@ export class AutopilotProStateMachine {
   // contains only the text BEFORE the marker, which is too narrow for PRO.
   private proBuffer = ''
   private phaseTrackerEscalated = false
+  private stage3KickoffSentForPhase: string | null = null
 
   constructor(opts: AutopilotProOptions, apiOverride?: ApiClient, ptyIdleMs = 1500, maxSilenceMs = DEFAULT_MAX_SILENCE_MS) {
     this.opts = opts
@@ -437,7 +438,8 @@ export class AutopilotProStateMachine {
   // ---- stage transitions ----
 
   private updatePhaseTracker(): void {
-    if (this.state.stage !== 'implementation') return
+    // Only run during implementation or phase-review stages.
+    if (this.state.stage !== 'implementation' && this.state.stage !== 'phase-review') return
     const { content } = readArtifact(this.opts.projectPath, 'plan')
     if (!content) return
     const phases = parsePhases(content)
@@ -450,6 +452,41 @@ export class AutopilotProStateMachine {
       return
     }
     this.phaseTrackerEscalated = false
+
+    // Find the first phase whose tasks are all done but whose review is missing-or-not-approved.
+    const a = this.state.artifacts
+    const phaseAwaitingReview = phases.find((p) =>
+      phaseDoneFromTasks(p) && a[`reviews/${p.id}.md`]?.approved !== true
+    )
+
+    if (phaseAwaitingReview) {
+      // Enter Stage 3 for this phase.
+      this.state.stage = 'phase-review'
+      this.state.currentPhaseId = phaseAwaitingReview.id
+      this.state.currentTaskId = null
+      if (this.stage3KickoffSentForPhase !== phaseAwaitingReview.id) {
+        this.opts.writeToPty(this.opts.terminalId, stage3Kickoff(phaseAwaitingReview.id) + '\r')
+        this.appendActivity('orchestrator-resume', `stage 3 kickoff: ${phaseAwaitingReview.id}`)
+        this.stage3KickoffSentForPhase = phaseAwaitingReview.id
+      }
+      return
+    }
+
+    // No phase awaits review. Either still implementing OR all reviews approved.
+    const allDoneAndReviewed = phases.every((p) =>
+      phaseDoneFromTasks(p) && a[`reviews/${p.id}.md`]?.approved === true
+    )
+    if (allDoneAndReviewed) {
+      this.state.stage = 'final-review'
+      this.state.currentPhaseId = null
+      this.state.currentTaskId = null
+      this.stage3KickoffSentForPhase = null
+      return
+    }
+
+    // Implementation: pick the first non-done phase.
+    this.state.stage = 'implementation'
+    this.stage3KickoffSentForPhase = null
     const cp = currentPhase(phases)
     if (cp) {
       this.state.currentPhaseId = cp.id
