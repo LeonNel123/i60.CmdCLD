@@ -17,11 +17,10 @@ For acceptance criteria, prefer EARS form: "WHEN <trigger>, THE SYSTEM SHALL <ob
 behaviour>". Free-form is acceptable for criteria that don't fit. For any milestone whose
 subgoals span ≥ 3 components or involve sequencing, include a Mermaid sequence diagram or
 flowchart in the milestone's "## Notes" section.
-For each subgoal, you MAY add a boundary block (use this key in the milestone markdown):
-  boundary:
-    allowed: <comma-sep file patterns>
-    forbidden: <comma-sep file patterns>
-    deps: <comma-sep package names>
+For each subgoal, you MAY add a boundary block as sub-bullets under the subgoal:
+  - boundary.allowed: <comma-sep file patterns>
+  - boundary.forbidden: <comma-sep file patterns>
+  - boundary.deps: <comma-sep package names>
 Boundaries are guardrails for that subgoal — anything outside is out of scope for that
 subgoal. Use them where helpful; omit where not.
 When ALL files are written and you are happy with them, emit exactly: [ORCH:GOAL_READY]

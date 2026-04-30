@@ -38,7 +38,8 @@ describe('DOER_SYSTEM_PROMPT', () => {
   })
 
   it('mentions the boundary block on subgoals', () => {
-    expect(DOER_SYSTEM_PROMPT).toMatch(/boundary:/)
+    expect(DOER_SYSTEM_PROMPT).toMatch(/boundary\.allowed/)
+    expect(DOER_SYSTEM_PROMPT).toMatch(/boundary\.forbidden/)
     expect(DOER_SYSTEM_PROMPT).toMatch(/STUCK.*boundary violation/i)
   })
 
