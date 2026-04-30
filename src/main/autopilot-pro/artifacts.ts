@@ -194,6 +194,8 @@ export function appendSpecUpdate(projectPath: string, deltaBody: string): void {
   const flat = deltaBody.replace(/\s+/g, ' ').trim().slice(0, 100)
   appendFileSync(changelogPath, `- ${ts} applied: ${flat}\n`)
 
+  // Synchronous append + writeState; no event-loop yield between them, so
+  // reconcile() can never observe a stale sha256 in state.json.
   // Recompute spec.md sha256 and update state.json — KEEP approved=true.
   const newContent = readFileSync(specPath, 'utf-8')
   const newSha = sha256(newContent)

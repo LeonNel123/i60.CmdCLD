@@ -6,7 +6,7 @@ import {
   incrementRefineCount, readState, writeState, reconcile,
   appendSpecUpdate,
 } from '../src/main/autopilot-pro/artifacts'
-import { readFileSync as rfs, existsSync as exists } from 'fs'
+import { readFileSync as rfs } from 'fs'
 
 const TMP = join(__dirname, '.tmp-autopilot-pro-artifacts')
 
