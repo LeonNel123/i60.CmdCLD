@@ -4,7 +4,9 @@ import { join } from 'path'
 import {
   readArtifact, writeArtifact, markApproved, markUnapproved,
   incrementRefineCount, readState, writeState, reconcile,
+  appendSpecUpdate,
 } from '../src/main/autopilot-pro/artifacts'
+import { readFileSync as rfs, existsSync as exists } from 'fs'
 
 const TMP = join(__dirname, '.tmp-autopilot-pro-artifacts')
 
@@ -135,5 +137,65 @@ describe('autopilot-pro artifacts', () => {
       const reconciled = reconcile(TMP)
       expect(reconciled['spec.md']?.approved).toBe(true)
     })
+  })
+})
+
+describe('appendSpecUpdate', () => {
+  it('appends a "## Updates (<ts>)" section to spec.md', () => {
+    writeArtifact(TMP, 'spec', '# original\n')
+    markApproved(TMP, 'spec')
+    appendSpecUpdate(TMP, 'add cancel endpoint')
+    const spec = rfs(join(TMP, '.autopilot-pro', 'spec.md'), 'utf-8')
+    expect(spec).toMatch(/^# original/)
+    expect(spec).toMatch(/## Updates \(\d{4}-\d{2}-\d{2}T/)
+    expect(spec).toContain('add cancel endpoint')
+  })
+
+  it('appends a one-line entry to spec-changelog.md', () => {
+    writeArtifact(TMP, 'spec', '# spec\n'); markApproved(TMP, 'spec')
+    appendSpecUpdate(TMP, 'first delta')
+    appendSpecUpdate(TMP, 'second delta with more text that should be truncated to 100 chars in the changelog line ' + 'x'.repeat(200))
+    const log = rfs(join(TMP, '.autopilot-pro', 'spec-changelog.md'), 'utf-8')
+    const lines = log.trim().split('\n')
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toMatch(/^- \d{4}-\d{2}-\d{2}T.* applied: first delta$/)
+    expect(lines[1]).toMatch(/^- \d{4}-\d{2}-\d{2}T.* applied: /)
+    expect(lines[1].length).toBeLessThan(200)
+  })
+
+  it('updates spec.md sha256 in state.json after append', () => {
+    writeArtifact(TMP, 'spec', '# v1\n'); markApproved(TMP, 'spec')
+    const before = readState(TMP)['spec.md']?.sha256
+    appendSpecUpdate(TMP, 'delta one')
+    const after = readState(TMP)['spec.md']?.sha256
+    expect(after).not.toBe(before)
+    expect(after).toMatch(/^[a-f0-9]{64}$/)
+  })
+
+  it('keeps approved=true after applying a delta', () => {
+    writeArtifact(TMP, 'spec', '# v1\n'); markApproved(TMP, 'spec')
+    expect(readState(TMP)['spec.md']?.approved).toBe(true)
+    appendSpecUpdate(TMP, 'delta')
+    expect(readState(TMP)['spec.md']?.approved).toBe(true)
+  })
+
+  it('multiple sequential appends each add a new ## Updates section', () => {
+    writeArtifact(TMP, 'spec', '# v1\n'); markApproved(TMP, 'spec')
+    appendSpecUpdate(TMP, 'd1')
+    appendSpecUpdate(TMP, 'd2')
+    appendSpecUpdate(TMP, 'd3')
+    const spec = rfs(join(TMP, '.autopilot-pro', 'spec.md'), 'utf-8')
+    expect((spec.match(/## Updates \(/g) ?? []).length).toBe(3)
+    expect(spec).toContain('d1')
+    expect(spec).toContain('d2')
+    expect(spec).toContain('d3')
+  })
+
+  it('flattens multi-line deltas to a single changelog line', () => {
+    writeArtifact(TMP, 'spec', '# v1\n'); markApproved(TMP, 'spec')
+    appendSpecUpdate(TMP, 'line one\nline two\nline three')
+    const log = rfs(join(TMP, '.autopilot-pro', 'spec-changelog.md'), 'utf-8')
+    expect(log.trim().split('\n')).toHaveLength(1)
+    expect(log).toContain('line one')
   })
 })

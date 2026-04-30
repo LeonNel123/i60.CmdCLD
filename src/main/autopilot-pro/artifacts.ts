@@ -13,7 +13,10 @@
 // A change to an artifact's sha256 after approval auto-unapproves it. Callers
 // re-fetch via readArtifact + readState to detect this on each cycle.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'fs'
+import {
+  existsSync, mkdirSync, readFileSync, writeFileSync,
+  renameSync, unlinkSync, appendFileSync,
+} from 'fs'
 import { join, dirname } from 'path'
 import { createHash } from 'crypto'
 import type { ArtifactKind, ArtifactState } from './types'
@@ -171,4 +174,38 @@ export function reconcile(projectPath: string): Record<string, ArtifactState> {
   }
   if (dirty) writeState(projectPath, state)
   return state
+}
+
+/**
+ * Apply a spec-update DELTA: append a "## Updates (<ts>)" section to spec.md
+ * AND append a one-line entry to spec-changelog.md. Recomputes spec.md's
+ * sha256 and updates state.json — but PRESERVES approved=true (the delta is
+ * the application of an already-approved decision, not a fresh edit).
+ */
+export function appendSpecUpdate(projectPath: string, deltaBody: string): void {
+  const specPath = join(projectPath, PRO_DIR, 'spec.md')
+  const changelogPath = join(projectPath, PRO_DIR, 'spec-changelog.md')
+  mkdirSync(dirname(specPath), { recursive: true })
+
+  const ts = new Date().toISOString()
+  const block = `\n\n## Updates (${ts})\n\n${deltaBody}\n`
+  appendFileSync(specPath, block)
+
+  const flat = deltaBody.replace(/\s+/g, ' ').trim().slice(0, 100)
+  appendFileSync(changelogPath, `- ${ts} applied: ${flat}\n`)
+
+  // Recompute spec.md sha256 and update state.json — KEEP approved=true.
+  const newContent = readFileSync(specPath, 'utf-8')
+  const newSha = sha256(newContent)
+  const state = readState(projectPath)
+  const existing = state['spec.md']
+  state['spec.md'] = {
+    path: 'spec.md',
+    kind: 'spec',
+    approved: existing?.approved ?? false,
+    sha256: newSha,
+    approvedAt: existing?.approvedAt ?? null,
+    refineCount: existing?.refineCount ?? 0,
+  }
+  writeState(projectPath, state)
 }
