@@ -364,6 +364,10 @@ export class AutopilotProStateMachine {
           this.state.artifacts = readState(this.opts.projectPath)
           // Maybe advance stage automatically based on the new approval state.
           this.maybeAdvanceStage()
+          // Note: stage 'phase-review' is NOT advanced here — updatePhaseTracker
+          // on the NEXT settled cycle reads the now-approved review and decides
+          // whether to re-enter Stage 3 for the next phase, return to
+          // implementation, or move to final-review.
           const reply = `Approved: ${path}. ${result.why ?? ''} Proceed.`
           this.opts.writeToPty(this.opts.terminalId, reply + '\r')
           this.appendActivity('orchestrator-reply', `approved ${path}`)
