@@ -43,10 +43,10 @@ describe('autopilot-pro types', () => {
 
   it('Stage / ArtifactKind / MetaClassification are enum-like unions', () => {
     const stages: ProStage[] = ['discovery', 'planning', 'implementation', 'phase-review', 'final-review', 'done']
-    const kinds: ArtifactKind[] = ['spec', 'plan', 'impl-doc', 'review']
+    const kinds: ArtifactKind[] = ['spec', 'plan', 'impl-doc', 'review', 'final-review']
     const cls: MetaClassification[] = ['extend', 'done', 'human-required']
     expect(stages.length).toBe(6)
-    expect(kinds.length).toBe(4)
+    expect(kinds.length).toBe(5)
     expect(cls.length).toBe(3)
   })
 
