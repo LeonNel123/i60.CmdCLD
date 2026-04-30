@@ -17,6 +17,8 @@ import { getStatus as tsGetStatus, getServeStatus as tsGetServeStatus, startServ
 import { getGitStatus } from './git-status'
 import type { TerminalMeta } from './pty-manager'
 import { createAutopilot, type AutopilotHandle, type AutopilotState } from './autopilot'
+import { createAutopilotPro, type AutopilotProHandle, type AutopilotProOptions } from './autopilot-pro'
+import type { ProState } from './autopilot-pro/types'
 import type { AutopilotOptions } from './autopilot/types'
 
 // File logger for debugging startup issues
@@ -113,9 +115,17 @@ const newWindowIds = new Set<string>()
 // so the cascading close event after dialog-OK doesn't re-prompt.
 const confirmedClose = new WeakSet<BrowserWindow>()
 
-const autopilots = new Map<string, AutopilotHandle>()  // keyed by terminalId
+const autopilots = new Map<string, AutopilotHandle>()  // keyed by terminalId — Classic mode
+const autopilotPros = new Map<string, AutopilotProHandle>()  // keyed by terminalId — PRO mode
 
 function broadcastAutopilotUpdate(terminalId: string, state: AutopilotState): void {
+  for (const wcId of registry.list().map((w) => w.id)) {
+    const wc = registry.getWebContents(wcId)
+    if (wc) wc.send('autopilot:update', terminalId, state)
+  }
+}
+
+function broadcastAutopilotProUpdate(terminalId: string, state: ProState): void {
   for (const wcId of registry.list().map((w) => w.id)) {
     const wc = registry.getWebContents(wcId)
     if (wc) wc.send('autopilot:update', terminalId, state)
@@ -496,22 +506,70 @@ ipcMain.handle('autopilot:start', async (_event, args: { terminalId: string; pro
 
 ipcMain.handle('autopilot:pause', (_event, terminalId: string) => {
   autopilots.get(terminalId)?.pause()
+  autopilotPros.get(terminalId)?.pause()
 })
 ipcMain.handle('autopilot:resume', (_event, terminalId: string) => {
   autopilots.get(terminalId)?.resume()
+  autopilotPros.get(terminalId)?.resume()
 })
 ipcMain.handle('autopilot:stop', (_event, terminalId: string) => {
   autopilots.get(terminalId)?.stop()
   autopilots.delete(terminalId)
+  autopilotPros.get(terminalId)?.stop()
+  autopilotPros.delete(terminalId)
 })
 ipcMain.handle('autopilot:approveGoal', (_event, terminalId: string) => {
   autopilots.get(terminalId)?.approveGoal()
+  // PRO doesn't use a goal-approve gate — approval is via DECISION_SHAPE: approve.
 })
 ipcMain.handle('autopilot:replyToWaiting', (_event, terminalId: string, text: string) => {
   autopilots.get(terminalId)?.replyToWaiting(text)
+  autopilotPros.get(terminalId)?.replyToWaiting(text)
 })
 ipcMain.handle('autopilot:getStatus', (_event, terminalId: string) => {
+  // Prefer PRO state if a PRO instance is active for this terminal; else Classic.
+  const pro = autopilotPros.get(terminalId)
+  if (pro) return pro.getState()
   return autopilots.get(terminalId)?.state ?? null
+})
+
+// ---- PRO-specific handlers ----
+
+ipcMain.handle('autopilot-pro:start', async (_event, args: { terminalId: string; projectPath: string; freeTextIdea: string; costCapUsd: number }) => {
+  const provider = settings.get('autopilotApiProvider')
+  const apiKey = readAutopilotKey(provider)
+  if (!apiKey) return { ok: false, error: `No API key for ${provider}. Add one in Settings.` }
+  if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId)) {
+    return { ok: false, error: 'Autopilot already running for this terminal.' }
+  }
+
+  const opts: AutopilotProOptions = {
+    terminalId: args.terminalId,
+    projectPath: args.projectPath,
+    freeTextIdea: args.freeTextIdea,
+    costCapUsd: args.costCapUsd,
+    apiProvider: provider,
+    apiKey,
+    plannerModel: settings.get('autopilotPlannerModel'),
+    writeToPty: (terminalId, data) => { ptyManager.write(terminalId, data) },
+    onPtyData: (terminalId, listener) => ptyManager.subscribeOutput(terminalId, listener),
+    onUpdate: (state) => broadcastAutopilotProUpdate(args.terminalId, state),
+  }
+  const handle = createAutopilotPro(opts)
+  autopilotPros.set(args.terminalId, handle)
+  await handle.start()
+  return { ok: true }
+})
+
+ipcMain.handle('autopilot-pro:runMeta', async (_event, terminalId: string) => {
+  const handle = autopilotPros.get(terminalId)
+  if (!handle) return { ok: false, error: 'No PRO autopilot running for this terminal.' }
+  try {
+    const result = await handle.runMeta()
+    return { ok: true, result }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? 'meta call failed' }
+  }
 })
 
 // Keep the app process from being suspended while remote access is on, so a

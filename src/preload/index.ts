@@ -190,6 +190,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('autopilot:keyClear', provider),
   autopilotStart: (args: { terminalId: string; projectPath: string; freeTextIdea: string; costCapUsd: number; maxIterations: number }): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('autopilot:start', args),
+  autopilotProStart: (args: { terminalId: string; projectPath: string; freeTextIdea: string; costCapUsd: number }): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('autopilot-pro:start', args),
+  autopilotProRunMeta: (terminalId: string): Promise<{ ok: boolean; result?: unknown; error?: string }> =>
+    ipcRenderer.invoke('autopilot-pro:runMeta', terminalId),
   autopilotPause: (terminalId: string): Promise<void> =>
     ipcRenderer.invoke('autopilot:pause', terminalId),
   autopilotResume: (terminalId: string): Promise<void> =>

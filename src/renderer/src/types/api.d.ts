@@ -105,6 +105,8 @@ export interface ElectronAPI {
   autopilotKeySet: (provider: 'anthropic' | 'openrouter', key: string) => Promise<void>
   autopilotKeyClear: (provider: 'anthropic' | 'openrouter') => Promise<void>
   autopilotStart: (args: { terminalId: string; projectPath: string; freeTextIdea: string; costCapUsd: number; maxIterations: number }) => Promise<{ ok: boolean; error?: string }>
+  autopilotProStart: (args: { terminalId: string; projectPath: string; freeTextIdea: string; costCapUsd: number }) => Promise<{ ok: boolean; error?: string }>
+  autopilotProRunMeta: (terminalId: string) => Promise<{ ok: boolean; result?: unknown; error?: string }>
   autopilotPause: (terminalId: string) => Promise<void>
   autopilotResume: (terminalId: string) => Promise<void>
   autopilotStop: (terminalId: string) => Promise<void>
