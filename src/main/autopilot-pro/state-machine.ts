@@ -217,7 +217,10 @@ export class AutopilotProStateMachine {
   // ---- public control ----
 
   async start(): Promise<void> {
-    // Restore runtime state from disk if present and valid
+    this.markerFallbackPromptCount = 0
+
+    // Restore runtime state from disk if present and valid (must come after
+    // field resets above so restored values take precedence)
     if (this.runtimeJsonEnabled) {
       const rt = loadRuntime(this.opts.projectPath, this.state.artifacts)
       if (rt) {
@@ -236,7 +239,6 @@ export class AutopilotProStateMachine {
       }
     }
 
-    this.markerFallbackPromptCount = 0
     this.detachPty = this.opts.onPtyData(this.opts.terminalId, (data) => {
       this.armSilenceTimer()
       this.outputVolumeSinceReset += data.length
