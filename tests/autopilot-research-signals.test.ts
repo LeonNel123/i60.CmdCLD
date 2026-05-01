@@ -37,6 +37,13 @@ describe('detectResearchSignals', () => {
     expect(r!.comparisons.length).toBeGreaterThan(0)
   })
 
+  it('GitHub repo regex requires a known suffix (no false positives on plain paths)', () => {
+    // 'another/proj' has no .git or /blob/ etc. suffix — must NOT match
+    // 'a/b' would also be caught by a too-permissive regex; stays absent
+    const r = detectResearchSignals('look at another/proj and a/b for examples')
+    expect(r).toBeNull()
+  })
+
   it('returns null for plain ideas', () => {
     expect(detectResearchSignals('build a todo app')).toBeNull()
     expect(detectResearchSignals('add login to my project')).toBeNull()

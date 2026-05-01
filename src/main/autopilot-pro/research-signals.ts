@@ -7,7 +7,7 @@ export interface ResearchSignals {
 }
 
 const URL_RE = /https?:\/\/[^\s)>"']+/g
-const REPO_RE = /\b([\w][\w-]*)\/([\w][\w.-]*?)(?=\.git\b|\/(?:blob|tree|issues|pulls|releases)\b|\b)/g
+const REPO_RE = /\b([\w][\w-]*)\/([\w][\w.-]*?)(?=\.git\b|\/(?:blob|tree|issues|pulls|releases)\b)/g
 const KEYWORDS = ['research', 'investigate', 'compare', 'evaluate', 'survey', 'study', 'analyze']
 const KEYWORD_RE = new RegExp(`\\b(?:${KEYWORDS.join('|')})\\b`, 'gi')
 const COMPARISON_RE = /\b([\w-]+)\s+(?:vs\.?|versus)\s+([\w-]+)\b/gi
