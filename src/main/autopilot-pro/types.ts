@@ -7,7 +7,7 @@ import type {
 
 // ----- Stages -----
 
-export type ProStage = 'discovery' | 'planning' | 'implementation' | 'phase-review' | 'final-review' | 'done'
+export type ProStage = 'research' | 'discovery' | 'planning' | 'implementation' | 'phase-review' | 'final-review' | 'done'
 
 // ----- Decision shapes -----
 
@@ -19,14 +19,15 @@ export type DecisionShape =
   | 'validate'
   | 'transition'
   | 'decide-with-rationale'
+  | 'research'
 
 export const ALL_DECISION_SHAPES: DecisionShape[] = [
-  'reply', 'choose', 'approve', 'route', 'validate', 'transition', 'decide-with-rationale',
+  'reply', 'choose', 'approve', 'route', 'validate', 'transition', 'decide-with-rationale', 'research',
 ]
 
 // ----- Artifacts -----
 
-export type ArtifactKind = 'spec' | 'plan' | 'impl-doc' | 'review' | 'final-review' | 'adr'
+export type ArtifactKind = 'spec' | 'plan' | 'impl-doc' | 'review' | 'final-review' | 'adr' | 'research-summary'
 
 export interface ArtifactState {
   path: string
@@ -48,6 +49,9 @@ export interface ProMarker extends DoerMarker {
   delta?: string                  // DELTA — when proStatus=spec-update-request
   subagentEtaMin?: number         // SUBAGENT_ETA_MIN — when proStatus=subagent-running
   optionsRationale?: { option: string; pros: string[]; cons: string[] }[]   // OPTIONS_RATIONALE — when shape=decide-with-rationale
+  researchTopics?: { slug: string; query: string; sources?: string[]; force?: boolean }[]
+  researchTopic?: string
+  researchForce?: boolean
 }
 
 // ----- Settled snapshot for PRO (just retypes marker) -----
@@ -74,6 +78,23 @@ export interface ProState {
   liveStatus: string | null
   lastMarker: { kind: string; subgoalId?: string; receivedAt: number } | null
   permissionRequest: { text: string; detectedAt: number } | null
+  researchInFlight?: {
+    triggerStage: ProStage
+    pendingTopics: string[]
+    spendByTopic: Record<string, number>
+    topicBudgets: Record<string, number>
+  }
+  researchHistory?: { slug: string; costUsd: number; outcome: 'written' | 'declined' | 'overrun' | 'reused' }[]
+}
+
+// ----- Research topic decision -----
+
+export interface ResearchTopicDecision {
+  slug: string
+  approve: boolean
+  budgetUsd?: number
+  reuse?: string | null
+  reason?: string
 }
 
 // ----- Decision results (one per shape) -----
@@ -88,6 +109,7 @@ export type ProDecideResult =
   | { shape: 'validate';   verdict: 'research'; query: string }
   | { shape: 'transition'; action: 'advance' | 'cycle' | 'final-review'; why: string }
   | { shape: 'decide-with-rationale'; recommendation: string; why: string }
+  | { shape: 'research'; topics: ResearchTopicDecision[] }
 
 // ----- Meta-orchestrator output -----
 
@@ -119,6 +141,7 @@ export interface ProDecideInput {
   assumption?: string           // for shape=validate
   delta?: string                // for transition spec-update
   optionsRationale?: { option: string; pros: string[]; cons: string[] }[]   // for shape=decide-with-rationale
+  researchTopics?: { slug: string; query: string; sources?: string[]; force?: boolean }[]
 }
 
 // ----- ApiClient extension for PRO -----
@@ -215,6 +238,9 @@ export interface AutopilotProOptions {
   maxDoerOutputPerReset?: number   // default 60000
   runtimeJson?: boolean            // default true; pass false in tests to disable runtime.json save/load
   budgetTracker?: boolean          // default true; pass false in tests to disable cross-run budget tracking
+  researchEnabled?: boolean
+  skipResearchStage?: boolean
+  researchTopicBudgetUsd?: number
   // Plumbing
   writeToPty: (terminalId: string, data: string) => void
   onPtyData: (terminalId: string, listener: (data: string) => void) => () => void
