@@ -214,6 +214,7 @@ export interface AutopilotProOptions {
   plannerModel: string
   maxDoerOutputPerReset?: number   // default 60000
   runtimeJson?: boolean            // default true; pass false in tests to disable runtime.json save/load
+  budgetTracker?: boolean          // default true; pass false in tests to disable cross-run budget tracking
   // Plumbing
   writeToPty: (terminalId: string, data: string) => void
   onPtyData: (terminalId: string, listener: (data: string) => void) => () => void

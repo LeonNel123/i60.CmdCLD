@@ -12,6 +12,7 @@ import { makeApiClient } from './api-client'
 import { DOER_SYSTEM_PROMPT, buildWizardKickoff } from './prompts'
 import { debugCall } from './debug'
 import { saveRuntimeClassic, loadRuntimeClassic } from './runtime-state'
+import { recordSpend } from './budget-tracker'
 
 export class AutopilotStateMachine {
   state: AutopilotState
@@ -31,6 +32,7 @@ export class AutopilotStateMachine {
   private silenceTimer: ReturnType<typeof setTimeout> | null = null
   private maxSilenceMs: number
   private runtimeJsonEnabled: boolean
+  private budgetTrackerEnabled: boolean
 
   constructor(opts: AutopilotOptions, apiOverride?: ApiClient, ptyIdleMs = 1500, maxSilenceMs = 30 * 60 * 1000) {
     this.opts = opts
@@ -40,6 +42,7 @@ export class AutopilotStateMachine {
     })
     this.maxSilenceMs = maxSilenceMs
     this.runtimeJsonEnabled = opts.runtimeJson !== false
+    this.budgetTrackerEnabled = opts.budgetTracker !== false
 
     this.state = {
       phase: 'idle',
@@ -259,6 +262,20 @@ export class AutopilotStateMachine {
     this.cost.add(out.costUsd)
     this.state.costUsd = this.cost.totalUsd
 
+    if (this.budgetTrackerEnabled && out.costUsd > 0) {
+      const budgetSnap = recordSpend(this.opts.projectPath, out.costUsd)
+      if (budgetSnap.capReached) {
+        const reason = budgetSnap.capReachedReason ?? 'global'
+        this.state.liveStatus = `daily ${reason} budget cap reached ($${budgetSnap.globalSpent.toFixed(2)} / $${budgetSnap.globalCap.toFixed(2)} global; $${budgetSnap.projectSpent.toFixed(2)} / $${budgetSnap.projectCap.toFixed(2)} project)`
+        this.appendActivity('cost-threshold', `daily ${reason} cap reached`)
+        this.transition('paused', `daily ${reason} budget cap reached`)
+        this.notify()
+        return
+      } else if (budgetSnap.warningThreshold) {
+        this.appendActivity('cost-threshold', `daily budget warning: $${budgetSnap.globalSpent.toFixed(2)} / $${budgetSnap.globalCap.toFixed(2)}`)
+      }
+    }
+
     if (this.cost.isOverCap()) {
       this.transition('paused', 'cost cap reached')
       return
@@ -364,6 +381,20 @@ export class AutopilotStateMachine {
     }
     this.cost.add(out.costUsd)
     this.state.costUsd = this.cost.totalUsd
+
+    if (this.budgetTrackerEnabled && out.costUsd > 0) {
+      const budgetSnap = recordSpend(this.opts.projectPath, out.costUsd)
+      if (budgetSnap.capReached) {
+        const reason = budgetSnap.capReachedReason ?? 'global'
+        this.state.liveStatus = `daily ${reason} budget cap reached ($${budgetSnap.globalSpent.toFixed(2)} / $${budgetSnap.globalCap.toFixed(2)} global; $${budgetSnap.projectSpent.toFixed(2)} / $${budgetSnap.projectCap.toFixed(2)} project)`
+        this.appendActivity('cost-threshold', `daily ${reason} cap reached`)
+        this.transition('paused', `daily ${reason} budget cap reached`)
+        this.notify()
+        return
+      } else if (budgetSnap.warningThreshold) {
+        this.appendActivity('cost-threshold', `daily budget warning: $${budgetSnap.globalSpent.toFixed(2)} / $${budgetSnap.globalCap.toFixed(2)}`)
+      }
+    }
 
     if (out.result.kind === 'retry') {
       this.opts.writeToPty(this.opts.terminalId, out.result.instruction + '\r')

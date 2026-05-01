@@ -27,6 +27,7 @@ import { parsePhases, currentPhase, phaseDoneFromTasks } from './phases'
 import { DOER_SYSTEM_PROMPT_PRO, stage0Kickoff, stage3Kickoff, stage4Kickoff } from './prompts'
 import { runResetSequencePro } from './reset'
 import { saveRuntime, loadRuntime } from './runtime-state'
+import { recordSpend } from '../autopilot/budget-tracker'
 import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 
@@ -138,6 +139,7 @@ export class AutopilotProStateMachine {
   private settleResolvers: (() => void)[] = []
   private maxDoerOutputPerReset: number
   private runtimeJsonEnabled: boolean
+  private budgetTrackerEnabled: boolean
 
   constructor(opts: AutopilotProOptions, apiOverride?: ApiClient, ptyIdleMs = 1500, maxSilenceMs = DEFAULT_MAX_SILENCE_MS) {
     this.opts = opts
@@ -149,6 +151,7 @@ export class AutopilotProStateMachine {
     this.baseMaxSilenceMs = maxSilenceMs
     this.maxDoerOutputPerReset = opts.maxDoerOutputPerReset ?? 60000
     this.runtimeJsonEnabled = opts.runtimeJson !== false
+    this.budgetTrackerEnabled = opts.budgetTracker !== false
 
     // Reconcile artifact approval state on startup (auto-unapprove drifted files).
     const artifacts = reconcile(opts.projectPath)
@@ -406,6 +409,20 @@ export class AutopilotProStateMachine {
     this.cost.add(out.costUsd)
     this.state.costUsd = this.cost.totalUsd
     this.state.cycleCount++
+
+    if (this.budgetTrackerEnabled && out.costUsd > 0) {
+      const budgetSnap = recordSpend(this.opts.projectPath, out.costUsd)
+      if (budgetSnap.capReached) {
+        const reason = budgetSnap.capReachedReason ?? 'global'
+        this.state.liveStatus = `daily ${reason} budget cap reached ($${budgetSnap.globalSpent.toFixed(2)} / $${budgetSnap.globalCap.toFixed(2)} global; $${budgetSnap.projectSpent.toFixed(2)} / $${budgetSnap.projectCap.toFixed(2)} project)`
+        this.appendActivity('cost-threshold', `daily ${reason} cap reached`)
+        this.transition('discovery', `daily ${reason} budget cap reached`)
+        this.notify()
+        return
+      } else if (budgetSnap.warningThreshold) {
+        this.appendActivity('cost-threshold', `daily budget warning: $${budgetSnap.globalSpent.toFixed(2)} / $${budgetSnap.globalCap.toFixed(2)}`)
+      }
+    }
 
     // Apply principles enforcement to approve verdicts.
     let result = out.result

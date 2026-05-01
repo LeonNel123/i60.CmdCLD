@@ -102,6 +102,7 @@ function makeSm(idea: string, api: ApiClient, writes?: string[], maxSilenceMs?: 
     onPtyData: () => () => {},
     onUpdate: () => {},
     runtimeJson: false,
+    budgetTracker: false,
   }
   // Default maxSilenceMs to a huge value (24h) so existing tests aren't
   // affected by the silence-escalate guard. Tests that exercise the guard
