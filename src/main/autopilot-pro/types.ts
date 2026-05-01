@@ -18,14 +18,15 @@ export type DecisionShape =
   | 'route'
   | 'validate'
   | 'transition'
+  | 'decide-with-rationale'
 
 export const ALL_DECISION_SHAPES: DecisionShape[] = [
-  'reply', 'choose', 'approve', 'route', 'validate', 'transition',
+  'reply', 'choose', 'approve', 'route', 'validate', 'transition', 'decide-with-rationale',
 ]
 
 // ----- Artifacts -----
 
-export type ArtifactKind = 'spec' | 'plan' | 'impl-doc' | 'review' | 'final-review'
+export type ArtifactKind = 'spec' | 'plan' | 'impl-doc' | 'review' | 'final-review' | 'adr'
 
 export interface ArtifactState {
   path: string
@@ -46,6 +47,7 @@ export interface ProMarker extends DoerMarker {
   assumption?: string             // ASSUMPTION — when shape=validate
   delta?: string                  // DELTA — when proStatus=spec-update-request
   subagentEtaMin?: number         // SUBAGENT_ETA_MIN — when proStatus=subagent-running
+  optionsRationale?: { option: string; pros: string[]; cons: string[] }[]   // OPTIONS_RATIONALE — when shape=decide-with-rationale
 }
 
 // ----- Settled snapshot for PRO (just retypes marker) -----
@@ -85,6 +87,7 @@ export type ProDecideResult =
   | { shape: 'validate';   verdict: 'verified' }
   | { shape: 'validate';   verdict: 'research'; query: string }
   | { shape: 'transition'; action: 'advance' | 'cycle' | 'final-review'; why: string }
+  | { shape: 'decide-with-rationale'; recommendation: string; why: string }
 
 // ----- Meta-orchestrator output -----
 
@@ -115,6 +118,7 @@ export interface ProDecideInput {
   artifactContent?: string      // for shape=approve, the artifact body
   assumption?: string           // for shape=validate
   delta?: string                // for transition spec-update
+  optionsRationale?: { option: string; pros: string[]; cons: string[] }[]   // for shape=decide-with-rationale
 }
 
 // ----- ApiClient extension for PRO -----
@@ -209,6 +213,7 @@ export interface AutopilotProOptions {
   apiKey: string
   plannerModel: string
   maxDoerOutputPerReset?: number   // default 60000
+  runtimeJson?: boolean            // default true; pass false in tests to disable runtime.json save/load
   // Plumbing
   writeToPty: (terminalId: string, data: string) => void
   onPtyData: (terminalId: string, listener: (data: string) => void) => () => void

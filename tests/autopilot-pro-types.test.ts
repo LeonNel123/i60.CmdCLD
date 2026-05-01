@@ -8,9 +8,9 @@ import type {
 } from '../src/main/autopilot-pro/types'
 
 describe('autopilot-pro types', () => {
-  it('exports all six decision shapes', () => {
+  it('exports all seven decision shapes', () => {
     expect(ALL_DECISION_SHAPES).toEqual([
-      'reply', 'choose', 'approve', 'route', 'validate', 'transition',
+      'reply', 'choose', 'approve', 'route', 'validate', 'transition', 'decide-with-rationale',
     ])
   })
 
@@ -43,10 +43,10 @@ describe('autopilot-pro types', () => {
 
   it('Stage / ArtifactKind / MetaClassification are enum-like unions', () => {
     const stages: ProStage[] = ['discovery', 'planning', 'implementation', 'phase-review', 'final-review', 'done']
-    const kinds: ArtifactKind[] = ['spec', 'plan', 'impl-doc', 'review', 'final-review']
+    const kinds: ArtifactKind[] = ['spec', 'plan', 'impl-doc', 'review', 'final-review', 'adr']
     const cls: MetaClassification[] = ['extend', 'done', 'human-required']
     expect(stages.length).toBe(6)
-    expect(kinds.length).toBe(5)
+    expect(kinds.length).toBe(6)
     expect(cls.length).toBe(3)
   })
 

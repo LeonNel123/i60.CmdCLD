@@ -157,6 +157,7 @@ export interface AutopilotOptions {
   apiProvider: ApiProvider
   apiKey: string
   plannerModel: string
+  runtimeJson?: boolean            // default true; pass false in tests to disable runtime.json save/load
   // Plumbing — provided by the host (CmdCLD main process)
   writeToPty: (terminalId: string, data: string) => void
   onPtyData: (terminalId: string, listener: (data: string) => void) => () => void
