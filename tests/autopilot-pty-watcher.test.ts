@@ -252,3 +252,50 @@ describe('PtyWatcher force-settle (Wave 3.3)', () => {
     vi.useRealTimers()
   })
 })
+
+describe('PtyWatcher force-settle callbacks (Wave 3.4)', () => {
+  const FORCE_SETTLE_MS = 100
+
+  it('fires onForceSettleArmed with the correct fire-time when allStructured fails', async () => {
+    vi.useFakeTimers()
+    const START_TIME = new Date('2026-04-30T20:00:00.000Z').getTime()
+    vi.setSystemTime(START_TIME)
+    const armed: number[] = []
+    const w = new PtyWatcher({
+      idleMs: IDLE_MS,
+      nudgeMs: NUDGE_MS,
+      forceSettleMs: FORCE_SETTLE_MS,
+      onSettle: () => {},
+      onForceSettleArmed: (firesAt) => armed.push(firesAt),
+    })
+    w.feed('[ORCH:WAITING] q?\n')
+    w.feed('chrome at column 0\n')
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(armed).toHaveLength(1)
+    // The idle timer fires at exactly IDLE_MS; firesAt = (START_TIME + IDLE_MS) + FORCE_SETTLE_MS.
+    expect(armed[0]).toBe(START_TIME + IDLE_MS + FORCE_SETTLE_MS)
+    vi.useRealTimers()
+  })
+
+  it('fires onForceSettleCanceled when new bytes arrive after arming', async () => {
+    vi.useFakeTimers()
+    let armedCount = 0
+    let canceledCount = 0
+    const w = new PtyWatcher({
+      idleMs: IDLE_MS,
+      nudgeMs: NUDGE_MS,
+      forceSettleMs: FORCE_SETTLE_MS,
+      onSettle: () => {},
+      onForceSettleArmed: () => armedCount++,
+      onForceSettleCanceled: () => canceledCount++,
+    })
+    w.feed('[ORCH:WAITING] q?\n')
+    w.feed('chrome at column 0\n')
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(armedCount).toBe(1)
+    expect(canceledCount).toBe(0)
+    w.feed('more bytes\n')   // cancels force-settle
+    expect(canceledCount).toBe(1)
+    vi.useRealTimers()
+  })
+})

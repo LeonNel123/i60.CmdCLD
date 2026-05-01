@@ -5,6 +5,8 @@ interface Options {
   nudgeMs?: number          // currently informational; consumer handles nudging
   forceSettleMs?: number    // when allStructured fails after a marker, settle anyway after this many ms with no new bytes (default 3000; 0 disables)
   onSettle: (snapshot: SettledSnapshot) => void
+  onForceSettleArmed?: (firesAt: number) => void   // unix ms when force-settle will fire
+  onForceSettleCanceled?: () => void
 }
 
 const ANSI_RE = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b[PX^_].*?\x1b\\|\x1b\][^\x1b]*\x1b\\/g
@@ -132,6 +134,7 @@ export class PtyWatcher {
   private nudgeMs: number
   private forceSettleMs: number
   private onSettle: Options['onSettle']
+  private opts: Options
   private idleTimer: ReturnType<typeof setTimeout> | null = null
   private forceSettleTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -140,19 +143,28 @@ export class PtyWatcher {
     this.nudgeMs = opts.nudgeMs ?? 10000
     this.forceSettleMs = opts.forceSettleMs ?? 3000
     this.onSettle = opts.onSettle
+    this.opts = opts
   }
 
   feed(chunk: string): void {
     this.buffer += chunk
     if (this.idleTimer) clearTimeout(this.idleTimer)
-    if (this.forceSettleTimer) { clearTimeout(this.forceSettleTimer); this.forceSettleTimer = null }
+    if (this.forceSettleTimer) {
+      clearTimeout(this.forceSettleTimer)
+      this.forceSettleTimer = null
+      this.opts.onForceSettleCanceled?.()
+    }
     this.idleTimer = setTimeout(() => this.checkSettled(), this.idleMs)
   }
 
   reset(): void {
     this.buffer = ''
     if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null }
-    if (this.forceSettleTimer) { clearTimeout(this.forceSettleTimer); this.forceSettleTimer = null }
+    if (this.forceSettleTimer) {
+      clearTimeout(this.forceSettleTimer)
+      this.forceSettleTimer = null
+      this.opts.onForceSettleCanceled?.()
+    }
   }
 
   private checkSettled(): void {
@@ -173,6 +185,7 @@ export class PtyWatcher {
       // marker anyway. New bytes via feed() cancel the timer.
       if (this.forceSettleMs > 0 && !this.forceSettleTimer) {
         this.forceSettleTimer = setTimeout(() => this.forceSettle(), this.forceSettleMs)
+        this.opts.onForceSettleArmed?.(Date.now() + this.forceSettleMs)
       }
       return
     }
