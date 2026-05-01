@@ -63,13 +63,17 @@ STRUCTURED STATUS REPORT (v2 — every settled response):
 
   [ORCH:WAITING|PROGRESS|GOAL_READY|STUCK]
   STATUS: waiting | progress | goal_ready | stuck | subagent-running | spec-update-request
-  DECISION_SHAPE: reply | choose | approve | route | validate | transition
+  DECISION_SHAPE: reply | choose | approve | route | validate | transition | decide-with-rationale
   ARTIFACT: <path>                      (when DECISION_SHAPE=approve)
   OPTIONS:                              (when DECISION_SHAPE=choose)
     - A: <description>
     - B: <description>
     - C: <description>
   ASSUMPTION: <claim>                   (when DECISION_SHAPE=validate)
+  OPTIONS_RATIONALE:                    (when DECISION_SHAPE=decide-with-rationale)
+    - <option>
+      pros: <comma-sep>
+      cons: <comma-sep>
   DELTA: |                              (when STATUS=spec-update-request)
     <multi-line patch description>
   SUBAGENT_ETA_MIN: <n>                 (when STATUS=subagent-running)
@@ -92,6 +96,7 @@ Choose DECISION_SHAPE based on what you actually need from the orchestrator:
   route       — decision-point: should this go through a particular skill (brainstorming, writing-plans, code-reviewer)?
   validate    — you depend on an external claim; the orchestrator either confirms it or routes to research
   transition  — phase or stage boundary reached; the orchestrator either advances or cycles
+  decide-with-rationale — you face an architectural choice with multiple options; you provide pros/cons and the orchestrator picks one. Use this when the call needs documenting (e.g. before writing an ADR).
 
 If you forget DECISION_SHAPE the orchestrator defaults to 'reply' (classic behaviour) — but the cleaner the shape, the cheaper and more deterministic the orchestrator's response.
 
@@ -176,6 +181,15 @@ Output ONE JSON object on its own line:
   {"shape":"transition","action":"advance"|"cycle"|"final-review","why":"<≤1 sentence>"}
 `
 
+const DECIDE_WITH_RATIONALE_SYSTEM = `You are the Orchestrator's planner for a 'decide-with-rationale' decision.
+The Doer enumerated multiple architectural options with pros/cons. Pick ONE option and explain
+your choice in 2-3 sentences. Apply the principles in the cached prefix; prefer YAGNI (narrowest
+scope that meets the requirements).
+
+Output ONE JSON object on its own line, no surrounding prose:
+  {"shape":"decide-with-rationale","recommendation":"<the chosen option string>","why":"<≤2 sentences>"}
+`
+
 const SHAPE_TO_SYSTEM: Record<DecisionShape, string> = {
   reply: REPLY_SYSTEM,
   choose: CHOOSE_SYSTEM,
@@ -183,6 +197,7 @@ const SHAPE_TO_SYSTEM: Record<DecisionShape, string> = {
   route: ROUTE_SYSTEM,
   validate: VALIDATE_SYSTEM,
   transition: TRANSITION_SYSTEM,
+  'decide-with-rationale': DECIDE_WITH_RATIONALE_SYSTEM,
 }
 
 // ----- buildPlannerPrompt -----
@@ -231,6 +246,10 @@ export function buildPlannerPrompt(input: ProDecideInput): PlannerPromptParts {
   if (input.artifactContent) shapeExtras.push(`Artifact content (excerpt):\n${input.artifactContent.slice(0, 2000)}`)
   if (input.assumption) shapeExtras.push(`Assumption: ${input.assumption}`)
   if (input.delta) shapeExtras.push(`Delta:\n${input.delta}`)
+  if (input.optionsRationale?.length) {
+    const lines = input.optionsRationale.map((o) => `  - ${o.option}\n    pros: ${o.pros.join(', ')}\n    cons: ${o.cons.join(', ')}`)
+    shapeExtras.push(`Options with rationale:\n${lines.join('\n')}`)
+  }
 
   const structuredFields: string[] = []
   if (m.filesChanged?.length) structuredFields.push(`Files changed: ${m.filesChanged.join(', ')}`)

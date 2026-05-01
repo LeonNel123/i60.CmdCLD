@@ -80,6 +80,10 @@ function validate(shape: DecisionShape, obj: any): ProDecideResult | null {
     case 'transition':
       if (obj.action !== 'advance' && obj.action !== 'cycle' && obj.action !== 'final-review') return null
       return { shape: 'transition', action: obj.action, why: String(obj.why ?? '') }
+
+    case 'decide-with-rationale':
+      if (typeof obj.recommendation !== 'string' || !obj.recommendation) return null
+      return { shape: 'decide-with-rationale', recommendation: String(obj.recommendation), why: String(obj.why ?? '') }
   }
 }
 

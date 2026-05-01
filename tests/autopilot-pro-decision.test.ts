@@ -151,6 +151,27 @@ describe('parseProDecision', () => {
   })
 })
 
+describe('decide-with-rationale shape parser (Wave 1.5)', () => {
+  it('parses well-formed JSON', () => {
+    const result = parseProDecision('decide-with-rationale', '{"shape":"decide-with-rationale","recommendation":"Option A","why":"simpler"}')
+    expect(result.shape).toBe('decide-with-rationale')
+    if (result.shape === 'decide-with-rationale') {
+      expect(result.recommendation).toBe('Option A')
+      expect(result.why).toBe('simpler')
+    }
+  })
+
+  it('falls back to reply when JSON is malformed', () => {
+    const result = parseProDecision('decide-with-rationale', 'not json')
+    expect(result.shape).toBe('reply')
+  })
+
+  it('falls back when recommendation field missing', () => {
+    const result = parseProDecision('decide-with-rationale', '{"shape":"decide-with-rationale","why":"x"}')
+    expect(result.shape).toBe('reply')
+  })
+})
+
 describe('decidePro', () => {
   function fakeClient(chatResponse: string, tokens = 100): ApiClient {
     return {

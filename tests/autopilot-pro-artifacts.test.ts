@@ -237,6 +237,19 @@ line3`)
   })
 })
 
+describe('relativePath/inferArtifactKind for ADR (Wave 1.5)', () => {
+  it("relativePath('adr', '0001-foo') returns 'docs/decisions/0001-foo.md'", () => {
+    // The relativePath function is internal; test via writeArtifact + readArtifact
+    writeArtifact(TMP, 'adr', '# ADR-0001: Foo\n\n## Status\nAccepted\n\n## Context\nx\n\n## Decision\nx\n\n## Consequences\nx\n', '0001-foo')
+    expect(existsSync(join(TMP, 'docs', 'decisions', '0001-foo.md'))).toBe(true)
+    expect(readArtifact(TMP, 'adr', '0001-foo').content).toContain('ADR-0001')
+  })
+
+  it('throws when ADR used without phaseId', () => {
+    expect(() => writeArtifact(TMP, 'adr', 'x')).toThrow()
+  })
+})
+
 describe('state.json corrupt-file backups (Wave 3.6)', () => {
   it('backs up state.json before resetting on parse error', () => {
     mkdirSync(join(TMP, '.autopilot-pro'), { recursive: true })

@@ -36,10 +36,15 @@ function relativePath(kind: ArtifactKind, phaseId?: string): string {
       if (!phaseId) throw new Error(`artifact kind "review" requires phaseId`)
       return `reviews/${phaseId}.md`
     case 'final-review': return 'final-review.md'
+    case 'adr':
+      if (!phaseId) throw new Error(`artifact kind "adr" requires phaseId (the NNNN-slug)`)
+      return `docs/decisions/${phaseId}.md`
   }
 }
 
 function absPath(projectPath: string, kind: ArtifactKind, phaseId?: string): string {
+  // ADRs live at <project>/docs/decisions/, NOT inside .autopilot-pro/.
+  if (kind === 'adr') return join(projectPath, relativePath(kind, phaseId))
   return join(projectPath, PRO_DIR, relativePath(kind, phaseId))
 }
 
@@ -185,7 +190,10 @@ export function reconcile(projectPath: string): Record<string, ArtifactState> {
   const state = readState(projectPath)
   let dirty = false
   for (const [rel, entry] of Object.entries(state)) {
-    const path = join(projectPath, PRO_DIR, rel)
+    // ADRs live at <project>/docs/decisions/, NOT inside .autopilot-pro/.
+    const path = entry.kind === 'adr'
+      ? join(projectPath, rel)
+      : join(projectPath, PRO_DIR, rel)
     if (!existsSync(path)) continue
     const current = sha256(readFileSync(path, 'utf-8'))
     if (entry.sha256 !== current) {
