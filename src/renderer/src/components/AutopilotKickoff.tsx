@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface Props {
   terminalId: string
@@ -16,6 +16,15 @@ export function AutopilotKickoff({ terminalId, projectPath, defaultCostCap, defa
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<'classic' | 'pro'>('classic')
+  const [artifacts, setArtifacts] = useState<{ hasClassic: boolean; hasPro: boolean }>({ hasClassic: false, hasPro: false })
+
+  useEffect(() => {
+    let cancelled = false
+    void window.api.autopilotProbeArtifacts(projectPath).then((result) => {
+      if (!cancelled) setArtifacts(result)
+    })
+    return () => { cancelled = true }
+  }, [projectPath])
 
   const start = async () => {
     if (!idea.trim()) return
@@ -26,6 +35,20 @@ export function AutopilotKickoff({ terminalId, projectPath, defaultCostCap, defa
         })
       : await window.api.autopilotStart({
           terminalId, projectPath, freeTextIdea: idea, costCapUsd: costCap, maxIterations: maxIter,
+        })
+    setBusy(false)
+    if (!res.ok) { setError(res.error ?? 'failed'); return }
+    onStarted()
+  }
+
+  const resume = async () => {
+    setBusy(true); setError(null)
+    const res = mode === 'pro'
+      ? await window.api.autopilotProStart({
+          terminalId, projectPath, freeTextIdea: '', costCapUsd: costCap,
+        })
+      : await window.api.autopilotStart({
+          terminalId, projectPath, freeTextIdea: '', costCapUsd: costCap, maxIterations: maxIter,
         })
     setBusy(false)
     if (!res.ok) { setError(res.error ?? 'failed'); return }
@@ -43,6 +66,27 @@ export function AutopilotKickoff({ terminalId, projectPath, defaultCostCap, defa
       display: 'flex', flexDirection: 'column', gap: 12,
     }}>
       <div style={{ color: '#a78bfa', fontWeight: 600 }}>🤖 Start Autopilot</div>
+      {((mode === 'classic' && artifacts.hasClassic) || (mode === 'pro' && artifacts.hasPro)) && (
+        <>
+          <button
+            onClick={resume}
+            disabled={busy}
+            style={{
+              background: 'rgba(34,197,94,0.15)',
+              border: '1px solid #22c55e',
+              color: '#22c55e',
+              padding: '8px 12px',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: 12,
+              fontWeight: 600,
+              opacity: busy ? 0.5 : 1,
+            }}
+          >▶ Resume existing run</button>
+          <div style={{ color: '#666', fontSize: 11, textAlign: 'center', margin: '4px 0' }}>── or start fresh ──</div>
+        </>
+      )}
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11 }}>
         <span style={{ color: '#888' }}>Mode:</span>
         {(['classic', 'pro'] as const).map((m) => (
