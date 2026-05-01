@@ -24,7 +24,7 @@ import {
   incrementRefineCount, readState, writeState, reconcile, appendSpecUpdate,
 } from './artifacts'
 import { parsePhases, currentPhase, phaseDoneFromTasks } from './phases'
-import { DOER_SYSTEM_PROMPT_PRO, stage3Kickoff, stage4Kickoff } from './prompts'
+import { DOER_SYSTEM_PROMPT_PRO, stage0Kickoff, stage3Kickoff, stage4Kickoff } from './prompts'
 import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 
@@ -662,9 +662,7 @@ export class AutopilotProStateMachine {
   private kickoffForStage(stage: ProStage): string | null {
     switch (stage) {
       case 'discovery':
-        return `STAGE 0 — DISCOVERY. Idea: """${this.opts.freeTextIdea}"""\n` +
-               `Produce .autopilot-pro/spec.md with goal, non-goals, acceptance, constraints. ` +
-               `When complete, emit [ORCH:WAITING] with DECISION_SHAPE: approve and ARTIFACT: spec.md.`
+        return stage0Kickoff(this.opts.freeTextIdea)
       case 'planning':
         return `STAGE 1 — PLANNING. Spec is approved. Produce .autopilot-pro/plan.md ` +
                `with phased tasks (checkboxes). When complete, emit DECISION_SHAPE: approve, ARTIFACT: plan.md.`

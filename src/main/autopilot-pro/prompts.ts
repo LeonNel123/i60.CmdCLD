@@ -316,3 +316,9 @@ export function stage4Kickoff(): string {
     `(a) what shipped, (b) what's deferred, (c) any cross-phase concerns surfaced. ` +
     `When complete, emit DECISION_SHAPE: transition, action: final-review.`
 }
+
+export function stage0Kickoff(freeTextIdea: string): string {
+  return `STAGE 0 — DISCOVERY. Idea: """${freeTextIdea}"""\n` +
+    `Produce .autopilot-pro/spec.md with goal, non-goals, acceptance, constraints. ` +
+    `When complete, emit [ORCH:WAITING] with DECISION_SHAPE: approve and ARTIFACT: spec.md.`
+}
