@@ -84,6 +84,21 @@ function validate(shape: DecisionShape, obj: any): ProDecideResult | null {
     case 'decide-with-rationale':
       if (typeof obj.recommendation !== 'string' || !obj.recommendation) return null
       return { shape: 'decide-with-rationale', recommendation: String(obj.recommendation), why: String(obj.why ?? '') }
+
+    case 'research': {
+      if (!Array.isArray(obj.topics)) return null
+      const topics = obj.topics
+        .filter((t: any) => typeof t.slug === 'string' && typeof t.approve === 'boolean')
+        .map((t: any) => ({
+          slug: String(t.slug),
+          approve: Boolean(t.approve),
+          budgetUsd: typeof t.budgetUsd === 'number' ? t.budgetUsd : undefined,
+          reuse: typeof t.reuse === 'string' ? t.reuse : null,
+          reason: typeof t.reason === 'string' ? t.reason : undefined,
+        }))
+      if (topics.length === 0) return null
+      return { shape: 'research', topics }
+    }
   }
 }
 

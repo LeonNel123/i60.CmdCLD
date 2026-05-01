@@ -280,3 +280,53 @@ describe('applyPrinciplesToApprove', () => {
     if (out.result.verdict === 'refine') expect(out.result.directive).toBe('fix it')
   })
 })
+
+describe('research shape parser (Wave 1.6)', () => {
+  it('parses well-formed JSON with multiple topics', () => {
+    const json = JSON.stringify({
+      shape: 'research',
+      topics: [
+        { slug: 'a', approve: true, budgetUsd: 0.5 },
+        { slug: 'b', approve: true, reuse: 'docs/research/b.md' },
+        { slug: 'c', approve: false, reason: 'out of scope' },
+      ],
+    })
+    const r = parseProDecision('research', json)
+    expect(r.shape).toBe('research')
+    if (r.shape === 'research') {
+      expect(r.topics.length).toBe(3)
+      expect(r.topics[0].approve).toBe(true)
+      expect(r.topics[0].budgetUsd).toBe(0.5)
+      expect(r.topics[1].reuse).toBe('docs/research/b.md')
+      expect(r.topics[2].reason).toBe('out of scope')
+    }
+  })
+
+  it('falls back to reply on malformed JSON', () => {
+    const r = parseProDecision('research', 'not json')
+    expect(r.shape).toBe('reply')
+  })
+
+  it('falls back to reply when topics array is empty', () => {
+    const r = parseProDecision('research', '{"shape":"research","topics":[]}')
+    expect(r.shape).toBe('reply')
+  })
+
+  it('filters topics missing slug or approve fields', () => {
+    const json = JSON.stringify({
+      shape: 'research',
+      topics: [
+        { slug: 'a', approve: true },
+        { slug: 'b' }, // missing approve
+        { approve: true }, // missing slug
+        { slug: 'c', approve: false, reason: 'no' },
+      ],
+    })
+    const r = parseProDecision('research', json)
+    expect(r.shape).toBe('research')
+    if (r.shape === 'research') {
+      expect(r.topics.length).toBe(2)
+      expect(r.topics.map((t) => t.slug)).toEqual(['a', 'c'])
+    }
+  })
+})
