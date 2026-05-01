@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   DOER_SYSTEM_PROMPT_PRO, PRINCIPLES_BLOCK,
   buildPlannerPrompt, META_REFLECT_SYSTEM_PROMPT, buildMetaReflectPrompt,
-  stage3Kickoff, stage4Kickoff,
+  stage3Kickoff, stage4Kickoff, stage0Kickoff,
 } from '../src/main/autopilot-pro/prompts'
 import type { ProDecideInput, ProSettledSnapshot } from '../src/main/autopilot-pro/types'
 
@@ -176,5 +176,23 @@ describe('Wave 3.1 stage kickoffs', () => {
     const k = stage4Kickoff()
     expect(k).toContain('DECISION_SHAPE: transition')
     expect(k).toContain('final-review')
+  })
+})
+
+describe('PRO GROUNDING (Wave 3.5)', () => {
+  it('DOER_SYSTEM_PROMPT_PRO contains the GROUND PLANNING IN REAL CODE block', () => {
+    expect(DOER_SYSTEM_PROMPT_PRO).toContain('GROUND PLANNING IN REAL CODE')
+  })
+
+  it('DOER_SYSTEM_PROMPT_PRO mentions the Repository impact section', () => {
+    expect(DOER_SYSTEM_PROMPT_PRO).toContain('Repository impact')
+  })
+
+  it('stage0Kickoff includes the scan-first instruction', () => {
+    const k = stage0Kickoff('build a thing')
+    expect(k).toContain('STAGE 0 — DISCOVERY')
+    expect(k).toContain('build a thing')
+    expect(k).toMatch(/Before writing spec\.md/i)
+    expect(k).toContain('Repository impact')
   })
 })

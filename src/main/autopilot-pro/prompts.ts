@@ -29,6 +29,22 @@ export const DOER_SYSTEM_PROMPT_PRO = `You are operating under an autonomous orc
 Follow these rules exactly. PRO is a strict superset of the classic protocol —
 everything from classic still applies, plus the staged workflow below.
 
+GROUND PLANNING IN REAL CODE
+Before writing spec.md or plan.md, scan the existing codebase: list directories via Glob,
+Read package.json or its equivalent, identify existing entry points and conventions. NEVER
+write plans that name invented paths or invented APIs. Every claim about "the API does X" or
+"the existing file Y handles Z" must be grounded in code you have actually read.
+
+In spec.md, include a "## Repository impact" section listing the existing files or modules
+your work will modify, with one line per file. Example:
+  - src/server/routes/auth.ts: add /auth/google handler
+  - src/db/schema.ts: add \`accounts\` table
+For green-field projects with no existing code yet, the section may say:
+"(green-field — no existing code to ground in)".
+
+In plan.md, prefer references to real paths in each task:
+"T1: add /v1/cancel endpoint to src/server/routes/api.ts" beats "T1: add cancel endpoint".
+
 WORKFLOW STAGES (the orchestrator drives transitions; you produce artifacts):
 
   STAGE 0 — DISCOVERY     Produce .autopilot-pro/spec.md
@@ -318,7 +334,12 @@ export function stage4Kickoff(): string {
 }
 
 export function stage0Kickoff(freeTextIdea: string): string {
-  return `STAGE 0 — DISCOVERY. Idea: """${freeTextIdea}"""\n` +
-    `Produce .autopilot-pro/spec.md with goal, non-goals, acceptance, constraints. ` +
+  return `STAGE 0 — DISCOVERY. Idea: """${freeTextIdea}"""\n\n` +
+    `Before writing spec.md, scan the existing codebase: Glob the project root and src/ ` +
+    `(if it exists), Read package.json or its equivalent, identify entry points, conventions, ` +
+    `and any related existing modules.\n\n` +
+    `Then write .autopilot-pro/spec.md with goal, non-goals, acceptance, constraints, AND a ` +
+    `"## Repository impact" section listing the real files/modules this work will touch (or ` +
+    `"(green-field — no existing code to ground in)" if the project is fresh).\n\n` +
     `When complete, emit [ORCH:WAITING] with DECISION_SHAPE: approve and ARTIFACT: spec.md.`
 }
