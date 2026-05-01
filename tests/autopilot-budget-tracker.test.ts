@@ -59,6 +59,7 @@ describe('budget-tracker', () => {
   })
 
   it('warning threshold fires at 80% of global cap', () => {
+    setProjectCap('/proj/a', 100)  // isolate from project-cap; this test exercises global cap only
     setGlobalCap(10)
     recordSpend('/proj/a', 8.5)
     const snap = getSnapshot('/proj/a')

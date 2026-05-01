@@ -9,7 +9,7 @@ const WARNING_THRESHOLD = 0.8
 export interface BudgetState {
   schemaVersion: 1
   date: string
-  perProject: Record<string, { spentUsd: number; capUsd: number; capExplicit?: boolean }>
+  perProject: Record<string, { spentUsd: number; capUsd: number }>
   global: { spentUsd: number; capUsd: number }
 }
 
@@ -97,7 +97,7 @@ function saveBudget(state: BudgetState): void {
 
 function ensureProject(state: BudgetState, projectPath: string): void {
   if (!state.perProject[projectPath]) {
-    state.perProject[projectPath] = { spentUsd: 0, capUsd: DEFAULT_PROJECT_CAP, capExplicit: false }
+    state.perProject[projectPath] = { spentUsd: 0, capUsd: DEFAULT_PROJECT_CAP }
   }
 }
 
@@ -118,12 +118,10 @@ export function getSnapshot(projectPath: string): BudgetSnapshot {
 }
 
 function computeSnapshot(state: BudgetState, projectPath: string): BudgetSnapshot {
-  const project = state.perProject[projectPath] ?? { spentUsd: 0, capUsd: DEFAULT_PROJECT_CAP, capExplicit: false }
-  // Per-project cap only enforced when explicitly configured
-  const projectCapActive = project.capExplicit === true
-  const projectReached = projectCapActive && project.spentUsd >= project.capUsd
+  const project = state.perProject[projectPath] ?? { spentUsd: 0, capUsd: DEFAULT_PROJECT_CAP }
+  const projectReached = project.spentUsd >= project.capUsd
   const globalReached = state.global.spentUsd >= state.global.capUsd
-  const projectWarning = projectCapActive && project.spentUsd >= project.capUsd * WARNING_THRESHOLD
+  const projectWarning = project.spentUsd >= project.capUsd * WARNING_THRESHOLD
   const globalWarning = state.global.spentUsd >= state.global.capUsd * WARNING_THRESHOLD
   return {
     projectSpent: project.spentUsd,
@@ -140,7 +138,6 @@ export function setProjectCap(projectPath: string, capUsd: number): void {
   const state = loadBudget()
   ensureProject(state, projectPath)
   state.perProject[projectPath].capUsd = capUsd
-  state.perProject[projectPath].capExplicit = true
   saveBudget(state)
 }
 
