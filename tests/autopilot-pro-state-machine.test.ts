@@ -839,3 +839,22 @@ describe('IPC writeToPty wraps multiline writes in bracketed-paste (Wave 3.2)', 
     expect(replyWrite!.includes('\x1b[201~')).toBe(false)
   })
 })
+
+describe('ProState liveStatus + lastMarker (Wave 3.4)', () => {
+  it('initial ProState has liveStatus and lastMarker as null', () => {
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'x' })))
+    expect(sm.state.liveStatus).toBeNull()
+    expect(sm.state.lastMarker).toBeNull()
+  })
+
+  it('lastMarker is populated after a settle', async () => {
+    writeArtifact(TMP, 'spec', '# s'); markApproved(TMP, 'spec')
+    writeArtifact(TMP, 'plan', `## Phase 1: only\n- [ ] T1: a\n`); markApproved(TMP, 'plan')
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'x' })))
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q?\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(sm.state.lastMarker).not.toBeNull()
+    expect(sm.state.lastMarker!.kind).toBe('WAITING')
+  })
+})

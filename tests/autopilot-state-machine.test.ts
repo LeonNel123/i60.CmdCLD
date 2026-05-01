@@ -317,3 +317,50 @@ it('clears and re-arms the silence timer across pause/resume', async () => {
   expect(sm.state.phase).toBe('escalated')
   vi.useRealTimers()
 })
+
+describe('liveStatus + lastMarker (Wave 3.4)', () => {
+  it('liveStatus moves through waiting → calling planner → waiting across a cycle', async () => {
+    // Set up goal + milestone so the sm starts in executing phase
+    mkdirSync(join(TMP, '.autopilot', 'milestones'), { recursive: true })
+    writeFileSync(join(TMP, '.autopilot', 'goal.md'),
+      '# Goal\n\ntest\n\n## Constraints\n- max_iterations: 40\n- max_api_cost_usd: 1.0\n- max_doer_output_per_reset: 60000\n')
+    writeFileSync(join(TMP, '.autopilot', 'milestones', 'm1.md'),
+      '# Milestone m1 — first\n\nStatus: in-progress\n\n## Subgoals\n- [ ] s1: do thing\n')
+
+    const stages: (string | null)[] = []
+    const opts: AutopilotOptions = {
+      terminalId: 't',
+      projectPath: TMP,
+      freeTextIdea: 'x',
+      costCapUsd: 1.0,
+      maxIterations: 40,
+      apiProvider: 'anthropic',
+      apiKey: 'fake',
+      plannerModel: 'claude-sonnet-4-6',
+      writeToPty: () => {},
+      onPtyData: () => () => {},
+      onUpdate: (state) => stages.push(state.liveStatus),
+    }
+    const sm = new AutopilotStateMachine(opts, makeApi(() => ({ kind: 'reply', text: 'continue' })), 10, 24 * 60 * 60 * 1000)
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q?\n')
+    await waitForFlush()
+    // liveStatus should have transitioned through 'calling planner' at some point
+    expect(stages.some((s) => s === 'calling planner')).toBe(true)
+    expect(stages[stages.length - 1]).toBe('waiting for doer')
+  })
+
+  it('lastMarker is populated after a settle', async () => {
+    mkdirSync(join(TMP, '.autopilot', 'milestones'), { recursive: true })
+    writeFileSync(join(TMP, '.autopilot', 'goal.md'),
+      '# Goal\n\nx\n\n## Constraints\n- max_iterations: 40\n- max_api_cost_usd: 1.0\n- max_doer_output_per_reset: 60000\n')
+    writeFileSync(join(TMP, '.autopilot', 'milestones', 'm1.md'),
+      '# Milestone m1 — first\n\nStatus: in-progress\n\n## Subgoals\n- [ ] s1: do\n')
+    const sm = makeSm('x', makeApi(() => ({ kind: 'reply', text: 'x' })))
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q?\n')
+    await waitForFlush()
+    expect(sm.state.lastMarker).not.toBeNull()
+    expect(sm.state.lastMarker!.kind).toBe('WAITING')
+  })
+})

@@ -174,6 +174,15 @@ export class AutopilotProStateMachine {
           marker: enriched,
         } as ProSettledSnapshot)
       },
+      onForceSettleArmed: (firesAt) => {
+        const seconds = ((firesAt - Date.now()) / 1000).toFixed(1)
+        this.state.liveStatus = `force-settle armed (${seconds}s)`
+        this.notify()
+      },
+      onForceSettleCanceled: () => {
+        this.state.liveStatus = 'waiting for doer'
+        this.notify()
+      },
     })
   }
 
@@ -204,17 +213,20 @@ export class AutopilotProStateMachine {
     const kickoff = this.kickoffForStage(this.state.stage)
     if (kickoff) this.opts.writeToPty(this.opts.terminalId, kickoff + '\r')
 
+    this.state.liveStatus = 'waiting for doer'
     this.armSilenceTimer()
     this.notify()
   }
 
   pause(): void {
     this.clearSilenceTimer()
+    this.state.liveStatus = null
     this.appendActivity('orchestrator-pause', 'user pause')
     this.notify()
   }
 
   resume(): void {
+    this.state.liveStatus = 'waiting for doer'
     this.armSilenceTimer()
     this.appendActivity('orchestrator-resume', 'resumed')
     this.notify()
@@ -223,6 +235,7 @@ export class AutopilotProStateMachine {
   stop(): void {
     if (this.detachPty) { this.detachPty(); this.detachPty = null }
     this.clearSilenceTimer()
+    this.state.liveStatus = null
     // Reset Wave 3.1 lifecycle flags so a subsequent start() re-fires kickoffs.
     this.phaseTrackerEscalated = false
     this.stage3KickoffSentForPhase = null
@@ -234,6 +247,7 @@ export class AutopilotProStateMachine {
 
   replyToWaiting(text: string): void {
     this.opts.writeToPty(this.opts.terminalId, text + '\r')
+    this.state.liveStatus = 'waiting for doer'
     this.appendActivity('orchestrator-reply', `Manual reply: ${text.slice(0, 80)}`)
     this.recordTranscript({
       kind: 'user-manual',
@@ -241,6 +255,7 @@ export class AutopilotProStateMachine {
       orchestratorBody: text,
       shape: 'reply',
     })
+    this.notify()
   }
 
   /** For tests — feed raw PTY data, mirroring production listener. */
@@ -254,6 +269,12 @@ export class AutopilotProStateMachine {
 
   private async onSettled(snap: ProSettledSnapshot): Promise<void> {
     const m = snap.marker
+
+    this.state.lastMarker = {
+      kind: snap.marker.kind,
+      subgoalId: snap.marker.subgoalId,
+      receivedAt: snap.receivedAt,
+    }
 
     this.appendActivity('doer-marker', `${m.kind}${m.shape ? ` shape=${m.shape}` : ''}${m.subgoalId ? ` ${m.subgoalId}` : ''}`)
 
@@ -299,6 +320,8 @@ export class AutopilotProStateMachine {
     }
 
     // Call planner.
+    this.state.liveStatus = 'calling planner'
+    this.notify()
     let out
     try {
       out = await decidePro(this.api, {
@@ -318,11 +341,15 @@ export class AutopilotProStateMachine {
         delta: m.delta,
       })
     } catch (e: any) {
+      this.state.liveStatus = 'waiting for doer'
+      this.notify()
       this.state.escalationReason = `planner error: ${e?.message ?? 'unknown'}`
       this.appendActivity('escalation', this.state.escalationReason)
       this.notify()
       return
     }
+    this.state.liveStatus = 'waiting for doer'
+    this.notify()
 
     this.cost.add(out.costUsd)
     this.state.costUsd = this.cost.totalUsd
@@ -493,7 +520,11 @@ export class AutopilotProStateMachine {
     this.metaAutoFired = true
     try {
       const { runMetaReflect } = await import('./meta')
+      this.state.liveStatus = 'calling meta'
+      this.notify()
       const result = await runMetaReflect(this.api, this.opts.projectPath)
+      this.state.liveStatus = null
+      this.notify()
       this.recordTranscript({
         kind: 'meta-auto',
         doerQuestion: '(auto-fire on Stage 4 done)',
@@ -504,6 +535,8 @@ export class AutopilotProStateMachine {
       this.clearSilenceTimer()
       this.notify()
     } catch (e: any) {
+      this.state.liveStatus = null
+      this.notify()
       this.appendActivity('escalation', `meta auto-fire failed: ${e?.message ?? 'unknown'}`)
       this.notify()
     }

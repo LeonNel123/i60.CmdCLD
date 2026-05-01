@@ -57,6 +57,15 @@ export class AutopilotStateMachine {
     this.watcher = new PtyWatcher({
       idleMs: ptyIdleMs,
       onSettle: (snap) => this.onSettled(snap),
+      onForceSettleArmed: (firesAt) => {
+        const seconds = ((firesAt - Date.now()) / 1000).toFixed(1)
+        this.state.liveStatus = `force-settle armed (${seconds}s)`
+        this.notify()
+      },
+      onForceSettleCanceled: () => {
+        this.state.liveStatus = 'waiting for doer'
+        this.notify()
+      },
     })
   }
 
@@ -78,12 +87,15 @@ export class AutopilotStateMachine {
       this.opts.writeToPty(this.opts.terminalId, buildWizardKickoff(this.opts.freeTextIdea) + '\r')
       this.transition('wizard', 'wizard kickoff sent')
     }
+    this.state.liveStatus = 'waiting for doer'
+    this.notify()
 
     this.armSilenceTimer()
   }
 
   pause(reason = 'user pause'): void {
     this.clearSilenceTimer()
+    this.state.liveStatus = null
     this.transition('paused', reason)
   }
   resume(): void {
@@ -93,11 +105,14 @@ export class AutopilotStateMachine {
     } else {
       this.transition('wizard', 'resumed')
     }
+    this.state.liveStatus = 'waiting for doer'
     this.armSilenceTimer()
+    this.notify()
   }
   stop(): void {
     if (this.detachPty) { this.detachPty(); this.detachPty = null }
     this.clearSilenceTimer()
+    this.state.liveStatus = null
     this.transition('stopped', 'user stopped')
   }
   approveGoal(): void {
@@ -112,12 +127,21 @@ export class AutopilotStateMachine {
   }
   replyToWaiting(text: string): void {
     this.opts.writeToPty(this.opts.terminalId, text + '\r')
+    this.state.liveStatus = 'waiting for doer'
     this.appendActivity('orchestrator-reply', `Manual reply: ${text.slice(0, 80)}`)
     this.recordUserManualTranscript(text)
+    this.notify()
   }
 
   private async onSettled(snap: SettledSnapshot): Promise<void> {
     while (this.settleResolvers.length) this.settleResolvers.shift()?.()
+
+    this.state.lastMarker = {
+      kind: snap.marker.kind,
+      subgoalId: snap.marker.subgoalId,
+      status: snap.marker.status,
+      receivedAt: snap.receivedAt,
+    }
 
     this.appendActivity('doer-marker', `${snap.marker.kind}${snap.marker.subgoalId ? ` ${snap.marker.subgoalId} ${snap.marker.status}` : ''}`)
 
@@ -176,6 +200,8 @@ export class AutopilotStateMachine {
 
     const learnings = readLearnings(this.opts.projectPath)
     const steering = readSteering(this.opts.projectPath)
+    this.state.liveStatus = 'calling planner'
+    this.notify()
     let out
     try {
       out = await decide(this.api, {
@@ -189,10 +215,14 @@ export class AutopilotStateMachine {
         steering,
       })
     } catch (e: any) {
+      this.state.liveStatus = 'waiting for doer'
+      this.notify()
       this.appendActivity('escalation', `API error: ${e?.message ?? 'unknown'}`)
       this.transition('escalated', `API error: ${e?.message ?? 'unknown'}`)
       return
     }
+    this.state.liveStatus = 'waiting for doer'
+    this.notify()
 
     this.cost.add(out.costUsd)
     this.state.costUsd = this.cost.totalUsd
@@ -286,12 +316,20 @@ export class AutopilotStateMachine {
       this.transition('escalated', `${trigger}: no goal`)
       return
     }
-    const out = await debugCall(this.api, {
-      goal: this.state.goal,
-      currentMilestoneId: this.state.currentMilestoneId,
-      lastSnapshot: snap,
-      trigger,
-    })
+    this.state.liveStatus = 'calling planner'
+    this.notify()
+    let out
+    try {
+      out = await debugCall(this.api, {
+        goal: this.state.goal,
+        currentMilestoneId: this.state.currentMilestoneId,
+        lastSnapshot: snap,
+        trigger,
+      })
+    } finally {
+      this.state.liveStatus = 'waiting for doer'
+      this.notify()
+    }
     this.cost.add(out.costUsd)
     this.state.costUsd = this.cost.totalUsd
 
