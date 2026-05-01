@@ -204,6 +204,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('autopilot:approveGoal', terminalId),
   autopilotReplyToWaiting: (terminalId: string, text: string): Promise<void> =>
     ipcRenderer.invoke('autopilot:replyToWaiting', terminalId, text),
+  autopilotPermissionAllow: (terminalId: string) =>
+    ipcRenderer.invoke('autopilot:permissionAllow', terminalId),
+  autopilotPermissionDeny: (terminalId: string) =>
+    ipcRenderer.invoke('autopilot:permissionDeny', terminalId),
   autopilotGetStatus: (terminalId: string): Promise<unknown> =>
     ipcRenderer.invoke('autopilot:getStatus', terminalId),
   autopilotProbeArtifacts: (projectPath: string) =>

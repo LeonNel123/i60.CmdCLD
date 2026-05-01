@@ -528,6 +528,14 @@ ipcMain.handle('autopilot:replyToWaiting', (_event, terminalId: string, text: st
   autopilots.get(terminalId)?.replyToWaiting(text)
   autopilotPros.get(terminalId)?.replyToWaiting(text)
 })
+ipcMain.handle('autopilot:permissionAllow', (_event, terminalId: string) => {
+  autopilots.get(terminalId)?.respondToPermission('allow')
+  autopilotPros.get(terminalId)?.respondToPermission('allow')
+})
+ipcMain.handle('autopilot:permissionDeny', (_event, terminalId: string) => {
+  autopilots.get(terminalId)?.respondToPermission('deny')
+  autopilotPros.get(terminalId)?.respondToPermission('deny')
+})
 ipcMain.handle('autopilot:getStatus', (_event, terminalId: string) => {
   // Prefer PRO state if a PRO instance is active for this terminal; else Classic.
   const pro = autopilotPros.get(terminalId)
