@@ -290,15 +290,6 @@ export class AutopilotProStateMachine {
 
     this.markerFallbackPromptCount = 0
 
-    // Drain any pending waitForSettle promises (used by reset())
-    while (this.settleResolvers.length) this.settleResolvers.shift()?.()
-
-    // Output threshold check — trigger reset before doing more work this cycle
-    if (this.outputVolumeSinceReset >= this.maxDoerOutputPerReset) {
-      await this.reset('output volume threshold reached')
-      return
-    }
-
     this.state.lastMarker = {
       kind: snap.marker.kind,
       subgoalId: snap.marker.subgoalId,
@@ -306,6 +297,15 @@ export class AutopilotProStateMachine {
     }
 
     this.appendActivity('doer-marker', `${m.kind}${m.shape ? ` shape=${m.shape}` : ''}${m.subgoalId ? ` ${m.subgoalId}` : ''}`)
+
+    // Drain any pending waitForSettle promises (used by reset())
+    while (this.settleResolvers.length) this.settleResolvers.shift()?.()
+
+    // Output threshold check — trigger reset before doing more work this cycle
+    if (this.outputVolumeSinceReset >= this.maxDoerOutputPerReset) {
+      await this.reset('output volume threshold reached')
+      return  // cycleCount not incremented — reset is the only work this cycle
+    }
 
     // Handle sub-agent ETA window — extend silence guard for the duration.
     if (m.subagentEtaMin && m.subagentEtaMin > 0) {
