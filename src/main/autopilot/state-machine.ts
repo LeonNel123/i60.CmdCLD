@@ -49,6 +49,8 @@ export class AutopilotStateMachine {
       recentLog: [],
       escalationReason: null,
       validation: {},
+      liveStatus: null,
+      lastMarker: null,
     }
     this.state.currentMilestoneId = this.findCurrentMilestoneId()
 

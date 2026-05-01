@@ -79,6 +79,8 @@ export interface AutopilotState {
   recentLog: ActivityEntry[]       // last 10 entries
   escalationReason: string | null
   validation: ValidationCommands   // NEW; default {}
+  liveStatus: string | null
+  lastMarker: { kind: MarkerKind; subgoalId?: string; status?: 'done' | 'partial' | 'blocked'; receivedAt: number } | null
 }
 
 export interface ActivityEntry {

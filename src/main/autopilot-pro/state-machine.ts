@@ -157,6 +157,8 @@ export class AutopilotProStateMachine {
       validation: {},
       subagentRunning: false,
       subagentEtaMs: 0,
+      liveStatus: null,
+      lastMarker: null,
     }
 
     this.watcher = new PtyWatcher({

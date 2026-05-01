@@ -69,6 +69,8 @@ export interface ProState {
   validation: ValidationCommands
   subagentRunning: boolean
   subagentEtaMs: number  // 0 if no subagent running
+  liveStatus: string | null
+  lastMarker: { kind: string; subgoalId?: string; receivedAt: number } | null
 }
 
 // ----- Decision results (one per shape) -----
