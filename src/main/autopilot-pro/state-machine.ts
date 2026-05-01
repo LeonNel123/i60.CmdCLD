@@ -51,8 +51,11 @@ function enrichProMarker(rawText: string, base: ProMarker): ProMarker {
   let i = 0
   let captureOptions = false
   let captureDelta = false
+  let captureOptionsRationale = false
   const options: string[] = []
   const deltaLines: string[] = []
+  const optionsRationale: { option: string; pros: string[]; cons: string[] }[] = []
+  let currentOption: { option: string; pros: string[]; cons: string[] } | null = null
 
   while (i < after.length) {
     const line = after[i]
@@ -70,17 +73,43 @@ function enrichProMarker(rawText: string, base: ProMarker): ProMarker {
       }
       captureDelta = false
     }
+    if (captureOptionsRationale) {
+      const prosMatch = line.match(/^\s+pros:\s*(.+)$/i)
+      const consMatch = line.match(/^\s+cons:\s*(.+)$/i)
+      const optMatch = line.match(/^\s+-\s+(.+)$/)
+      if (prosMatch && currentOption) {
+        currentOption.pros = prosMatch[1].split(',').map((s) => s.trim()).filter(Boolean)
+        i++
+        continue
+      }
+      if (consMatch && currentOption) {
+        currentOption.cons = consMatch[1].split(',').map((s) => s.trim()).filter(Boolean)
+        i++
+        continue
+      }
+      if (optMatch) {
+        if (currentOption) optionsRationale.push(currentOption)
+        currentOption = { option: optMatch[1].trim(), pros: [], cons: [] }
+        i++
+        continue
+      }
+      // Stop capturing on any non-matching line
+      if (currentOption) { optionsRationale.push(currentOption); currentOption = null }
+      captureOptionsRationale = false
+    }
     const km = line.match(/^([A-Z_]+):\s*(.*)$/)
     if (km) {
       const key = km[1]
       const val = km[2].trim()
-      if (key === 'DECISION_SHAPE' && /^(reply|choose|approve|route|validate|transition)$/.test(val)) {
+      if (key === 'DECISION_SHAPE' && /^(reply|choose|approve|route|validate|transition|decide-with-rationale)$/.test(val)) {
         m.shape = val as ProMarker['shape']
       } else if (key === 'ARTIFACT') {
         m.artifactPath = val
       } else if (key === 'OPTIONS') {
         captureOptions = true
         if (val) options.push(val)
+      } else if (key === 'OPTIONS_RATIONALE') {
+        captureOptionsRationale = true
       } else if (key === 'ASSUMPTION') {
         m.assumption = val
       } else if (key === 'DELTA') {
@@ -94,8 +123,10 @@ function enrichProMarker(rawText: string, base: ProMarker): ProMarker {
     }
     i++
   }
+  if (currentOption) optionsRationale.push(currentOption)
   if (options.length) m.options = options
   if (deltaLines.length) m.delta = deltaLines.join('\n').trim()
+  if (optionsRationale.length) m.optionsRationale = optionsRationale
   return m
 }
 
@@ -395,6 +426,7 @@ export class AutopilotProStateMachine {
         artifactContent,
         assumption: m.assumption,
         delta: m.delta,
+        optionsRationale: m.optionsRationale,
       })
     } catch (e: any) {
       this.state.escalationReason = `planner error: ${e?.message ?? 'unknown'}`
@@ -544,6 +576,23 @@ export class AutopilotProStateMachine {
           this.appendActivity('orchestrator-reply', `research: ${result.query.slice(0, 60)}`)
           this.recordTranscript({ kind: 'validate', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'validate' })
         }
+        return
+      }
+
+      case 'decide-with-rationale': {
+        const reply = `Decision: ${result.recommendation}. Rationale: ${result.why}\n\n` +
+          `Write an ADR documenting this decision (path: docs/decisions/<NNNN>-<slug>.md, ` +
+          `where NNNN is the next available 4-digit number; sections: # ADR-NNNN: <title>, ` +
+          `## Status, ## Context, ## Decision, ## Consequences). Then emit ` +
+          `DECISION_SHAPE: approve, ARTIFACT: <that-path>.`
+        this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+        this.appendActivity('orchestrator-reply', `decide-with-rationale → ${result.recommendation.slice(0, 60)}`)
+        this.recordTranscript({
+          kind: 'decide-with-rationale',
+          doerQuestion: marker.question || marker.text,
+          orchestratorBody: reply,
+          shape: 'decide-with-rationale',
+        })
         return
       }
 
@@ -730,6 +779,7 @@ export class AutopilotProStateMachine {
   }
 
   private inferArtifactKind(path: string): ArtifactKind {
+    if (/^docs\/decisions\/\d{4}-/.test(path)) return 'adr'
     if (/final-review\.md$/.test(path)) return 'final-review'
     if (/spec\.md$/.test(path)) return 'spec'
     if (/plan\.md$/.test(path)) return 'plan'
@@ -739,6 +789,8 @@ export class AutopilotProStateMachine {
   }
 
   private inferPhaseId(path: string): string | undefined {
+    const adr = path.match(/^docs\/decisions\/(\d{4}-[^.]+)\.md$/)
+    if (adr) return adr[1]
     const m = path.match(/(?:impl|reviews)\/([^/]+)\.md$/)
     return m?.[1]
   }
