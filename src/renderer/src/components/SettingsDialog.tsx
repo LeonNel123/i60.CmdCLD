@@ -68,6 +68,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   } | null>(null)
   const [budgetProjectCap, setBudgetProjectCap] = useState<number>(5)
   const [budgetGlobalCap, setBudgetGlobalCap] = useState<number>(20)
+  const [budgetProjectSpent, setBudgetProjectSpent] = useState<number>(0)
   const [budgetTodaySpent, setBudgetTodaySpent] = useState<number>(0)
 
   useEffect(() => {
@@ -121,22 +122,22 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
     ]).then(([a, o]) => { setApHasAnthKey(a); setApHasORKey(o) })
   }, [])
 
+  const applyBudget = (data: { state: typeof budgetState; snapshot: { projectCap: number; globalCap: number; projectSpent: number; globalSpent: number } }) => {
+    setBudgetState(data.state)
+    setBudgetProjectCap(data.snapshot.projectCap)
+    setBudgetGlobalCap(data.snapshot.globalCap)
+    setBudgetProjectSpent(data.snapshot.projectSpent)
+    setBudgetTodaySpent(data.snapshot.globalSpent)
+  }
+
   useEffect(() => {
     const path = activeProjectPath ?? ''
-    void window.api.settingsGetBudgetState(path).then(({ state, snapshot }) => {
-      setBudgetState(state)
-      setBudgetProjectCap(snapshot.projectCap)
-      setBudgetGlobalCap(snapshot.globalCap)
-      setBudgetTodaySpent(snapshot.globalSpent)
-    }).catch(() => {})
+    void window.api.settingsGetBudgetState(path).then(applyBudget).catch(() => {})
   }, [activeProjectPath])
 
   const refreshBudget = async () => {
-    const { state, snapshot } = await window.api.settingsGetBudgetState(activeProjectPath ?? '')
-    setBudgetState(state)
-    setBudgetProjectCap(snapshot.projectCap)
-    setBudgetGlobalCap(snapshot.globalCap)
-    setBudgetTodaySpent(snapshot.globalSpent)
+    const data = await window.api.settingsGetBudgetState(activeProjectPath ?? '')
+    applyBudget(data)
   }
 
   const refreshTailscale = async () => {
@@ -1096,9 +1097,8 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
                     Open a terminal to configure per-project caps.
                   </div>
                 )}
-                <div style={{ color: '#888', fontSize: 11, marginTop: 10 }}>
-                  Spent today (global): <span style={{ color: '#ccc', fontFamily: 'monospace' }}>${budgetTodaySpent.toFixed(3)}</span>
-                  {' '} / <span style={{ color: '#ccc', fontFamily: 'monospace' }}>${budgetGlobalCap.toFixed(2)}</span>
+                <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
+                  Spent today — project: ${budgetProjectSpent.toFixed(3)} / ${budgetProjectCap.toFixed(2)} · global: ${budgetTodaySpent.toFixed(3)} / ${budgetGlobalCap.toFixed(2)}
                 </div>
                 <button
                   onClick={async () => {

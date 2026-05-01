@@ -101,4 +101,14 @@ describe('budget-tracker', () => {
     expect(getSnapshot('/proj/a').projectSpent).toBe(0)
     expect(getSnapshot('/proj/a').globalSpent).toBe(0)
   })
+
+  it('recordSpend rejects NaN/negative without state corruption', () => {
+    recordSpend('/proj/a', 1.0)
+    recordSpend('/proj/a', NaN)
+    recordSpend('/proj/a', -5)
+    recordSpend('/proj/a', Infinity)
+    const snap = getSnapshot('/proj/a')
+    expect(snap.projectSpent).toBe(1.0)
+    expect(snap.globalSpent).toBe(1.0)
+  })
 })

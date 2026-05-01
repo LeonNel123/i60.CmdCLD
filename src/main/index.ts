@@ -553,6 +553,9 @@ ipcMain.handle('settings:getBudgetState', (_event, projectPath: string) => {
 })
 
 ipcMain.handle('settings:setBudgetCap', (_event, scope: 'project' | 'global', projectPath: string | null, capUsd: number) => {
+  if (!Number.isFinite(capUsd) || capUsd < 0) {
+    return { ok: false, error: 'cap must be a non-negative finite number' }
+  }
   if (scope === 'global') {
     setGlobalCap(capUsd)
   } else if (projectPath) {

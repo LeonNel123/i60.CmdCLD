@@ -79,7 +79,7 @@ export interface ElectronAPI {
     state: { date: string; perProject: Record<string, { spentUsd: number; capUsd: number }>; global: { spentUsd: number; capUsd: number } }
     snapshot: { date: string; projectSpent: number; projectCap: number; globalSpent: number; globalCap: number; capReached: boolean; capReachedReason: 'project' | 'global' | null; warningThreshold: boolean }
   }>
-  settingsSetBudgetCap: (scope: 'project' | 'global', projectPath: string | null, capUsd: number) => Promise<{ ok: boolean }>
+  settingsSetBudgetCap: (scope: 'project' | 'global', projectPath: string | null, capUsd: number) => Promise<{ ok: boolean; error?: string }>
   settingsResetTodaySpend: () => Promise<{ ok: boolean }>
   sessionSaveLast: (session: SavedSession) => Promise<void>
   sessionLoadLast: () => Promise<SavedSession | null>

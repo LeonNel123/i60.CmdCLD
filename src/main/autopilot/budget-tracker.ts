@@ -103,6 +103,9 @@ function ensureProject(state: BudgetState, projectPath: string): void {
 }
 
 export function recordSpend(projectPath: string, deltaUsd: number): BudgetSnapshot {
+  if (!Number.isFinite(deltaUsd) || deltaUsd < 0) {
+    return getSnapshot(projectPath)  // ignore invalid input, return current snapshot
+  }
   const state = loadBudget()
   ensureProject(state, projectPath)
   state.perProject[projectPath].spentUsd += deltaUsd
@@ -113,7 +116,7 @@ export function recordSpend(projectPath: string, deltaUsd: number): BudgetSnapsh
 
 export function getSnapshot(projectPath: string): BudgetSnapshot {
   const state = loadBudget()
-  ensureProject(state, projectPath)
+  if (projectPath) ensureProject(state, projectPath)
   return computeSnapshot(state, projectPath)
 }
 
