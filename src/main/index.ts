@@ -21,6 +21,7 @@ import { createAutopilotPro, type AutopilotProHandle, type AutopilotProOptions }
 import type { ProState } from './autopilot-pro/types'
 import type { AutopilotOptions } from './autopilot/types'
 import { formatPtyWrite } from './autopilot/pty-write'
+import { probeArtifacts } from './autopilot/probe-artifacts'
 
 // File logger for debugging startup issues
 const logPath = join(app.getPath('userData'), 'cmdcld.log')
@@ -532,6 +533,9 @@ ipcMain.handle('autopilot:getStatus', (_event, terminalId: string) => {
   const pro = autopilotPros.get(terminalId)
   if (pro) return pro.getState()
   return autopilots.get(terminalId)?.state ?? null
+})
+ipcMain.handle('autopilot:probeArtifacts', (_event, projectPath: string) => {
+  return probeArtifacts(projectPath)
 })
 
 // ---- PRO-specific handlers ----

@@ -206,6 +206,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('autopilot:replyToWaiting', terminalId, text),
   autopilotGetStatus: (terminalId: string): Promise<unknown> =>
     ipcRenderer.invoke('autopilot:getStatus', terminalId),
+  autopilotProbeArtifacts: (projectPath: string) =>
+    ipcRenderer.invoke('autopilot:probeArtifacts', projectPath),
   onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, terminalId: string, state: unknown) => callback(terminalId, state)
     ipcRenderer.on('autopilot:update', listener)

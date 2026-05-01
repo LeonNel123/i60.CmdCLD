@@ -113,6 +113,7 @@ export interface ElectronAPI {
   autopilotApproveGoal: (terminalId: string) => Promise<void>
   autopilotReplyToWaiting: (terminalId: string, text: string) => Promise<void>
   autopilotGetStatus: (terminalId: string) => Promise<unknown>
+  autopilotProbeArtifacts: (projectPath: string) => Promise<{ hasClassic: boolean; hasPro: boolean }>
   onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void) => () => void
 }
 
