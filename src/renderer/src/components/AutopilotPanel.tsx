@@ -30,6 +30,7 @@ interface AutopilotState {
   escalationReason: string | null
   liveStatus: string | null
   lastMarker: { kind: string; subgoalId?: string; status?: string; receivedAt: number } | null
+  permissionRequest: { text: string; detectedAt: number } | null
 }
 
 interface Props {
@@ -104,6 +105,57 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
           }} />
         </div>
       </div>
+
+      {state.permissionRequest && (
+        <div style={{
+          background: 'rgba(251,191,36,0.15)',
+          border: '1px solid #fbbf24',
+          borderRadius: 4,
+          padding: 10,
+          fontSize: 11,
+          color: '#fbbf24',
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>⚠ Permission requested</div>
+          <div style={{
+            fontFamily: 'monospace',
+            color: '#fde68a',
+            marginBottom: 8,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}>
+            {state.permissionRequest.text}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => window.api.autopilotPermissionAllow(terminalId)}
+              style={{
+                background: '#22c55e',
+                border: 'none',
+                color: '#000',
+                cursor: 'pointer',
+                borderRadius: 4,
+                padding: '4px 12px',
+                fontSize: 11,
+                fontFamily: 'inherit',
+                fontWeight: 600,
+              }}
+            >Allow</button>
+            <button
+              onClick={() => window.api.autopilotPermissionDeny(terminalId)}
+              style={{
+                background: '#444',
+                border: 'none',
+                color: '#ccc',
+                cursor: 'pointer',
+                borderRadius: 4,
+                padding: '4px 12px',
+                fontSize: 11,
+                fontFamily: 'inherit',
+              }}
+            >Deny</button>
+          </div>
+        </div>
+      )}
 
       {state.goal && (
         <div>
