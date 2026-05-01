@@ -131,6 +131,7 @@ export class AutopilotProStateMachine {
   private stage3KickoffSentForPhase: string | null = null
   private stage4KickoffSent = false
   private metaAutoFired = false
+  private markerFallbackPromptCount = 0
 
   constructor(opts: AutopilotProOptions, apiOverride?: ApiClient, ptyIdleMs = 1500, maxSilenceMs = DEFAULT_MAX_SILENCE_MS) {
     this.opts = opts
@@ -184,6 +185,14 @@ export class AutopilotProStateMachine {
         this.state.liveStatus = 'waiting for doer'
         this.notify()
       },
+      onPermissionPrompt: (text) => {
+        this.state.permissionRequest = { text: text.slice(0, 200), detectedAt: Date.now() }
+        this.appendActivity('escalation', 'permission requested')
+        this.notify()
+      },
+      onMissingMarker: () => {
+        this.handleMissingMarker()
+      },
     })
   }
 
@@ -200,6 +209,7 @@ export class AutopilotProStateMachine {
   // ---- public control ----
 
   async start(): Promise<void> {
+    this.markerFallbackPromptCount = 0
     this.detachPty = this.opts.onPtyData(this.opts.terminalId, (data) => {
       this.armSilenceTimer()
       this.proBuffer += data
@@ -270,6 +280,8 @@ export class AutopilotProStateMachine {
 
   private async onSettled(snap: ProSettledSnapshot): Promise<void> {
     const m = snap.marker
+
+    this.markerFallbackPromptCount = 0
 
     this.state.lastMarker = {
       kind: snap.marker.kind,
@@ -636,6 +648,7 @@ export class AutopilotProStateMachine {
     if (this.state.stage === 'discovery' && specOk) this.state.stage = 'planning'
     if (this.state.stage === 'planning' && planOk) this.state.stage = 'implementation'
     if (prev !== this.state.stage) {
+      this.markerFallbackPromptCount = 0
       this.appendActivity('orchestrator-resume', `stage advance: ${prev} → ${this.state.stage}`)
       this.phaseTrackerEscalated = false
     }
@@ -705,6 +718,29 @@ export class AutopilotProStateMachine {
       '',
     ]
     appendTranscript(this.opts.projectPath, lines.join('\n'))
+  }
+
+  private handleMissingMarker(): void {
+    if (this.markerFallbackPromptCount >= 2) {
+      this.state.escalationReason = 'doer not emitting markers — manual intervention needed'
+      this.appendActivity('escalation', this.state.escalationReason)
+      this.notify()
+      return
+    }
+    this.markerFallbackPromptCount++
+    const nudge = `I see output but no marker. Please emit [ORCH:WAITING] (with your question), [ORCH:PROGRESS] <id> done|partial|blocked, [ORCH:GOAL_READY], or [ORCH:STUCK] (with the blocker) so the orchestrator knows where you are.`
+    this.opts.writeToPty(this.opts.terminalId, nudge + '\r')
+    this.appendActivity('orchestrator-reply', `marker fallback nudge (${this.markerFallbackPromptCount}/2)`)
+    this.notify()
+  }
+
+  respondToPermission(verdict: 'allow' | 'deny'): void {
+    if (!this.state.permissionRequest) return
+    const reply = verdict === 'allow' ? '1\r' : '3\r'
+    this.opts.writeToPty(this.opts.terminalId, reply)
+    this.state.permissionRequest = null
+    this.appendActivity('orchestrator-reply', `permission ${verdict}`)
+    this.notify()
   }
 
   private appendActivity(kind: ActivityEntry['kind'], summary: string): void {

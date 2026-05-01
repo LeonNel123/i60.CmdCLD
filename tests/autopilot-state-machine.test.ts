@@ -364,3 +364,54 @@ describe('liveStatus + lastMarker (Wave 3.4)', () => {
     expect(sm.state.lastMarker!.kind).toBe('WAITING')
   })
 })
+
+describe('permission request handling (Wave 3.6)', () => {
+  function setupExecuting() {
+    mkdirSync(join(TMP, '.autopilot', 'milestones'), { recursive: true })
+    writeFileSync(join(TMP, '.autopilot', 'goal.md'),
+      '# Goal\n\nx\n\n## Constraints\n- max_iterations: 40\n- max_api_cost_usd: 1.0\n- max_doer_output_per_reset: 60000\n')
+    writeFileSync(join(TMP, '.autopilot', 'milestones', 'm1.md'),
+      '# Milestone m1 — first\n\nStatus: in-progress\n\n## Subgoals\n- [ ] s1: do\n')
+  }
+
+  async function flush(): Promise<void> {
+    await new Promise((r) => setTimeout(r, 50))
+  }
+
+  it('state.permissionRequest is set when watcher fires onPermissionPrompt', async () => {
+    setupExecuting()
+    const sm = makeSm('x', makeApi(() => ({ kind: 'reply', text: 'x' })))
+    await sm.start()
+    sm.feedPty('Some output\nPermission to run Bash:\n[1] Yes\n[2] No\n')
+    await flush()
+    expect(sm.state.permissionRequest).not.toBeNull()
+    expect(sm.state.permissionRequest!.text).toMatch(/Permission to run/i)
+  })
+
+  it('respondToPermission(allow) writes "1\\r" to PTY and clears the field', async () => {
+    setupExecuting()
+    const writes: string[] = []
+    const sm = makeSm('x', makeApi(() => ({ kind: 'reply', text: 'x' })), writes)
+    await sm.start()
+    sm.feedPty('Permission to run Bash:\n[1] Yes\n[2] No\n')
+    await flush()
+    expect(sm.state.permissionRequest).not.toBeNull()
+    writes.length = 0
+    sm.respondToPermission('allow')
+    expect(writes.some((w) => w === '1\r')).toBe(true)
+    expect(sm.state.permissionRequest).toBeNull()
+  })
+
+  it('respondToPermission(deny) writes "3\\r" to PTY and clears the field', async () => {
+    setupExecuting()
+    const writes: string[] = []
+    const sm = makeSm('x', makeApi(() => ({ kind: 'reply', text: 'x' })), writes)
+    await sm.start()
+    sm.feedPty('Permission to run Bash:\n[1] Yes\n[2] No\n')
+    await flush()
+    writes.length = 0
+    sm.respondToPermission('deny')
+    expect(writes.some((w) => w === '3\r')).toBe(true)
+    expect(sm.state.permissionRequest).toBeNull()
+  })
+})

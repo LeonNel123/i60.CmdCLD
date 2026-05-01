@@ -11,6 +11,7 @@ export interface AutopilotHandle {
   stop(): void
   approveGoal(): void
   replyToWaiting(text: string): void
+  respondToPermission(verdict: 'allow' | 'deny'): void
 }
 
 export function createAutopilot(opts: AutopilotOptions): AutopilotHandle {
@@ -23,5 +24,6 @@ export function createAutopilot(opts: AutopilotOptions): AutopilotHandle {
     stop: () => sm.stop(),
     approveGoal: () => sm.approveGoal(),
     replyToWaiting: (text: string) => sm.replyToWaiting(text),
+    respondToPermission: (verdict) => sm.respondToPermission(verdict),
   }
 }

@@ -840,6 +840,13 @@ describe('IPC writeToPty wraps multiline writes in bracketed-paste (Wave 3.2)', 
   })
 })
 
+describe('PRO permissionRequest (Wave 3.6)', () => {
+  it('initial ProState has permissionRequest as null', () => {
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'x' })))
+    expect(sm.state.permissionRequest).toBeNull()
+  })
+})
+
 describe('ProState liveStatus + lastMarker (Wave 3.4)', () => {
   it('initial ProState has liveStatus and lastMarker as null', () => {
     const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'x' })))

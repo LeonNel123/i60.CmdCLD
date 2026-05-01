@@ -22,6 +22,7 @@ export class AutopilotStateMachine {
   private settleResolvers: Array<() => void> = []
   private outputVolumeSinceReset = 0
   private partialStreak = 0
+  private markerFallbackPromptCount = 0
   // Long-silence escalate: if no PTY bytes arrive for this long while we're
   // executing or in wizard phase, escalate. Catches truly-hung doer / dead
   // subagent / network stalls. 30 minutes is generous enough for legitimate
@@ -67,10 +68,19 @@ export class AutopilotStateMachine {
         this.state.liveStatus = 'waiting for doer'
         this.notify()
       },
+      onPermissionPrompt: (text) => {
+        this.state.permissionRequest = { text: text.slice(0, 200), detectedAt: Date.now() }
+        this.appendActivity('escalation', 'permission requested')
+        this.notify()
+      },
+      onMissingMarker: () => {
+        this.handleMissingMarker()
+      },
     })
   }
 
   async start(): Promise<void> {
+    this.markerFallbackPromptCount = 0
     this.detachPty = this.opts.onPtyData(this.opts.terminalId, (data) => {
       this.outputVolumeSinceReset += data.length
       this.armSilenceTimer()
@@ -136,6 +146,8 @@ export class AutopilotStateMachine {
 
   private async onSettled(snap: SettledSnapshot): Promise<void> {
     while (this.settleResolvers.length) this.settleResolvers.shift()?.()
+
+    this.markerFallbackPromptCount = 0
 
     this.state.lastMarker = {
       kind: snap.marker.kind,
@@ -386,6 +398,7 @@ export class AutopilotStateMachine {
 
   private transition(phase: AutopilotPhase, reason: string): void {
     this.state.phase = phase
+    this.markerFallbackPromptCount = 0
     // Stop the silence timer when we've reached a non-running phase. start() /
     // resume() re-arm it. pause() / stop() clear it directly already, but
     // belt-and-braces: any transition into a non-active phase clears here too.
@@ -393,6 +406,29 @@ export class AutopilotStateMachine {
       this.clearSilenceTimer()
     }
     this.appendActivity(phase === 'paused' ? 'orchestrator-pause' : phase === 'escalated' ? 'escalation' : 'orchestrator-resume', `→ ${phase}: ${reason}`)
+    this.notify()
+  }
+
+  private handleMissingMarker(): void {
+    if (this.markerFallbackPromptCount >= 2) {
+      this.state.escalationReason = 'doer not emitting markers — manual intervention needed'
+      this.appendActivity('escalation', this.state.escalationReason)
+      this.notify()
+      return
+    }
+    this.markerFallbackPromptCount++
+    const nudge = `I see output but no marker. Please emit [ORCH:WAITING] (with your question), [ORCH:PROGRESS] <id> done|partial|blocked, [ORCH:GOAL_READY], or [ORCH:STUCK] (with the blocker) so the orchestrator knows where you are.`
+    this.opts.writeToPty(this.opts.terminalId, nudge + '\r')
+    this.appendActivity('orchestrator-reply', `marker fallback nudge (${this.markerFallbackPromptCount}/2)`)
+    this.notify()
+  }
+
+  respondToPermission(verdict: 'allow' | 'deny'): void {
+    if (!this.state.permissionRequest) return
+    const reply = verdict === 'allow' ? '1\r' : '3\r'
+    this.opts.writeToPty(this.opts.terminalId, reply)
+    this.state.permissionRequest = null
+    this.appendActivity('orchestrator-reply', `permission ${verdict}`)
     this.notify()
   }
 

@@ -17,6 +17,7 @@ export interface AutopilotProHandle {
   resume(): void
   stop(): void
   replyToWaiting(text: string): void
+  respondToPermission(verdict: 'allow' | 'deny'): void
   /** Run the meta-orchestrator after a completed run. */
   runMeta(): Promise<import('./types').MetaReflectResult>
   /** Current state snapshot. */
@@ -32,6 +33,7 @@ export function createAutopilotPro(opts: AutopilotProOptions): AutopilotProHandl
     resume: () => sm.resume(),
     stop: () => sm.stop(),
     replyToWaiting: (text) => sm.replyToWaiting(text),
+    respondToPermission: (verdict) => sm.respondToPermission(verdict),
     runMeta: () => runMetaReflect(client, opts.projectPath),
     getState: () => sm.state,
   }
