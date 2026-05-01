@@ -39,12 +39,17 @@ function relativePath(kind: ArtifactKind, phaseId?: string): string {
     case 'adr':
       if (!phaseId) throw new Error(`artifact kind "adr" requires phaseId (the NNNN-slug)`)
       return `docs/decisions/${phaseId}.md`
+    case 'research-summary':
+      if (!phaseId) throw new Error(`artifact kind "research-summary" requires phaseId (the slug)`)
+      return `docs/research/${phaseId}.md`
   }
 }
 
 function absPath(projectPath: string, kind: ArtifactKind, phaseId?: string): string {
-  // ADRs live at <project>/docs/decisions/, NOT inside .autopilot-pro/.
-  if (kind === 'adr') return join(projectPath, relativePath(kind, phaseId))
+  // ADRs and research-summaries live at <project>/docs/..., NOT inside .autopilot-pro/.
+  if (kind === 'adr' || kind === 'research-summary') {
+    return join(projectPath, relativePath(kind, phaseId))
+  }
   return join(projectPath, PRO_DIR, relativePath(kind, phaseId))
 }
 
@@ -190,8 +195,8 @@ export function reconcile(projectPath: string): Record<string, ArtifactState> {
   const state = readState(projectPath)
   let dirty = false
   for (const [rel, entry] of Object.entries(state)) {
-    // ADRs live at <project>/docs/decisions/, NOT inside .autopilot-pro/.
-    const path = entry.kind === 'adr'
+    // ADRs and research-summaries live at <project>/docs/..., NOT inside .autopilot-pro/.
+    const path = (entry.kind === 'adr' || entry.kind === 'research-summary')
       ? join(projectPath, rel)
       : join(projectPath, PRO_DIR, rel)
     if (!existsSync(path)) continue

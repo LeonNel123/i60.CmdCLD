@@ -283,3 +283,35 @@ describe('state.json corrupt-file backups (Wave 3.6)', () => {
     expect(backups.length).toBe(0)
   })
 })
+
+describe('relativePath/absPath for research-summary (Wave 1.6)', () => {
+  const WELL_FORMED_RESEARCH = `---
+slug: backup-encryption
+created: 2026-05-01
+last-verified: 2026-05-01
+sources:
+  - https://example.com/foo
+---
+
+# Research: Backup encryption
+
+## Question
+What schemes apply?
+
+## Findings
+A and B are options.
+
+## Implications for this project
+- Use B.
+`
+
+  it("research-summary writes to docs/research/<slug>.md at project root", () => {
+    writeArtifact(TMP, 'research-summary', WELL_FORMED_RESEARCH, 'backup-encryption')
+    expect(existsSync(join(TMP, 'docs', 'research', 'backup-encryption.md'))).toBe(true)
+    expect(readArtifact(TMP, 'research-summary', 'backup-encryption').content).toContain('Research: Backup encryption')
+  })
+
+  it('throws when research-summary used without slug', () => {
+    expect(() => writeArtifact(TMP, 'research-summary', 'x')).toThrow()
+  })
+})
