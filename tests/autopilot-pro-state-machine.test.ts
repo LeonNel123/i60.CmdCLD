@@ -865,3 +865,48 @@ describe('ProState liveStatus + lastMarker (Wave 3.4)', () => {
     expect(sm.state.lastMarker!.kind).toBe('WAITING')
   })
 })
+
+describe('PRO context-reset path (Wave 4.0)', () => {
+  function setupExecuting() {
+    writeArtifact(TMP, 'spec', '# spec'); markApproved(TMP, 'spec')
+    writeArtifact(TMP, 'plan', '## Phase 1: only\n- [ ] T1: a\n'); markApproved(TMP, 'plan')
+  }
+
+  it('outputVolumeSinceReset increments on PTY data', async () => {
+    setupExecuting()
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'x' })))
+    await sm.start()
+    sm.feedPty('hello world')
+    expect((sm as any).outputVolumeSinceReset).toBeGreaterThanOrEqual(11)
+  })
+
+  it('threshold triggers reset (small threshold for fast test)', async () => {
+    setupExecuting()
+    const writes: string[] = []
+    const opts: AutopilotProOptions = {
+      terminalId: 't',
+      projectPath: TMP,
+      freeTextIdea: 'x',
+      costCapUsd: 1.0,
+      apiProvider: 'anthropic',
+      apiKey: 'fake',
+      plannerModel: 'claude-sonnet-4-6',
+      maxDoerOutputPerReset: 50,
+      writeToPty: (_id, data) => { writes.push(data) },
+      onPtyData: () => () => {},
+      onUpdate: () => {},
+    }
+    const sm = new AutopilotProStateMachine(opts, fakeChatClient(() => ({ shape: 'reply', text: 'x' })), 10, 24 * 60 * 60 * 1000)
+    await sm.start()
+    sm.feedPty('x'.repeat(60) + '\n')   // exceeds 50-char threshold
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')   // settle
+    await flush()
+    // Reset writes the summarise prompt which mentions state.md
+    expect(writes.some((w) => w.includes('state.md'))).toBe(true)
+  })
+
+  it('outputVolumeSinceReset is at 0 immediately after construction', () => {
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'x' })))
+    expect((sm as any).outputVolumeSinceReset).toBe(0)
+  })
+})

@@ -25,6 +25,7 @@ import {
 } from './artifacts'
 import { parsePhases, currentPhase, phaseDoneFromTasks } from './phases'
 import { DOER_SYSTEM_PROMPT_PRO, stage0Kickoff, stage3Kickoff, stage4Kickoff } from './prompts'
+import { runResetSequencePro } from './reset'
 import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 
@@ -132,6 +133,9 @@ export class AutopilotProStateMachine {
   private stage4KickoffSent = false
   private metaAutoFired = false
   private markerFallbackPromptCount = 0
+  private outputVolumeSinceReset = 0
+  private settleResolvers: (() => void)[] = []
+  private maxDoerOutputPerReset: number
 
   constructor(opts: AutopilotProOptions, apiOverride?: ApiClient, ptyIdleMs = 1500, maxSilenceMs = DEFAULT_MAX_SILENCE_MS) {
     this.opts = opts
@@ -141,6 +145,7 @@ export class AutopilotProStateMachine {
     })
     this.maxSilenceMs = maxSilenceMs
     this.baseMaxSilenceMs = maxSilenceMs
+    this.maxDoerOutputPerReset = opts.maxDoerOutputPerReset ?? 60000
 
     // Reconcile artifact approval state on startup (auto-unapprove drifted files).
     const artifacts = reconcile(opts.projectPath)
@@ -212,6 +217,7 @@ export class AutopilotProStateMachine {
     this.markerFallbackPromptCount = 0
     this.detachPty = this.opts.onPtyData(this.opts.terminalId, (data) => {
       this.armSilenceTimer()
+      this.outputVolumeSinceReset += data.length
       this.proBuffer += data
       this.watcher.feed(data)
     })
@@ -272,6 +278,7 @@ export class AutopilotProStateMachine {
   /** For tests — feed raw PTY data, mirroring production listener. */
   feedPty(data: string): void {
     this.armSilenceTimer()
+    this.outputVolumeSinceReset += data.length
     this.proBuffer += data
     this.watcher.feed(data)
   }
@@ -282,6 +289,15 @@ export class AutopilotProStateMachine {
     const m = snap.marker
 
     this.markerFallbackPromptCount = 0
+
+    // Drain any pending waitForSettle promises (used by reset())
+    while (this.settleResolvers.length) this.settleResolvers.shift()?.()
+
+    // Output threshold check — trigger reset before doing more work this cycle
+    if (this.outputVolumeSinceReset >= this.maxDoerOutputPerReset) {
+      await this.reset('output volume threshold reached')
+      return
+    }
 
     this.state.lastMarker = {
       kind: snap.marker.kind,
@@ -652,6 +668,19 @@ export class AutopilotProStateMachine {
       this.appendActivity('orchestrator-resume', `stage advance: ${prev} → ${this.state.stage}`)
       this.phaseTrackerEscalated = false
     }
+  }
+
+  private async reset(reason: string): Promise<void> {
+    this.appendActivity('orchestrator-reset', reason)
+    this.notify()
+    await runResetSequencePro({
+      writeToPty: (s) => this.opts.writeToPty(this.opts.terminalId, s),
+      waitForSettle: () => new Promise<void>((res) => { this.settleResolvers.push(res) }),
+      state: this.state,
+    })
+    this.outputVolumeSinceReset = 0
+    this.appendActivity('orchestrator-resume', 'reset complete')
+    this.notify()
   }
 
   private transition(_phase: ProStage, reason: string): void {

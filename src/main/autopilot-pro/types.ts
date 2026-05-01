@@ -208,6 +208,7 @@ export interface AutopilotProOptions {
   apiProvider: 'anthropic' | 'openrouter'
   apiKey: string
   plannerModel: string
+  maxDoerOutputPerReset?: number   // default 60000
   // Plumbing
   writeToPty: (terminalId: string, data: string) => void
   onPtyData: (terminalId: string, listener: (data: string) => void) => () => void
