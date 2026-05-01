@@ -26,7 +26,7 @@ function fakeChatClient(plan: () => ProDecideResult): ApiClient {
   }
 }
 
-function makeSm(api: ApiClient, writes?: string[], overrides: Partial<AutopilotProOptions> = {}): AutopilotProStateMachine {
+function makeSm(api?: ApiClient, writes?: string[], overrides: Partial<AutopilotProOptions> = {}): AutopilotProStateMachine {
   const opts: AutopilotProOptions = {
     terminalId: 't',
     projectPath: TMP,
@@ -43,7 +43,8 @@ function makeSm(api: ApiClient, writes?: string[], overrides: Partial<AutopilotP
     researchEnabled: false,
     ...overrides,
   }
-  return new AutopilotProStateMachine(opts, api, 10, 24 * 60 * 60 * 1000)
+  const apiClient = api ?? fakeChatClient(() => ({ shape: 'reply', text: 'x' }))
+  return new AutopilotProStateMachine(opts, apiClient, 10, 24 * 60 * 60 * 1000)
 }
 
 async function flush(): Promise<void> {
@@ -988,5 +989,30 @@ describe('dispatch — research shape (Wave 1.6)', () => {
     // Simulate doer writing the artifact
     sm.testRecordResearchWrite('foo')
     expect(sm.state.researchInFlight).toBeUndefined()
+  })
+})
+
+describe('Stage -1 auto-trigger (Wave 1.6)', () => {
+  it('enters research stage when idea has URLs', async () => {
+    const writes: string[] = []
+    const sm = makeSm(undefined, undefined, {
+      researchEnabled: true,
+      freeTextIdea: 'compare https://example.com/a vs https://example.com/b',
+      writeToPty: (_id: string, text: string) => { writes.push(text) },
+    })
+    sm.start()
+    expect(sm.getState().stage).toBe('research')
+    expect(writes.some((w) => w.includes('Research signals'))).toBe(true)
+    expect(writes.some((w) => w.includes('compare'))).toBe(true)
+  })
+
+  it('does not enter research stage when researchEnabled=false', async () => {
+    const sm = makeSm(undefined, undefined, {
+      researchEnabled: false,
+      freeTextIdea: 'compare https://example.com/a vs https://example.com/b',
+      writeToPty: () => {},
+    })
+    sm.start()
+    expect(sm.getState().stage).toBe('discovery')
   })
 })

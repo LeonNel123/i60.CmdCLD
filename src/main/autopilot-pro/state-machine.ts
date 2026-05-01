@@ -27,6 +27,7 @@ import { parsePhases, currentPhase, phaseDoneFromTasks } from './phases'
 import { DOER_SYSTEM_PROMPT_PRO, stage0Kickoff, stage3Kickoff, stage4Kickoff } from './prompts'
 import { runResetSequencePro } from './reset'
 import { saveRuntime, loadRuntime } from './runtime-state'
+import { detectResearchSignals } from './research-signals'
 import { recordSpend } from '../autopilot/budget-tracker'
 import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
@@ -296,6 +297,10 @@ export class AutopilotProStateMachine {
 
   // ---- public control ----
 
+  getState(): ProState {
+    return this.state
+  }
+
   async start(): Promise<void> {
     this.markerFallbackPromptCount = 0
 
@@ -327,6 +332,42 @@ export class AutopilotProStateMachine {
     })
 
     this.state.validation = discoverValidation(this.opts.projectPath)
+
+    // Stage -1 auto-trigger: detect research signals in the freeTextIdea and
+    // pre-emptively enter research stage before the normal stage-0 kickoff.
+    // Skipped if researchEnabled=false, skipResearchStage=true, or a resumed
+    // run already has researchInFlight set.
+    if (this.researchEnabled && !this.opts.skipResearchStage && !this.state.researchInFlight) {
+      const signals = detectResearchSignals(this.opts.freeTextIdea ?? '')
+      if (signals) {
+        this.state.stage = 'research'
+        this.state.researchInFlight = {
+          triggerStage: 'discovery',
+          pendingTopics: [],
+          spendByTopic: {},
+          topicBudgets: {},
+        }
+        this.appendActivity('research-stage-entered', signals.triggerReason)
+
+        const lines: string[] = ['Research signals detected in idea:']
+        if (signals.urls.length) lines.push(`  - URLs: ${signals.urls.join(', ')}`)
+        if (signals.repos.length) lines.push(`  - Repos: ${signals.repos.join(', ')}`)
+        if (signals.keywords.length) lines.push(`  - Keywords: ${signals.keywords.join(', ')}`)
+        if (signals.comparisons.length) lines.push(`  - Comparisons: ${signals.comparisons.join(', ')}`)
+        lines.push('')
+        lines.push(`Original idea: ${this.opts.freeTextIdea}`)
+        lines.push('')
+        lines.push('Before we write spec.md, do focused research. Emit DECISION_SHAPE: research with topic slugs, queries, and any seed sources you want to fetch first. The orchestrator will approve per-topic budgets and gate writes to docs/research/<slug>.md.')
+
+        const reply = lines.join('\n')
+        this.opts.writeToPty(this.opts.terminalId, DOER_SYSTEM_PROMPT_PRO + '\r')
+        this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+        this.state.liveStatus = 'waiting for doer'
+        this.armSilenceTimer()
+        this.notify()
+        return
+      }
+    }
 
     this.opts.writeToPty(this.opts.terminalId, DOER_SYSTEM_PROMPT_PRO + '\r')
 

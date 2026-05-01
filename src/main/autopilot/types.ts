@@ -93,6 +93,7 @@ export interface ActivityEntry {
     | 'research-decline'
     | 'research-reuse'
     | 'research-stage-complete'
+    | 'research-stage-entered'
   summary: string
 }
 
