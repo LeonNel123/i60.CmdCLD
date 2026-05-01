@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
+import { formatRelativeTime } from '../utils/format-relative-time'
 
 interface Subgoal {
   id: string
@@ -27,6 +28,8 @@ interface AutopilotState {
   lastDecisionText: string
   recentLog: ActivityEntry[]
   escalationReason: string | null
+  liveStatus: string | null
+  lastMarker: { kind: string; subgoalId?: string; status?: string; receivedAt: number } | null
 }
 
 interface Props {
@@ -37,6 +40,7 @@ interface Props {
 export function AutopilotPanel({ terminalId, onClose }: Props) {
   const [state, setState] = useState<AutopilotState | null>(null)
   const [manualReply, setManualReply] = useState('')
+  const [actionExpanded, setActionExpanded] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -76,6 +80,11 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
 
       <div style={{ color: '#888', fontSize: 11, lineHeight: 1.5 }}>
         Phase: <span style={{ color: '#ccc' }}>{state.phase}</span><br />
+        {state.liveStatus && (
+          <>
+            Status: <span style={{ color: '#a78bfa', fontStyle: 'italic' }}>{state.liveStatus}</span><br />
+          </>
+        )}
         Cycle {state.cycleCount}
       </div>
 
@@ -121,9 +130,36 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
 
       {state.lastDecisionText && (
         <div>
-          <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4 }}>LAST ACTION</div>
-          <div style={{ fontSize: 11, color: '#aaa', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div
+            style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4, cursor: 'pointer', userSelect: 'none' }}
+            onClick={() => setActionExpanded((x) => !x)}
+          >
+            {actionExpanded ? '▾' : '▸'} LAST ACTION
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: '#aaa',
+              fontFamily: 'monospace',
+              overflow: actionExpanded ? 'visible' : 'hidden',
+              textOverflow: actionExpanded ? 'unset' : 'ellipsis',
+              whiteSpace: actionExpanded ? 'pre-wrap' : 'nowrap',
+              wordBreak: 'break-word',
+            }}
+          >
             {state.lastDecisionText}
+          </div>
+        </div>
+      )}
+
+      {state.lastMarker && (
+        <div>
+          <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4 }}>LAST MARKER</div>
+          <div style={{ fontSize: 11, color: '#aaa', fontFamily: 'monospace' }}>
+            {state.lastMarker.kind}
+            {state.lastMarker.subgoalId && ` ${state.lastMarker.subgoalId}`}
+            {state.lastMarker.status && ` ${state.lastMarker.status}`}
+            <span style={{ color: '#666' }}> · {formatRelativeTime(state.lastMarker.receivedAt)}</span>
           </div>
         </div>
       )}
