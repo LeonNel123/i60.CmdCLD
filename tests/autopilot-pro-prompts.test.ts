@@ -3,8 +3,9 @@ import {
   DOER_SYSTEM_PROMPT_PRO, PRINCIPLES_BLOCK,
   buildPlannerPrompt, META_REFLECT_SYSTEM_PROMPT, buildMetaReflectPrompt,
   stage3Kickoff, stage4Kickoff, stage0Kickoff,
+  RESET_SUMMARISE_PROMPT_PRO, buildResumePromptPro,
 } from '../src/main/autopilot-pro/prompts'
-import type { ProDecideInput, ProSettledSnapshot } from '../src/main/autopilot-pro/types'
+import type { ProDecideInput, ProSettledSnapshot, ProState } from '../src/main/autopilot-pro/types'
 
 const baseSnap: ProSettledSnapshot = {
   text: 'doing the thing',
@@ -194,5 +195,56 @@ describe('PRO GROUNDING (Wave 3.5)', () => {
     expect(k).toContain('build a thing')
     expect(k).toMatch(/Before writing spec\.md/i)
     expect(k).toContain('Repository impact')
+  })
+})
+
+describe('RESET_SUMMARISE_PROMPT_PRO (Wave 4.0)', () => {
+  it('mentions state.md as the destination', () => {
+    expect(RESET_SUMMARISE_PROMPT_PRO).toContain('state.md')
+  })
+
+  it('asks for current stage and recent decisions', () => {
+    expect(RESET_SUMMARISE_PROMPT_PRO).toMatch(/Current stage/i)
+    expect(RESET_SUMMARISE_PROMPT_PRO).toMatch(/(recent decisions|approved artifacts)/i)
+  })
+})
+
+describe('buildResumePromptPro (Wave 4.0)', () => {
+  function makeProState(overrides: Partial<ProState> = {}): ProState {
+    return {
+      stage: 'discovery',
+      currentPhaseId: null,
+      currentTaskId: null,
+      artifacts: {},
+      cycleCount: 0,
+      costUsd: 0,
+      costCapUsd: 1.0,
+      recentLog: [],
+      escalationReason: null,
+      validation: {},
+      subagentRunning: false,
+      subagentEtaMs: 0,
+      liveStatus: null,
+      lastMarker: null,
+      permissionRequest: null,
+      ...overrides,
+    }
+  }
+
+  it('discovery stage: includes spec.md and state.md but NOT plan.md', () => {
+    const k = buildResumePromptPro(makeProState({ stage: 'discovery' }))
+    expect(k).toContain('spec.md')
+    expect(k).toContain('state.md')
+    expect(k).not.toContain('plan.md')
+  })
+
+  it('planning stage: includes plan.md', () => {
+    const k = buildResumePromptPro(makeProState({ stage: 'planning' }))
+    expect(k).toContain('plan.md')
+  })
+
+  it('phase-review stage: includes reviews/<currentPhaseId>.md', () => {
+    const k = buildResumePromptPro(makeProState({ stage: 'phase-review', currentPhaseId: 'phase-2' }))
+    expect(k).toContain('reviews/phase-2.md')
   })
 })

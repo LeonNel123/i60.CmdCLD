@@ -10,7 +10,7 @@
 // Doers that don't emit DECISION_SHAPE fall back to classic 'reply' shape —
 // the orchestrator handles the marker the same way as v1.2.4.
 
-import type { DecisionShape, ProDecideInput, ArtifactState, MetaClassification } from './types'
+import type { DecisionShape, ProDecideInput, ArtifactState, MetaClassification, ProState } from './types'
 import { PRINCIPLES } from './types'
 
 // ----- Principles block (cached prefix) -----
@@ -342,4 +342,48 @@ export function stage0Kickoff(freeTextIdea: string): string {
     `"## Repository impact" section listing the real files/modules this work will touch (or ` +
     `"(green-field — no existing code to ground in)" if the project is fresh).\n\n` +
     `When complete, emit [ORCH:WAITING] with DECISION_SHAPE: approve and ARTIFACT: spec.md.`
+}
+
+// ----- Reset path (Wave 4.0) -----
+
+export const RESET_SUMMARISE_PROMPT_PRO = `Before we /clear context: write a clear summary of the current state to .autopilot-pro/state.md.
+
+Include:
+- Current stage (discovery / planning / implementation / phase-review / final-review)
+- Current phase id (if implementation/phase-review) and current task within it
+- Approved artifacts so far (read from disk if you forget — spec.md, plan.md, impl/*.md, reviews/*.md)
+- Recent decisions (architectural, naming, libraries chosen, principles violations refined)
+- Blockers encountered and how they were resolved
+- What you would tell yourself if you forgot everything
+
+Do NOT include code. Just facts and decisions.
+
+When the file is written, emit [ORCH:WAITING] ready to clear.
+`
+
+export function buildResumePromptPro(state: ProState): string {
+  const reads: string[] = ['.autopilot-pro/spec.md', '.autopilot-pro/state.md']
+  if (state.stage !== 'discovery') reads.push('.autopilot-pro/plan.md')
+  if (state.stage === 'implementation' && state.currentPhaseId) {
+    reads.push(`.autopilot-pro/impl/${state.currentPhaseId}.md`)
+  }
+  if (state.stage === 'phase-review' && state.currentPhaseId) {
+    reads.push(`.autopilot-pro/reviews/${state.currentPhaseId}.md`)
+  }
+  if (state.stage === 'final-review') {
+    reads.push('.autopilot-pro/final-review.md')
+  }
+  const phaseLine = state.currentPhaseId ? `\nCurrent phase: ${state.currentPhaseId}` : ''
+  const taskLine = state.currentTaskId ? `\nCurrent task: ${state.currentTaskId}` : ''
+  return `Resume autopilot work.
+
+Read these files (in this order):
+${reads.map((r) => `  ${r}`).join('\n')}
+
+Current stage: ${state.stage}${phaseLine}${taskLine}
+
+Continue from where state.md indicates. Emit the appropriate marker
+([ORCH:WAITING] with DECISION_SHAPE, [ORCH:PROGRESS], [ORCH:GOAL_READY],
+or [ORCH:STUCK]) when ready.
+`
 }
