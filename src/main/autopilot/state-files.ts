@@ -47,24 +47,54 @@ function formatGoal(g: Goal): string {
   return lines.join('\n')
 }
 
+type Section = { rawHeading: string; lines: string[] }
+
+function collectSections(text: string): Record<string, Section> {
+  const out: Record<string, Section> = {}
+  let current: Section | null = null
+  for (const line of text.split(/\r?\n/)) {
+    const headingMatch = line.match(/^(#{1,6})\s+(.+?)\s*$/)
+    if (headingMatch) {
+      const key = headingMatch[2].toLowerCase().trim()
+      current = { rawHeading: line.trim(), lines: [] }
+      out[key] = current
+      continue
+    }
+    if (current) current.lines.push(line)
+  }
+  return out
+}
+
+function findSection(sections: Record<string, Section>, predicate: (key: string) => boolean): Section | null {
+  for (const [key, sec] of Object.entries(sections)) {
+    if (predicate(key)) return sec
+  }
+  return null
+}
+
 function parseGoal(text: string): Goal | null {
   const sections = collectSections(text)
-  const goalLines = sections['# Goal'] ?? []
-  const goalLine = goalLines.find((l) => l.trim().length > 0)
+
+  const goalSec = findSection(sections, (k) => /^goal\b/.test(k))
+  if (!goalSec) return null
+  const goalLine = goalSec.lines.find((l) => l.trim().length > 0)
   if (!goalLine) return null
 
-  const nonGoals = (sections['## Non-goals'] ?? [])
+  const nonGoalsSec = findSection(sections, (k) => /^non-?goals?\b/.test(k))
+  const nonGoals = (nonGoalsSec?.lines ?? [])
     .filter((l) => l.startsWith('- '))
     .map((l) => l.slice(2).trim())
     .filter(Boolean)
 
+  const acceptanceSec = findSection(sections, (k) => /^acceptance\b/.test(k))
   const acceptance: Goal['acceptance'] = []
-  for (const l of sections['## Acceptance'] ?? []) {
+  for (const l of acceptanceSec?.lines ?? []) {
     const m = l.match(/^- (shell|judge): (.+)$/)
     if (m) acceptance.push({ kind: m[1] as 'shell' | 'judge', value: m[2].trim() })
   }
 
-  const constraintLines = sections['## Constraints'] ?? []
+  const constraintsSec = findSection(sections, (k) => /^constraints\b/.test(k))
+  const constraintLines = constraintsSec?.lines ?? []
   const findKv = (key: string): string | null => {
     for (const l of constraintLines) {
       const m = l.match(new RegExp(`^- ${key}:\\s*(.+)$`))
@@ -84,20 +114,6 @@ function parseGoal(text: string): Goal | null {
     acceptance,
     constraints: { maxIterations, maxApiCostUsd, maxDoerOutputPerReset },
   }
-}
-
-function collectSections(text: string): Record<string, string[]> {
-  const out: Record<string, string[]> = {}
-  let current: string | null = null
-  for (const line of text.split(/\r?\n/)) {
-    if (/^#{1,6}\s/.test(line)) {
-      current = line.trim()
-      out[current] = []
-      continue
-    }
-    if (current) out[current].push(line)
-  }
-  return out
 }
 
 // ---- milestones/mN.md ----
@@ -157,16 +173,18 @@ function formatMilestone(m: Milestone): string {
 
 function parseMilestone(text: string, fileId: string): Milestone | null {
   const sections = collectSections(text)
-  const titleLine = Object.keys(sections).find((k) => /^# Milestone /.test(k))
-  if (!titleLine) return null
-  const titleMatch = titleLine.match(/^# Milestone (\S+)\s*[—-]?\s*(.+)?$/)
+  const titleEntry = Object.entries(sections).find(([key]) => /^milestone\b/.test(key))
+  if (!titleEntry) return null
+  const [, titleSec] = titleEntry
+  const titleMatch = titleSec.rawHeading.match(/^#+\s+Milestone\s+(\S+)\s*[—-]?\s*(.+)?$/i)
   const id = titleMatch?.[1] ?? fileId
   const name = (titleMatch?.[2] ?? '').trim()
-  const statusLine = (sections[titleLine] ?? []).find((l) => l.startsWith('Status:'))
+  const statusLine = titleSec.lines.find((l) => l.startsWith('Status:'))
   const status = (statusLine?.replace('Status:', '').trim() as Milestone['status']) ?? 'pending'
   const subgoals: Subgoal[] = []
   let pending: Subgoal | null = null
-  for (const l of sections['## Subgoals'] ?? []) {
+  const subgoalsSec = findSection(sections, (k) => /^subgoals?\b/.test(k))
+  for (const l of subgoalsSec?.lines ?? []) {
     const main = l.match(/^- \[([x~! ])\] (\S+): (.+)$/)
     if (main) {
       if (pending) subgoals.push(pending)
@@ -194,7 +212,8 @@ function parseMilestone(text: string, fileId: string): Milestone | null {
     }
   }
   if (pending) subgoals.push(pending)
-  const notes = ((sections['## Notes'] ?? []).join('\n')).trim()
+  const notesSec = findSection(sections, (k) => /^notes\b/.test(k))
+  const notes = ((notesSec?.lines ?? []).join('\n')).trim()
   return { id, name, status, subgoals, notes }
 }
 

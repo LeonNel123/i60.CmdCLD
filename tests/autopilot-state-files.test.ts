@@ -7,6 +7,9 @@ import {
 } from '../src/main/autopilot/state-files'
 import type { Goal, Milestone, ActivityEntry } from '../src/main/autopilot/types'
 
+// Wave 3.4 relaxed-parser tests use their own tmp dir via a nested beforeEach/afterEach
+const TMP2 = join(__dirname, '.tmp-autopilot-state-files-wave34')
+
 const TMP = join(__dirname, '.tmp-autopilot-state-files')
 
 beforeEach(() => { mkdirSync(TMP, { recursive: true }) })
@@ -163,5 +166,49 @@ describe('autopilot state-files', () => {
       expect(s.tech!.length).toBeLessThanOrEqual(2048 + 50)  // 2KB + marker
       expect(s.tech).toContain('(truncated)')
     })
+  })
+})
+
+describe('readGoal — accepted formats (Wave 3.4 relaxed parser)', () => {
+  beforeEach(() => { mkdirSync(join(TMP2, '.autopilot'), { recursive: true }) })
+  afterEach(() => { rmSync(TMP2, { recursive: true, force: true }) })
+
+  it('accepts ## Goal (h2) instead of # Goal (h1)', () => {
+    writeFileSync(join(TMP2, '.autopilot', 'goal.md'),
+      '## Goal\n\nbuild a thing\n\n## Constraints\n- max_iterations: 40\n- max_api_cost_usd: 1.0\n- max_doer_output_per_reset: 60000\n')
+    const g = readGoal(TMP2)
+    expect(g).not.toBeNull()
+    expect(g!.goal).toBe('build a thing')
+  })
+
+  it('accepts "## Acceptance criteria" (with the word criteria)', () => {
+    writeFileSync(join(TMP2, '.autopilot', 'goal.md'),
+      '# Goal\n\nbuild\n\n## Acceptance criteria\n- shell: npm test\n\n## Constraints\n- max_iterations: 40\n- max_api_cost_usd: 1.0\n- max_doer_output_per_reset: 60000\n')
+    const g = readGoal(TMP2)
+    expect(g!.acceptance).toEqual([{ kind: 'shell', value: 'npm test' }])
+  })
+
+  it('accepts a goal.md missing the constraints section by using defaults', () => {
+    writeFileSync(join(TMP2, '.autopilot', 'goal.md'), '# Goal\n\njust a thing\n')
+    const g = readGoal(TMP2)
+    expect(g).not.toBeNull()
+    expect(g!.constraints.maxIterations).toBe(40)
+    expect(g!.constraints.maxApiCostUsd).toBe(1.0)
+    expect(g!.constraints.maxDoerOutputPerReset).toBe(60000)
+  })
+
+  it('returns null only when the file is missing', () => {
+    expect(readGoal(TMP2)).toBeNull()
+  })
+
+  it('parses the BackupHero-shaped goal.md fixture', () => {
+    const fixture = readFileSync(join(__dirname, 'fixtures', 'backuphero-goal.md'), 'utf-8')
+    writeFileSync(join(TMP2, '.autopilot', 'goal.md'), fixture)
+    const g = readGoal(TMP2)
+    expect(g).not.toBeNull()
+    expect(g!.goal).toContain('BackupHero')
+    expect(g!.nonGoals.length).toBeGreaterThan(0)
+    expect(g!.acceptance.length).toBeGreaterThan(0)
+    expect(g!.constraints.maxIterations).toBe(40)
   })
 })
