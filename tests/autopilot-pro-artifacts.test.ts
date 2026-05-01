@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from 'fs'
+import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import {
   readArtifact, writeArtifact, markApproved, markUnapproved,
@@ -234,5 +234,39 @@ line3`)
     const log = rfs(join(TMP, '.autopilot-pro', 'spec-changelog.md'), 'utf-8').trim()
     const idx = log.indexOf(' applied: ') + ' applied: '.length
     expect(log.slice(idx).length).toBeLessThanOrEqual(100)
+  })
+})
+
+describe('state.json corrupt-file backups (Wave 3.6)', () => {
+  it('backs up state.json before resetting on parse error', () => {
+    mkdirSync(join(TMP, '.autopilot-pro'), { recursive: true })
+    writeFileSync(join(TMP, '.autopilot-pro', 'state.json'), 'this is not json {')
+    const result = readState(TMP)
+    expect(result).toEqual({})
+    const files = readdirSync(join(TMP, '.autopilot-pro'))
+    const backups = files.filter((f) => f.startsWith('state.json.corrupt-'))
+    expect(backups.length).toBe(1)
+  })
+
+  it('backs up state.json on schema-invalid input', () => {
+    mkdirSync(join(TMP, '.autopilot-pro'), { recursive: true })
+    // Valid JSON but wrong shape: entries missing required fields.
+    writeFileSync(join(TMP, '.autopilot-pro', 'state.json'),
+      JSON.stringify({ 'spec.md': { foo: 'bar', refineCount: 'not a number' } }))
+    const result = readState(TMP)
+    expect(result).toEqual({})
+    const files = readdirSync(join(TMP, '.autopilot-pro'))
+    const backups = files.filter((f) => f.startsWith('state.json.corrupt-'))
+    expect(backups.length).toBe(1)
+  })
+
+  it('does not back up valid state.json', () => {
+    writeArtifact(TMP, 'spec', '# spec')
+    markApproved(TMP, 'spec')
+    const result = readState(TMP)
+    expect(result['spec.md']?.approved).toBe(true)
+    const files = readdirSync(join(TMP, '.autopilot-pro'))
+    const backups = files.filter((f) => f.startsWith('state.json.corrupt-'))
+    expect(backups.length).toBe(0)
   })
 })

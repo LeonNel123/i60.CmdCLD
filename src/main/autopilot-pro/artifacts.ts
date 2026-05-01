@@ -21,6 +21,7 @@ import { join, dirname } from 'path'
 import { createHash } from 'crypto'
 import type { ArtifactKind, ArtifactState } from './types'
 import { PRO_DIR } from './types'
+import { backupCorrupt } from '../autopilot/corrupt-backup'
 
 // ----- path helpers -----
 
@@ -143,12 +144,31 @@ export function readState(projectPath: string): Record<string, ArtifactState> {
   if (!existsSync(path)) return {}
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf-8'))
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, ArtifactState>
-    return {}
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      backupCorrupt(path)
+      return {}
+    }
+    if (!validateStateShape(parsed)) {
+      backupCorrupt(path)
+      return {}
+    }
+    return parsed as Record<string, ArtifactState>
   } catch {
-    // Corrupt state.json — return empty rather than crash. The next write will overwrite.
+    backupCorrupt(path)
     return {}
   }
+}
+
+function validateStateShape(parsed: any): boolean {
+  for (const value of Object.values(parsed)) {
+    if (!value || typeof value !== 'object') return false
+    const v = value as any
+    if (typeof v.path !== 'string') return false
+    if (typeof v.kind !== 'string') return false
+    if (typeof v.approved !== 'boolean') return false
+    if (v.refineCount !== undefined && typeof v.refineCount !== 'number') return false
+  }
+  return true
 }
 
 export function writeState(projectPath: string, state: Record<string, ArtifactState>): void {

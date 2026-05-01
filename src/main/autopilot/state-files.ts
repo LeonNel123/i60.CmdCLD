@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, appendFileSync } from 'fs'
 import { join, dirname } from 'path'
 import type { Goal, Milestone, Subgoal, ActivityEntry } from './types'
+import { backupCorrupt } from './corrupt-backup'
 
 const DIR = '.autopilot'
 const MILESTONES_DIR = '.autopilot/milestones'
@@ -15,8 +16,14 @@ export function readGoal(projectPath: string): Goal | null {
   const path = join(projectPath, DIR, 'goal.md')
   try {
     if (!existsSync(path)) return null
-    return parseGoal(readFileSync(path, 'utf-8'))
+    const text = readFileSync(path, 'utf-8')
+    const parsed = parseGoal(text)
+    if (parsed === null) {
+      backupCorrupt(path)
+    }
+    return parsed
   } catch {
+    backupCorrupt(path)
     return null
   }
 }
@@ -124,11 +131,16 @@ export function readMilestones(projectPath: string): Milestone[] {
   const files = readdirSync(dir).filter((f) => f.endsWith('.md')).sort()
   const out: Milestone[] = []
   for (const f of files) {
+    const filePath = join(dir, f)
     try {
-      const m = parseMilestone(readFileSync(join(dir, f), 'utf-8'), f.replace(/\.md$/, ''))
-      if (m) out.push(m)
+      const m = parseMilestone(readFileSync(filePath, 'utf-8'), f.replace(/\.md$/, ''))
+      if (m === null) {
+        backupCorrupt(filePath)
+        continue
+      }
+      out.push(m)
     } catch {
-      // skip
+      backupCorrupt(filePath)
     }
   }
   return out

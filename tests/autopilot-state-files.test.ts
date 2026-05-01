@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { writeFileSync, mkdirSync, rmSync, readFileSync, existsSync } from 'fs'
+import { writeFileSync, mkdirSync, rmSync, readFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import {
   readGoal, writeGoal, readMilestones, writeMilestone, appendLog,
@@ -210,5 +210,28 @@ describe('readGoal — accepted formats (Wave 3.4 relaxed parser)', () => {
     expect(g!.nonGoals.length).toBeGreaterThan(0)
     expect(g!.acceptance.length).toBeGreaterThan(0)
     expect(g!.constraints.maxIterations).toBe(40)
+  })
+})
+
+describe('Classic corrupt-file backups (Wave 3.6)', () => {
+  it('backs up goal.md when parseGoal returns null on malformed input', () => {
+    mkdirSync(join(TMP, '.autopilot'), { recursive: true })
+    writeFileSync(join(TMP, '.autopilot', 'goal.md'),
+      'this is not a valid goal.md — no Goal heading at all\n')
+    const result = readGoal(TMP)
+    expect(result).toBeNull()
+    const files = readdirSync(join(TMP, '.autopilot'))
+    const backups = files.filter((f) => f.startsWith('goal.md.corrupt-'))
+    expect(backups.length).toBe(1)
+  })
+
+  it('does not back up goal.md when missing (no file to back up)', () => {
+    expect(readGoal(TMP)).toBeNull()
+    const dir = join(TMP, '.autopilot')
+    if (existsSync(dir)) {
+      const files = readdirSync(dir)
+      const backups = files.filter((f) => f.startsWith('goal.md.corrupt-'))
+      expect(backups.length).toBe(0)
+    }
   })
 })
