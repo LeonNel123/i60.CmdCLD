@@ -88,6 +88,16 @@ contextBridge.exposeInMainWorld('api', {
   settingsSet: (key: string, value: unknown): Promise<void> =>
     ipcRenderer.invoke('settings:set', key, value),
 
+  // Budget tracker (daily Autopilot cost cap)
+  settingsGetBudgetState: (projectPath: string) =>
+    ipcRenderer.invoke('settings:getBudgetState', projectPath),
+
+  settingsSetBudgetCap: (scope: 'project' | 'global', projectPath: string | null, capUsd: number) =>
+    ipcRenderer.invoke('settings:setBudgetCap', scope, projectPath, capUsd),
+
+  settingsResetTodaySpend: () =>
+    ipcRenderer.invoke('settings:resetTodaySpend'),
+
   // Window management
   windowCreate: (): Promise<string> =>
     ipcRenderer.invoke('window:create'),

@@ -14,6 +14,7 @@ export interface BudgetState {
 }
 
 export interface BudgetSnapshot {
+  date: string
   projectSpent: number
   projectCap: number
   globalSpent: number
@@ -113,7 +114,6 @@ export function recordSpend(projectPath: string, deltaUsd: number): BudgetSnapsh
 export function getSnapshot(projectPath: string): BudgetSnapshot {
   const state = loadBudget()
   ensureProject(state, projectPath)
-  saveBudget(state)
   return computeSnapshot(state, projectPath)
 }
 
@@ -124,6 +124,7 @@ function computeSnapshot(state: BudgetState, projectPath: string): BudgetSnapsho
   const projectWarning = project.spentUsd >= project.capUsd * WARNING_THRESHOLD
   const globalWarning = state.global.spentUsd >= state.global.capUsd * WARNING_THRESHOLD
   return {
+    date: state.date,
     projectSpent: project.spentUsd,
     projectCap: project.capUsd,
     globalSpent: state.global.spentUsd,

@@ -75,6 +75,12 @@ export interface ElectronAPI {
   projectCreate: (folderName: string) => Promise<string | null>
   settingsGetAll: () => Promise<{ editor: string; claudeArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; favoriteFolders: string[]; restoreSessionEnabled: boolean; autopilotApiProvider: 'anthropic' | 'openrouter'; autopilotPlannerModel: string; autopilotDefaultCostCap: number; autopilotDefaultMaxIterations: number }>
   settingsSet: (key: string, value: unknown) => Promise<void>
+  settingsGetBudgetState: (projectPath: string) => Promise<{
+    state: { date: string; perProject: Record<string, { spentUsd: number; capUsd: number }>; global: { spentUsd: number; capUsd: number } }
+    snapshot: { date: string; projectSpent: number; projectCap: number; globalSpent: number; globalCap: number; capReached: boolean; capReachedReason: 'project' | 'global' | null; warningThreshold: boolean }
+  }>
+  settingsSetBudgetCap: (scope: 'project' | 'global', projectPath: string | null, capUsd: number) => Promise<{ ok: boolean }>
+  settingsResetTodaySpend: () => Promise<{ ok: boolean }>
   sessionSaveLast: (session: SavedSession) => Promise<void>
   sessionLoadLast: () => Promise<SavedSession | null>
   sessionClearLast: () => Promise<void>

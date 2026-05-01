@@ -22,6 +22,7 @@ import type { ProState } from './autopilot-pro/types'
 import type { AutopilotOptions } from './autopilot/types'
 import { formatPtyWrite } from './autopilot/pty-write'
 import { probeArtifacts } from './autopilot/probe-artifacts'
+import { loadBudget, getSnapshot as getBudgetSnapshot, setProjectCap, setGlobalCap, resetTodaySpend } from './autopilot/budget-tracker'
 
 // File logger for debugging startup issues
 const logPath = join(app.getPath('userData'), 'cmdcld.log')
@@ -544,6 +545,25 @@ ipcMain.handle('autopilot:getStatus', (_event, terminalId: string) => {
 })
 ipcMain.handle('autopilot:probeArtifacts', (_event, projectPath: string) => {
   return probeArtifacts(projectPath)
+})
+
+// Budget settings — daily cost cap (per-project + global), spend tracker.
+ipcMain.handle('settings:getBudgetState', (_event, projectPath: string) => {
+  return { state: loadBudget(), snapshot: getBudgetSnapshot(projectPath) }
+})
+
+ipcMain.handle('settings:setBudgetCap', (_event, scope: 'project' | 'global', projectPath: string | null, capUsd: number) => {
+  if (scope === 'global') {
+    setGlobalCap(capUsd)
+  } else if (projectPath) {
+    setProjectCap(projectPath, capUsd)
+  }
+  return { ok: true }
+})
+
+ipcMain.handle('settings:resetTodaySpend', () => {
+  resetTodaySpend()
+  return { ok: true }
 })
 
 // ---- PRO-specific handlers ----

@@ -671,7 +671,14 @@ export default function App() {
       )}
 
       {showSettings && (
-        <SettingsDialog onClose={handleSettingsClosed} />
+        <SettingsDialog
+          onClose={handleSettingsClosed}
+          activeProjectPath={
+            (viewMode.type === 'focused'
+              ? terminals.find((t) => t.id === viewMode.terminalId)?.path
+              : terminals[0]?.path) ?? undefined
+          }
+        />
       )}
 
       {pendingLaunch && (

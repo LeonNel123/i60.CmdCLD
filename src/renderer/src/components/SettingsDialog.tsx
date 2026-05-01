@@ -4,9 +4,10 @@ import { X } from './icons'
 
 interface SettingsDialogProps {
   onClose: () => void
+  activeProjectPath?: string
 }
 
-export function SettingsDialog({ onClose }: SettingsDialogProps) {
+export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogProps) {
   const [tab, setTab] = useState<'settings' | 'claude config' | 'autopilot' | 'about'>('settings')
   const [claudeArgs, setClaudeArgs] = useState('')
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
@@ -59,6 +60,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [apHasORKey, setApHasORKey] = useState(false)
   const [apKeyInput, setApKeyInput] = useState('')
 
+  // Daily cost budget state (per-project + global cap, today's spend)
+  const [budgetState, setBudgetState] = useState<{
+    date: string
+    perProject: Record<string, { spentUsd: number; capUsd: number }>
+    global: { spentUsd: number; capUsd: number }
+  } | null>(null)
+  const [budgetProjectCap, setBudgetProjectCap] = useState<number>(5)
+  const [budgetGlobalCap, setBudgetGlobalCap] = useState<number>(20)
+  const [budgetTodaySpent, setBudgetTodaySpent] = useState<number>(0)
+
   useEffect(() => {
     window.api.getVersion().then(setAppVersion).catch(() => {})
     window.api.getBuildInfo().then(setBuildInfo).catch(() => {})
@@ -109,6 +120,24 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       window.api.autopilotKeyExists('openrouter'),
     ]).then(([a, o]) => { setApHasAnthKey(a); setApHasORKey(o) })
   }, [])
+
+  useEffect(() => {
+    const path = activeProjectPath ?? ''
+    void window.api.settingsGetBudgetState(path).then(({ state, snapshot }) => {
+      setBudgetState(state)
+      setBudgetProjectCap(snapshot.projectCap)
+      setBudgetGlobalCap(snapshot.globalCap)
+      setBudgetTodaySpent(snapshot.globalSpent)
+    }).catch(() => {})
+  }, [activeProjectPath])
+
+  const refreshBudget = async () => {
+    const { state, snapshot } = await window.api.settingsGetBudgetState(activeProjectPath ?? '')
+    setBudgetState(state)
+    setBudgetProjectCap(snapshot.projectCap)
+    setBudgetGlobalCap(snapshot.globalCap)
+    setBudgetTodaySpent(snapshot.globalSpent)
+  }
 
   const refreshTailscale = async () => {
     try {
@@ -1018,6 +1047,74 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 />
               </label>
             </div>
+
+            {budgetState && (
+              <div style={{ marginTop: 4, paddingTop: 14, borderTop: '1px solid #2a2a2a' }}>
+                <h4 style={{ color: '#e0e0e0', margin: '0 0 6px', fontSize: 13, fontWeight: 600 }}>Daily cost budget</h4>
+                <div style={{ color: '#666', fontSize: 10, marginBottom: 10, lineHeight: 1.5 }}>
+                  Hard pauses Autopilot runs when reached; warns at 80%. Resets at midnight (local).
+                </div>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: '#888' }}>
+                    Per-project (USD/day)
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={budgetProjectCap}
+                      disabled={!activeProjectPath}
+                      onChange={(e) => setBudgetProjectCap(Number(e.target.value) || 0)}
+                      onBlur={() => {
+                        if (activeProjectPath) {
+                          void window.api.settingsSetBudgetCap('project', activeProjectPath, budgetProjectCap).then(() => refreshBudget())
+                        }
+                      }}
+                      style={{
+                        width: 100, background: '#0d1117', border: '1px solid #333', borderRadius: 4,
+                        padding: '4px 8px', color: '#ccc', fontSize: 12, fontFamily: 'monospace',
+                        opacity: activeProjectPath ? 1 : 0.5,
+                      }}
+                    />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: '#888' }}>
+                    Global (USD/day)
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={budgetGlobalCap}
+                      onChange={(e) => setBudgetGlobalCap(Number(e.target.value) || 0)}
+                      onBlur={() => {
+                        void window.api.settingsSetBudgetCap('global', null, budgetGlobalCap).then(() => refreshBudget())
+                      }}
+                      style={{ width: 100, background: '#0d1117', border: '1px solid #333', borderRadius: 4, padding: '4px 8px', color: '#ccc', fontSize: 12, fontFamily: 'monospace' }}
+                    />
+                  </label>
+                </div>
+                {!activeProjectPath && (
+                  <div style={{ color: '#666', fontSize: 10, marginTop: 6 }}>
+                    Open a terminal to configure per-project caps.
+                  </div>
+                )}
+                <div style={{ color: '#888', fontSize: 11, marginTop: 10 }}>
+                  Spent today (global): <span style={{ color: '#ccc', fontFamily: 'monospace' }}>${budgetTodaySpent.toFixed(3)}</span>
+                  {' '} / <span style={{ color: '#ccc', fontFamily: 'monospace' }}>${budgetGlobalCap.toFixed(2)}</span>
+                </div>
+                <button
+                  onClick={async () => {
+                    await window.api.settingsResetTodaySpend()
+                    await refreshBudget()
+                  }}
+                  style={{
+                    background: '#ffffff08', border: '1px solid #333', borderRadius: 4,
+                    padding: '4px 10px', color: '#888', fontSize: 11, fontFamily: 'inherit',
+                    cursor: 'pointer', marginTop: 8,
+                  }}
+                >
+                  Reset today's spend
+                </button>
+              </div>
+            )}
           </div>
         )}
 
