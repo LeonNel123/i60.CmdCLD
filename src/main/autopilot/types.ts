@@ -87,6 +87,12 @@ export interface AutopilotState {
 export interface ActivityEntry {
   at: number                       // unix ms
   kind: 'doer-marker' | 'orchestrator-reply' | 'orchestrator-reset' | 'orchestrator-pause' | 'orchestrator-resume' | 'cost-threshold' | 'escalation'
+    | 'research-dispatch'
+    | 'research-write'
+    | 'research-overrun'
+    | 'research-decline'
+    | 'research-reuse'
+    | 'research-stage-complete'
   summary: string
 }
 

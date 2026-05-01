@@ -213,6 +213,8 @@ export class AutopilotProStateMachine {
   private maxDoerOutputPerReset: number
   private runtimeJsonEnabled: boolean
   private budgetTrackerEnabled: boolean
+  private researchEnabled: boolean
+  private researchTopicBudgetUsdDefault: number
 
   constructor(opts: AutopilotProOptions, apiOverride?: ApiClient, ptyIdleMs = 1500, maxSilenceMs = DEFAULT_MAX_SILENCE_MS) {
     this.opts = opts
@@ -225,6 +227,8 @@ export class AutopilotProStateMachine {
     this.maxDoerOutputPerReset = opts.maxDoerOutputPerReset ?? 60000
     this.runtimeJsonEnabled = opts.runtimeJson !== false
     this.budgetTrackerEnabled = opts.budgetTracker !== false
+    this.researchEnabled = opts.researchEnabled !== false
+    this.researchTopicBudgetUsdDefault = opts.researchTopicBudgetUsd ?? 0.5
 
     // Reconcile artifact approval state on startup (auto-unapprove drifted files).
     const artifacts = reconcile(opts.projectPath)
@@ -433,6 +437,32 @@ export class AutopilotProStateMachine {
     // Reconcile artifact approval state every cycle (auto-unapprove drifted files).
     this.state.artifacts = reconcile(this.opts.projectPath)
 
+    // Detect research-summary writes; clear from pendingTopics
+    if (this.state.researchInFlight) {
+      for (const entry of Object.values(this.state.artifacts)) {
+        if (entry.kind !== 'research-summary' || !entry.approved) continue
+        const slugMatch = entry.path.match(/^docs\/research\/([^/]+)\.md$/)
+        const slug = slugMatch?.[1]
+        if (!slug) continue
+        const idx = this.state.researchInFlight.pendingTopics.indexOf(slug)
+        if (idx >= 0) {
+          this.state.researchInFlight.pendingTopics.splice(idx, 1)
+          const cost = this.state.researchInFlight.spendByTopic[slug] ?? 0
+          this.recordResearchHistory(slug, cost, 'written')
+          this.appendActivity('research-write', `${slug} written, cost $${cost.toFixed(3)}`)
+        }
+      }
+
+      if (this.state.researchInFlight.pendingTopics.length === 0) {
+        const trigger = this.state.researchInFlight.triggerStage
+        this.state.researchInFlight = undefined
+        this.appendActivity('research-stage-complete', `returning to ${trigger}`)
+        const writtenCount = this.state.researchHistory?.filter((h) => h.outcome === 'written').length ?? 0
+        this.opts.writeToPty(this.opts.terminalId, `Research complete. ${writtenCount} artifact(s) under docs/research/. Proceed to ${trigger}: read those findings and continue.\r`)
+        if (trigger !== this.state.stage) this.transition(trigger, 'research complete')
+      }
+    }
+
     // Phase tracker: derive currentPhaseId / currentTaskId from plan.md.
     this.updatePhaseTracker()
 
@@ -469,6 +499,7 @@ export class AutopilotProStateMachine {
         assumption: m.assumption,
         delta: m.delta,
         optionsRationale: m.optionsRationale,
+        researchTopics: m.researchTopics,
       })
     } catch (e: any) {
       this.state.escalationReason = `planner error: ${e?.message ?? 'unknown'}`
@@ -635,6 +666,64 @@ export class AutopilotProStateMachine {
           orchestratorBody: reply,
           shape: 'decide-with-rationale',
         })
+        return
+      }
+
+      case 'research': {
+        const decisions = result.topics
+        const lines: string[] = ['Research dispatch:']
+        const pending: string[] = []
+        const budgets: Record<string, number> = {}
+
+        for (const t of decisions) {
+          if (!t.approve) {
+            lines.push(`  - ${t.slug}: declined (${t.reason ?? 'no reason given'})`)
+            this.appendActivity('research-decline', `${t.slug}: ${t.reason ?? 'no reason'}`)
+            this.recordResearchHistory(t.slug, 0, 'declined')
+            continue
+          }
+          if (t.reuse) {
+            lines.push(`  - ${t.slug}: reuse ${t.reuse}`)
+            this.appendActivity('research-reuse', `${t.slug} -> ${t.reuse}`)
+            this.recordResearchHistory(t.slug, 0, 'reused')
+            continue
+          }
+          const budget = t.budgetUsd ?? this.researchTopicBudgetUsdDefault
+          pending.push(t.slug)
+          budgets[t.slug] = budget
+          lines.push(`  - ${t.slug}: approved, $${budget.toFixed(2)} budget, write to docs/research/${t.slug}.md`)
+          this.appendActivity('research-dispatch', `${t.slug} approved, budget $${budget.toFixed(2)}`)
+        }
+
+        if (pending.length === 0) {
+          lines.push('No new research; proceeding back to ' + (this.state.researchInFlight?.triggerStage ?? this.state.stage) + '.')
+          lines.push('Emit DECISION_SHAPE: approve to confirm.')
+        } else {
+          lines.push('')
+          lines.push('Proceed; emit DECISION_SHAPE: research while in-flight (with RESEARCH_TOPIC: <slug>) and DECISION_SHAPE: approve once each artifact is written.')
+        }
+
+        const reply = lines.join('\n')
+        this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+        this.recordTranscript({
+          kind: 'research',
+          doerQuestion: marker.question || marker.text,
+          orchestratorBody: reply,
+          shape: 'research',
+        })
+
+        // Stage-machine state update — preserve existing triggerStage if already in research
+        if (pending.length > 0) {
+          const triggerStage = this.state.researchInFlight?.triggerStage ?? this.state.stage
+          this.state.researchInFlight = {
+            triggerStage,
+            pendingTopics: [...(this.state.researchInFlight?.pendingTopics ?? []), ...pending],
+            spendByTopic: this.state.researchInFlight?.spendByTopic ?? {},
+            topicBudgets: { ...(this.state.researchInFlight?.topicBudgets ?? {}), ...budgets },
+          }
+        }
+
+        this.notify()
         return
       }
 
@@ -917,6 +1006,11 @@ export class AutopilotProStateMachine {
     appendLog(this.opts.projectPath, e)
   }
 
+  private recordResearchHistory(slug: string, costUsd: number, outcome: 'written' | 'declined' | 'overrun' | 'reused'): void {
+    if (!this.state.researchHistory) this.state.researchHistory = []
+    this.state.researchHistory.push({ slug, costUsd, outcome })
+  }
+
   private notify(): void {
     try { this.opts.onUpdate(this.state) } catch { /* best effort */ }
     if (this.runtimeJsonEnabled) {
@@ -953,6 +1047,30 @@ export class AutopilotProStateMachine {
     this.state.escalationReason = `doer silent for ${minutes}+ minutes`
     this.appendActivity('escalation', this.state.escalationReason)
     this.notify()
+  }
+
+  // ---- test hooks (Wave 1.6) ----
+
+  /** Test hook: simulate handleResult without going through the full PTY/planner flow. */
+  public async testHandleResult(result: ProDecideResult, marker?: ProMarker): Promise<void> {
+    const m: ProMarker = marker ?? ({ kind: 'WAITING', text: '', raw: '', question: '', proStatus: 'awaiting-decision' } as any)
+    await this.dispatch(result, m)
+  }
+
+  /** Test hook: simulate the doer writing a research-summary file. */
+  public testRecordResearchWrite(slug: string): void {
+    if (!this.state.researchInFlight) return
+    const idx = this.state.researchInFlight.pendingTopics.indexOf(slug)
+    if (idx < 0) return
+    this.state.researchInFlight.pendingTopics.splice(idx, 1)
+    const cost = this.state.researchInFlight.spendByTopic[slug] ?? 0
+    this.recordResearchHistory(slug, cost, 'written')
+    this.appendActivity('research-write', `${slug} written, cost $${cost.toFixed(3)}`)
+    if (this.state.researchInFlight.pendingTopics.length === 0) {
+      const trigger = this.state.researchInFlight.triggerStage
+      this.state.researchInFlight = undefined
+      this.appendActivity('research-stage-complete', `returning to ${trigger}`)
+    }
   }
 }
 

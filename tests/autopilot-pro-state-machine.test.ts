@@ -26,7 +26,7 @@ function fakeChatClient(plan: () => ProDecideResult): ApiClient {
   }
 }
 
-function makeSm(api: ApiClient, writes?: string[]): AutopilotProStateMachine {
+function makeSm(api: ApiClient, writes?: string[], overrides: Partial<AutopilotProOptions> = {}): AutopilotProStateMachine {
   const opts: AutopilotProOptions = {
     terminalId: 't',
     projectPath: TMP,
@@ -40,6 +40,8 @@ function makeSm(api: ApiClient, writes?: string[]): AutopilotProStateMachine {
     onUpdate: () => {},
     runtimeJson: false,
     budgetTracker: false,
+    researchEnabled: false,
+    ...overrides,
   }
   return new AutopilotProStateMachine(opts, api, 10, 24 * 60 * 60 * 1000)
 }
@@ -942,5 +944,49 @@ describe('PRO context-reset path (Wave 4.0)', () => {
   it('outputVolumeSinceReset is at 0 immediately after construction', () => {
     const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'x' })))
     expect((sm as any).outputVolumeSinceReset).toBe(0)
+  })
+})
+
+describe('dispatch — research shape (Wave 1.6)', () => {
+  it('approves topics, sets researchInFlight pendingTopics list, writes PTY summary', async () => {
+    const writes: string[] = []
+    const sm = makeSm(
+      fakeChatClient(() => ({ shape: 'reply', text: 'unused' })),
+      writes,
+      { researchEnabled: true },
+    )
+    await sm.start()
+    writes.length = 0  // discard kickoff noise
+    // Simulate the planner returning a research result with mixed outcomes
+    await sm.testHandleResult({
+      shape: 'research',
+      topics: [
+        { slug: 'a', approve: true, budgetUsd: 0.5, reuse: null },
+        { slug: 'b', approve: true, reuse: 'docs/research/b.md', budgetUsd: 0.3 },
+        { slug: 'c', approve: false, reason: 'off scope' },
+      ],
+    })
+    expect(sm.state.researchInFlight?.pendingTopics).toEqual(['a'])
+    expect(sm.state.researchInFlight?.topicBudgets).toEqual({ a: 0.5 })
+    expect(writes.some((w) => w.includes('a:'))).toBe(true)
+    expect(writes.some((w) => w.includes('b:'))).toBe(true)
+    expect(writes.some((w) => w.includes('c:'))).toBe(true)
+  })
+
+  it('clears researchInFlight when all pendingTopics are written and approved', async () => {
+    const sm = makeSm(
+      fakeChatClient(() => ({ shape: 'reply', text: 'unused' })),
+      undefined,
+      { researchEnabled: true },
+    )
+    await sm.start()
+    await sm.testHandleResult({
+      shape: 'research',
+      topics: [{ slug: 'foo', approve: true, budgetUsd: 0.5, reuse: null }],
+    })
+    expect(sm.state.researchInFlight?.pendingTopics).toEqual(['foo'])
+    // Simulate doer writing the artifact
+    sm.testRecordResearchWrite('foo')
+    expect(sm.state.researchInFlight).toBeUndefined()
   })
 })
