@@ -299,3 +299,98 @@ describe('PtyWatcher force-settle callbacks (Wave 3.4)', () => {
     vi.useRealTimers()
   })
 })
+
+describe('PtyWatcher permission detection (Wave 3.6)', () => {
+  it('fires onPermissionPrompt when "Permission to run" appears in buffer', async () => {
+    vi.useFakeTimers()
+    const fired: string[] = []
+    const w = new PtyWatcher({
+      idleMs: IDLE_MS,
+      nudgeMs: NUDGE_MS,
+      onSettle: () => {},
+      onPermissionPrompt: (text) => fired.push(text),
+    })
+    w.feed('Some output\nPermission to run Bash command:\n  npm test\n[1] Yes\n[2] No\n')
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(fired).toHaveLength(1)
+    expect(fired[0]).toMatch(/Permission to run/i)
+    vi.useRealTimers()
+  })
+
+  it('does not fire onPermissionPrompt twice while a prompt is active (throttling)', async () => {
+    vi.useFakeTimers()
+    let count = 0
+    const w = new PtyWatcher({
+      idleMs: IDLE_MS,
+      nudgeMs: NUDGE_MS,
+      onSettle: () => {},
+      onPermissionPrompt: () => count++,
+    })
+    w.feed('Permission to run Bash:\n[1] Yes\n')
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(count).toBe(1)
+    // Same prompt still in buffer — fresh idle should NOT re-fire.
+    w.feed(' ')  // tiny extra byte to retrigger checkSettled
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(count).toBe(1)
+    vi.useRealTimers()
+  })
+})
+
+describe('PtyWatcher missing-marker fallback (Wave 3.6)', () => {
+  const FALLBACK_MS = 100
+
+  it('fires onMissingMarker after markerFallbackMs idle when buffer has output but no marker', async () => {
+    vi.useFakeTimers()
+    let fired = 0
+    const w = new PtyWatcher({
+      idleMs: IDLE_MS,
+      nudgeMs: NUDGE_MS,
+      markerFallbackMs: FALLBACK_MS,
+      onSettle: () => {},
+      onMissingMarker: () => fired++,
+    })
+    w.feed('Lots of doer output without any marker. '.repeat(10))   // > 100 chars
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(fired).toBe(0)  // idle fires first; fallback timer arms
+    await vi.advanceTimersByTimeAsync(FALLBACK_MS + 5)
+    expect(fired).toBe(1)
+    vi.useRealTimers()
+  })
+
+  it('does not fire onMissingMarker when buffer has < 100 stripped chars', async () => {
+    vi.useFakeTimers()
+    let fired = 0
+    const w = new PtyWatcher({
+      idleMs: IDLE_MS,
+      nudgeMs: NUDGE_MS,
+      markerFallbackMs: FALLBACK_MS,
+      onSettle: () => {},
+      onMissingMarker: () => fired++,
+    })
+    w.feed('short')
+    await vi.advanceTimersByTimeAsync(IDLE_MS + FALLBACK_MS + 10)
+    expect(fired).toBe(0)
+    vi.useRealTimers()
+  })
+
+  it('cancels missing-marker timer when new bytes arrive', async () => {
+    vi.useFakeTimers()
+    let fired = 0
+    const w = new PtyWatcher({
+      idleMs: IDLE_MS,
+      nudgeMs: NUDGE_MS,
+      markerFallbackMs: FALLBACK_MS,
+      onSettle: () => {},
+      onMissingMarker: () => fired++,
+    })
+    w.feed('Doer output without marker. '.repeat(10))
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    await vi.advanceTimersByTimeAsync(FALLBACK_MS / 2)
+    w.feed(' more')   // cancels fallback timer
+    await vi.advanceTimersByTimeAsync(FALLBACK_MS + 5)
+    // Timer was canceled by the new bytes; assert fired stayed at 0.
+    expect(fired).toBe(0)
+    vi.useRealTimers()
+  })
+})

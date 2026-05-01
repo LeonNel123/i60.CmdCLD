@@ -7,6 +7,9 @@ interface Options {
   onSettle: (snapshot: SettledSnapshot) => void
   onForceSettleArmed?: (firesAt: number) => void   // unix ms when force-settle will fire
   onForceSettleCanceled?: () => void
+  onPermissionPrompt?: (text: string) => void
+  onMissingMarker?: () => void
+  markerFallbackMs?: number
 }
 
 const ANSI_RE = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b[PX^_].*?\x1b\\|\x1b\][^\x1b]*\x1b\\/g
@@ -137,11 +140,15 @@ export class PtyWatcher {
   private opts: Options
   private idleTimer: ReturnType<typeof setTimeout> | null = null
   private forceSettleTimer: ReturnType<typeof setTimeout> | null = null
+  private markerFallbackMs: number
+  private markerFallbackTimer: ReturnType<typeof setTimeout> | null = null
+  private permissionPromptActive = false
 
   constructor(opts: Options) {
     this.idleMs = opts.idleMs ?? 1500
     this.nudgeMs = opts.nudgeMs ?? 10000
     this.forceSettleMs = opts.forceSettleMs ?? 3000
+    this.markerFallbackMs = opts.markerFallbackMs ?? 30000
     this.onSettle = opts.onSettle
     this.opts = opts
   }
@@ -154,6 +161,10 @@ export class PtyWatcher {
       this.forceSettleTimer = null
       this.opts.onForceSettleCanceled?.()
     }
+    if (this.markerFallbackTimer) {
+      clearTimeout(this.markerFallbackTimer)
+      this.markerFallbackTimer = null
+    }
     this.idleTimer = setTimeout(() => this.checkSettled(), this.idleMs)
   }
 
@@ -165,24 +176,48 @@ export class PtyWatcher {
       this.forceSettleTimer = null
       this.opts.onForceSettleCanceled?.()
     }
+    if (this.markerFallbackTimer) {
+      clearTimeout(this.markerFallbackTimer)
+      this.markerFallbackTimer = null
+    }
+    this.permissionPromptActive = false
   }
 
   private checkSettled(): void {
-    const found = findLastMarker(this.buffer)
-    if (!found) return
     const cleaned = stripAnsi(this.buffer)
+
+    // Permission prompt detection: scan the last 1KB of cleaned output.
+    const tail = cleaned.slice(-1024)
+    const permissionMatch = this.detectPermissionPrompt(tail)
+    if (permissionMatch && !this.permissionPromptActive) {
+      this.permissionPromptActive = true
+      this.opts.onPermissionPrompt?.(permissionMatch)
+    } else if (!permissionMatch && this.permissionPromptActive) {
+      // Claude has moved past the prompt; reset throttle.
+      this.permissionPromptActive = false
+    }
+
+    const found = findLastMarker(this.buffer)
+    if (!found) {
+      // No marker yet. Arm marker-fallback if buffer has substantive output.
+      if (this.markerFallbackMs > 0 && !this.markerFallbackTimer && cleaned.length > 100) {
+        this.markerFallbackTimer = setTimeout(() => this.fireMissingMarker(), this.markerFallbackMs)
+      }
+      return
+    }
+    // Found a marker — clear any pending fallback (real settle is about to happen or be evaluated).
+    if (this.markerFallbackTimer) {
+      clearTimeout(this.markerFallbackTimer)
+      this.markerFallbackTimer = null
+    }
+
     const idx = cleaned.lastIndexOf(found.marker.raw)
     const after = cleaned.slice(idx + found.marker.raw.length)
-    // Structured block is allowed: lines starting with KEY: or indented continuations.
     const afterTrimmed = after.split(/\r?\n/).filter((l) => l.trim().length > 0)
     const allStructured = afterTrimmed.every((l) =>
       /^[A-Z_]+:/.test(l) || /^\s+\S/.test(l)
     )
     if (afterTrimmed.length > 0 && !allStructured) {
-      // Trailing content fails the structured check (e.g. Claude Code's idle TUI
-      // chrome — `✱ Worked for…`, `>`, `bypass permissions on`). Arm a one-shot
-      // force-settle timer; if no new bytes arrive in forceSettleMs, deliver the
-      // marker anyway. New bytes via feed() cancel the timer.
       if (this.forceSettleMs > 0 && !this.forceSettleTimer) {
         this.forceSettleTimer = setTimeout(() => this.forceSettle(), this.forceSettleMs)
         this.opts.onForceSettleArmed?.(Date.now() + this.forceSettleMs)
@@ -190,6 +225,29 @@ export class PtyWatcher {
       return
     }
     this.emitSettle(found)
+  }
+
+  private detectPermissionPrompt(tail: string): string | null {
+    const patterns = [
+      /Permission to (use|run|execute)\b[^\n]*/i,
+      /Do you want to (proceed|continue|allow)\??[^\n]*/i,
+      /Allow this (tool|operation|command)[^\n]*/i,
+    ]
+    for (const re of patterns) {
+      const m = tail.match(re)
+      if (m) return m[0]
+    }
+    // Numbered-choice prompt: a "1. Yes" line indicates Claude Code's permission UI.
+    if (/^[\s>]*1\.\s*(Yes|Allow|Approve)/m.test(tail)) {
+      const line = tail.match(/^[\s>]*1\.\s*[^\n]*/m)
+      return line ? line[0] : 'permission prompt'
+    }
+    return null
+  }
+
+  private fireMissingMarker(): void {
+    this.markerFallbackTimer = null
+    this.opts.onMissingMarker?.()
   }
 
   private forceSettle(): void {
@@ -207,6 +265,8 @@ export class PtyWatcher {
     }
     this.buffer = ''
     if (this.forceSettleTimer) { clearTimeout(this.forceSettleTimer); this.forceSettleTimer = null }
+    if (this.markerFallbackTimer) { clearTimeout(this.markerFallbackTimer); this.markerFallbackTimer = null }
+    this.permissionPromptActive = false
     this.onSettle(snapshot)
   }
 }
