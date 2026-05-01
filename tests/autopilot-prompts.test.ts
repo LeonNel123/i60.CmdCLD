@@ -174,3 +174,20 @@ it('buildDebugPrompt has compact user content (no recent log, no checklist)', ()
   expect(out.user).not.toMatch(/CHECKLIST/)  // checklist intentionally omitted
   expect(out.user).not.toMatch(/RECENT ACTIVITY/)
 })
+
+describe('Classic GROUNDING (Wave 3.5)', () => {
+  it('DOER_SYSTEM_PROMPT contains the GROUND PLANNING IN REAL CODE block', () => {
+    expect(DOER_SYSTEM_PROMPT).toContain('GROUND PLANNING IN REAL CODE')
+  })
+
+  it('DOER_SYSTEM_PROMPT mentions the Repository impact section', () => {
+    expect(DOER_SYSTEM_PROMPT).toContain('Repository impact')
+  })
+
+  it('buildWizardKickoff includes the scan-first instruction', () => {
+    const k = buildWizardKickoff('build a backup tool')
+    expect(k).toMatch(/Before writing goal\.md/i)
+    expect(k).toMatch(/Glob/)
+    expect(k).toContain('Repository impact')
+  })
+})
