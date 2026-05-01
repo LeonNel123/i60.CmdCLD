@@ -11,6 +11,7 @@ import { runResetSequence } from './reset'
 import { makeApiClient } from './api-client'
 import { DOER_SYSTEM_PROMPT, buildWizardKickoff } from './prompts'
 import { debugCall } from './debug'
+import { saveRuntimeClassic, loadRuntimeClassic } from './runtime-state'
 
 export class AutopilotStateMachine {
   state: AutopilotState
@@ -29,6 +30,7 @@ export class AutopilotStateMachine {
   // long-running subagent work; bump for projects that genuinely run longer.
   private silenceTimer: ReturnType<typeof setTimeout> | null = null
   private maxSilenceMs: number
+  private runtimeJsonEnabled: boolean
 
   constructor(opts: AutopilotOptions, apiOverride?: ApiClient, ptyIdleMs = 1500, maxSilenceMs = 30 * 60 * 1000) {
     this.opts = opts
@@ -37,6 +39,7 @@ export class AutopilotStateMachine {
       if (pct === 100) this.transition('paused', 'cost cap reached')
     })
     this.maxSilenceMs = maxSilenceMs
+    this.runtimeJsonEnabled = opts.runtimeJson !== false
 
     this.state = {
       phase: 'idle',
@@ -80,6 +83,21 @@ export class AutopilotStateMachine {
   }
 
   async start(): Promise<void> {
+    // Restore runtime state from disk if present and valid
+    if (this.runtimeJsonEnabled) {
+      const rt = loadRuntimeClassic(this.opts.projectPath, this.state.milestones)
+      if (rt) {
+        this.state.phase = rt.phase
+        this.state.currentMilestoneId = rt.currentMilestoneId
+        this.state.cycleCount = rt.cycleCount
+        this.state.costUsd = rt.costUsd
+        this.markerFallbackPromptCount = rt.markerFallbackPromptCount
+        this.partialStreak = rt.partialStreak
+        this.outputVolumeSinceReset = rt.outputVolumeSinceReset
+        this.appendActivity('orchestrator-resume', `restored from runtime.json (cycle ${rt.cycleCount})`)
+      }
+    }
+
     this.markerFallbackPromptCount = 0
     this.detachPty = this.opts.onPtyData(this.opts.terminalId, (data) => {
       this.outputVolumeSinceReset += data.length
@@ -441,6 +459,13 @@ export class AutopilotStateMachine {
 
   private notify(): void {
     try { this.opts.onUpdate(this.state) } catch { /* best effort */ }
+    if (this.runtimeJsonEnabled) {
+      saveRuntimeClassic(this.opts.projectPath, this.state, {
+        markerFallbackPromptCount: this.markerFallbackPromptCount,
+        partialStreak: this.partialStreak,
+        outputVolumeSinceReset: this.outputVolumeSinceReset,
+      })
+    }
   }
 
   // ---- silence timer (escalates if doer goes truly silent for too long) ----

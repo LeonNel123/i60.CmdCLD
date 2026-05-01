@@ -26,6 +26,7 @@ import {
 import { parsePhases, currentPhase, phaseDoneFromTasks } from './phases'
 import { DOER_SYSTEM_PROMPT_PRO, stage0Kickoff, stage3Kickoff, stage4Kickoff } from './prompts'
 import { runResetSequencePro } from './reset'
+import { saveRuntime, loadRuntime } from './runtime-state'
 import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 
@@ -136,6 +137,7 @@ export class AutopilotProStateMachine {
   private outputVolumeSinceReset = 0
   private settleResolvers: (() => void)[] = []
   private maxDoerOutputPerReset: number
+  private runtimeJsonEnabled: boolean
 
   constructor(opts: AutopilotProOptions, apiOverride?: ApiClient, ptyIdleMs = 1500, maxSilenceMs = DEFAULT_MAX_SILENCE_MS) {
     this.opts = opts
@@ -146,6 +148,7 @@ export class AutopilotProStateMachine {
     this.maxSilenceMs = maxSilenceMs
     this.baseMaxSilenceMs = maxSilenceMs
     this.maxDoerOutputPerReset = opts.maxDoerOutputPerReset ?? 60000
+    this.runtimeJsonEnabled = opts.runtimeJson !== false
 
     // Reconcile artifact approval state on startup (auto-unapprove drifted files).
     const artifacts = reconcile(opts.projectPath)
@@ -214,6 +217,25 @@ export class AutopilotProStateMachine {
   // ---- public control ----
 
   async start(): Promise<void> {
+    // Restore runtime state from disk if present and valid
+    if (this.runtimeJsonEnabled) {
+      const rt = loadRuntime(this.opts.projectPath, this.state.artifacts)
+      if (rt) {
+        this.state.stage = rt.stage
+        this.state.currentPhaseId = rt.currentPhaseId
+        this.state.currentTaskId = rt.currentTaskId
+        this.state.cycleCount = rt.cycleCount
+        this.state.costUsd = rt.costUsd
+        this.markerFallbackPromptCount = rt.markerFallbackPromptCount
+        this.stage3KickoffSentForPhase = rt.stage3KickoffSentForPhase
+        this.stage4KickoffSent = rt.stage4KickoffSent
+        this.metaAutoFired = rt.metaAutoFired
+        this.phaseTrackerEscalated = rt.phaseTrackerEscalated
+        this.outputVolumeSinceReset = rt.outputVolumeSinceReset
+        this.appendActivity('orchestrator-resume', `restored from runtime.json (cycle ${rt.cycleCount})`)
+      }
+    }
+
     this.markerFallbackPromptCount = 0
     this.detachPty = this.opts.onPtyData(this.opts.terminalId, (data) => {
       this.armSilenceTimer()
@@ -781,6 +803,16 @@ export class AutopilotProStateMachine {
 
   private notify(): void {
     try { this.opts.onUpdate(this.state) } catch { /* best effort */ }
+    if (this.runtimeJsonEnabled) {
+      saveRuntime(this.opts.projectPath, this.state, {
+        markerFallbackPromptCount: this.markerFallbackPromptCount,
+        stage3KickoffSentForPhase: this.stage3KickoffSentForPhase,
+        stage4KickoffSent: this.stage4KickoffSent,
+        metaAutoFired: this.metaAutoFired,
+        phaseTrackerEscalated: this.phaseTrackerEscalated,
+        outputVolumeSinceReset: this.outputVolumeSinceReset,
+      })
+    }
   }
 
   // ---- silence timer ----

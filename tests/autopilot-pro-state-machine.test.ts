@@ -38,6 +38,7 @@ function makeSm(api: ApiClient, writes?: string[]): AutopilotProStateMachine {
     writeToPty: (_id, data) => { writes?.push(data) },
     onPtyData: () => () => {},
     onUpdate: () => {},
+    runtimeJson: false,
   }
   return new AutopilotProStateMachine(opts, api, 10, 24 * 60 * 60 * 1000)
 }
