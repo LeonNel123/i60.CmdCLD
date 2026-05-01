@@ -269,7 +269,6 @@ export class AutopilotStateMachine {
         this.state.liveStatus = `daily ${reason} budget cap reached ($${budgetSnap.globalSpent.toFixed(2)} / $${budgetSnap.globalCap.toFixed(2)} global; $${budgetSnap.projectSpent.toFixed(2)} / $${budgetSnap.projectCap.toFixed(2)} project)`
         this.appendActivity('cost-threshold', `daily ${reason} cap reached`)
         this.transition('paused', `daily ${reason} budget cap reached`)
-        this.notify()
         return
       } else if (budgetSnap.warningThreshold) {
         this.appendActivity('cost-threshold', `daily budget warning: $${budgetSnap.globalSpent.toFixed(2)} / $${budgetSnap.globalCap.toFixed(2)}`)
@@ -389,7 +388,6 @@ export class AutopilotStateMachine {
         this.state.liveStatus = `daily ${reason} budget cap reached ($${budgetSnap.globalSpent.toFixed(2)} / $${budgetSnap.globalCap.toFixed(2)} global; $${budgetSnap.projectSpent.toFixed(2)} / $${budgetSnap.projectCap.toFixed(2)} project)`
         this.appendActivity('cost-threshold', `daily ${reason} cap reached`)
         this.transition('paused', `daily ${reason} budget cap reached`)
-        this.notify()
         return
       } else if (budgetSnap.warningThreshold) {
         this.appendActivity('cost-threshold', `daily budget warning: $${budgetSnap.globalSpent.toFixed(2)} / $${budgetSnap.globalCap.toFixed(2)}`)
