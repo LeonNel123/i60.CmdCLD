@@ -71,6 +71,7 @@ export interface ProState {
   subagentEtaMs: number  // 0 if no subagent running
   liveStatus: string | null
   lastMarker: { kind: string; subgoalId?: string; receivedAt: number } | null
+  permissionRequest: { text: string; detectedAt: number } | null
 }
 
 // ----- Decision results (one per shape) -----

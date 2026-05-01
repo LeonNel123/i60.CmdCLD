@@ -81,6 +81,7 @@ export interface AutopilotState {
   validation: ValidationCommands   // NEW; default {}
   liveStatus: string | null
   lastMarker: { kind: MarkerKind; subgoalId?: string; status?: 'done' | 'partial' | 'blocked'; receivedAt: number } | null
+  permissionRequest: { text: string; detectedAt: number } | null
 }
 
 export interface ActivityEntry {

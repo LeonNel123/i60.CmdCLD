@@ -159,6 +159,7 @@ export class AutopilotProStateMachine {
       subagentEtaMs: 0,
       liveStatus: null,
       lastMarker: null,
+      permissionRequest: null,
     }
 
     this.watcher = new PtyWatcher({
