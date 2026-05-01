@@ -341,15 +341,14 @@ export class AutopilotProStateMachine {
         delta: m.delta,
       })
     } catch (e: any) {
-      this.state.liveStatus = 'waiting for doer'
-      this.notify()
       this.state.escalationReason = `planner error: ${e?.message ?? 'unknown'}`
       this.appendActivity('escalation', this.state.escalationReason)
       this.notify()
       return
+    } finally {
+      this.state.liveStatus = 'waiting for doer'
+      this.notify()
     }
-    this.state.liveStatus = 'waiting for doer'
-    this.notify()
 
     this.cost.add(out.costUsd)
     this.state.costUsd = this.cost.totalUsd

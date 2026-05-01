@@ -215,14 +215,13 @@ export class AutopilotStateMachine {
         steering,
       })
     } catch (e: any) {
-      this.state.liveStatus = 'waiting for doer'
-      this.notify()
       this.appendActivity('escalation', `API error: ${e?.message ?? 'unknown'}`)
       this.transition('escalated', `API error: ${e?.message ?? 'unknown'}`)
       return
+    } finally {
+      this.state.liveStatus = 'waiting for doer'
+      this.notify()
     }
-    this.state.liveStatus = 'waiting for doer'
-    this.notify()
 
     this.cost.add(out.costUsd)
     this.state.costUsd = this.cost.totalUsd
