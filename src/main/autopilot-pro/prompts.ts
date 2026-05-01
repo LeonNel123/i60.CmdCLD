@@ -74,6 +74,13 @@ STRUCTURED STATUS REPORT (v2 — every settled response):
     - <option>
       pros: <comma-sep>
       cons: <comma-sep>
+  RESEARCH_TOPICS:                      (when DECISION_SHAPE=research)
+    - slug: <kebab-case>
+      query: <one-sentence question>
+      sources: <comma-sep URLs, optional>
+      force: <true|false, default false>
+
+  RESEARCH_TOPIC: <slug>                (during research, every cycle, until you emit approve with the artifact path)
   DELTA: |                              (when STATUS=spec-update-request)
     <multi-line patch description>
   SUBAGENT_ETA_MIN: <n>                 (when STATUS=subagent-running)
@@ -97,6 +104,7 @@ Choose DECISION_SHAPE based on what you actually need from the orchestrator:
   validate    — you depend on an external claim; the orchestrator either confirms it or routes to research
   transition  — phase or stage boundary reached; the orchestrator either advances or cycles
   decide-with-rationale — you face an architectural choice with multiple options; you provide pros/cons and the orchestrator picks one. Use this when the call needs documenting (e.g. before writing an ADR).
+  research — you need information from the web/repos before continuing; you enumerate topics with queries and seed sources, the orchestrator approves per-topic budgets.
 
 If you forget DECISION_SHAPE the orchestrator defaults to 'reply' (classic behaviour) — but the cleaner the shape, the cheaper and more deterministic the orchestrator's response.
 
@@ -125,6 +133,12 @@ After every task, append ONE line to .autopilot-pro/learnings.md if you discover
 TONE: Be direct. Skip the small talk. Your reader is a program that wants the marker + structured block.
 
 ${PRINCIPLES_BLOCK}
+Research discipline:
+  - Before requesting research, check if docs/research/ already has a relevant slug — if so, reference it instead of researching again.
+  - Use research to gather information, not to fetch executable code or clone repos for testing. If you need a library to evaluate hands-on, request that as a separate decision (validate or choose), not research.
+  - When the orchestrator approves a topic with budgetUsd, stop fetching once you've spent ~that amount and synthesize from what you have. A partial-but-cited summary is better than blowing the budget chasing one more source.
+  - Always emit RESEARCH_TOPIC: <slug> in your marker block while a topic is in flight, so cost is attributed correctly.
+  - Write each artifact to docs/research/<slug>.md with the required frontmatter (slug, created, last-verified, sources) and sections (## Question, ## Findings, ## Implications for this project).
 `
 
 // ----- Per-shape planner system prompts -----
@@ -190,6 +204,22 @@ Output ONE JSON object on its own line, no surrounding prose:
   {"shape":"decide-with-rationale","recommendation":"<the chosen option string>","why":"<≤2 sentences>"}
 `
 
+const RESEARCH_SYSTEM = `You are the Orchestrator's planner for a 'research' decision.
+The Doer enumerated research topics. For each topic, decide:
+
+  1. Does docs/research/<slug>.md already exist in the project artifacts?
+     → Yes and force !== true: { approve: true, reuse: 'docs/research/<slug>.md' }
+  2. Is the topic in scope per spec.md (or relevant to the freeTextIdea if no spec.md yet)?
+     → No: { approve: false, reason: '<≤1 sentence why off-scope>' }
+  3. Otherwise: { approve: true, budgetUsd: <0.30..1.00, default 0.50> }
+
+YAGNI: prefer fewer, narrower topics. If two requested topics overlap,
+decline the redundant one and reference the kept one in its reason.
+
+Output ONE JSON object on its own line, no surrounding prose:
+  {"shape":"research","topics":[{"slug":"...","approve":true|false,"budgetUsd":<num>,"reuse":<path|null>,"reason":"<string>"}]}
+`
+
 const SHAPE_TO_SYSTEM: Record<DecisionShape, string> = {
   reply: REPLY_SYSTEM,
   choose: CHOOSE_SYSTEM,
@@ -198,6 +228,7 @@ const SHAPE_TO_SYSTEM: Record<DecisionShape, string> = {
   validate: VALIDATE_SYSTEM,
   transition: TRANSITION_SYSTEM,
   'decide-with-rationale': DECIDE_WITH_RATIONALE_SYSTEM,
+  research: RESEARCH_SYSTEM,
 }
 
 // ----- buildPlannerPrompt -----
@@ -249,6 +280,15 @@ export function buildPlannerPrompt(input: ProDecideInput): PlannerPromptParts {
   if (input.optionsRationale?.length) {
     const lines = input.optionsRationale.map((o) => `  - ${o.option}\n    pros: ${o.pros.join(', ')}\n    cons: ${o.cons.join(', ')}`)
     shapeExtras.push(`Options with rationale:\n${lines.join('\n')}`)
+  }
+  if (input.researchTopics?.length) {
+    const lines = input.researchTopics.map((t) => {
+      const parts = [`  - slug: ${t.slug}`, `    query: ${t.query}`]
+      if (t.sources?.length) parts.push(`    sources: ${t.sources.join(', ')}`)
+      if (t.force) parts.push(`    force: true`)
+      return parts.join('\n')
+    })
+    shapeExtras.push(`Research topics requested by the doer:\n${lines.join('\n')}`)
   }
 
   const structuredFields: string[] = []
