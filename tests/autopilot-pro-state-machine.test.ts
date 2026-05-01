@@ -671,6 +671,38 @@ describe('enrichProMarker', () => {
   })
 })
 
+describe('enrichProMarker — research (Wave 1.6)', () => {
+  it('parses RESEARCH_TOPICS block', () => {
+    const text = [
+      '[ORCH:WAITING] q',
+      'DECISION_SHAPE: research',
+      'RESEARCH_TOPICS:',
+      '  - slug: backup-encryption',
+      '    query: What schemes apply?',
+      '    sources: https://example.com/a, https://example.com/b',
+      '  - slug: rclone-presets',
+      '    query: Common config?',
+      '    force: true',
+    ].join('\n')
+    const m = enrichProMarker(text, { kind: 'WAITING', text: 'q', raw: '[ORCH:WAITING] q' })
+    expect(m.researchTopics).not.toBeUndefined()
+    expect(m.researchTopics!.length).toBe(2)
+    expect(m.researchTopics![0].slug).toBe('backup-encryption')
+    expect(m.researchTopics![0].sources).toEqual(['https://example.com/a', 'https://example.com/b'])
+    expect(m.researchTopics![1].force).toBe(true)
+  })
+
+  it('parses RESEARCH_TOPIC scalar field', () => {
+    const text = [
+      '[ORCH:WAITING] q',
+      'DECISION_SHAPE: approve',
+      'RESEARCH_TOPIC: backup-encryption',
+    ].join('\n')
+    const m = enrichProMarker(text, { kind: 'WAITING', text: 'q', raw: '[ORCH:WAITING] q' })
+    expect(m.researchTopic).toBe('backup-encryption')
+  })
+})
+
 describe('spec-update DELTA application (Wave 3.1 G2 logic)', () => {
   function setupSpecUpdateContext() {
     writeArtifact(TMP, 'spec', '# original spec\n\n## Goal\nbuild a thing\n')

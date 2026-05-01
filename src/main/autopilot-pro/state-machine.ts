@@ -52,10 +52,13 @@ function enrichProMarker(rawText: string, base: ProMarker): ProMarker {
   let captureOptions = false
   let captureDelta = false
   let captureOptionsRationale = false
+  let captureResearchTopics = false
   const options: string[] = []
   const deltaLines: string[] = []
   const optionsRationale: { option: string; pros: string[]; cons: string[] }[] = []
   let currentOption: { option: string; pros: string[]; cons: string[] } | null = null
+  const researchTopics: { slug: string; query: string; sources?: string[]; force?: boolean }[] = []
+  let currentTopic: { slug: string; query: string; sources?: string[]; force?: boolean } | null = null
 
   while (i < after.length) {
     const line = after[i]
@@ -72,6 +75,37 @@ function enrichProMarker(rawText: string, base: ProMarker): ProMarker {
         continue
       }
       captureDelta = false
+    }
+    if (captureResearchTopics) {
+      const slugMatch = line.match(/^\s+-\s+slug:\s*(.+)$/)
+      const queryMatch = line.match(/^\s+query:\s*(.+)$/i)
+      const sourcesMatch = line.match(/^\s+sources:\s*(.+)$/i)
+      const forceMatch = line.match(/^\s+force:\s*(true|false)\s*$/i)
+
+      if (slugMatch) {
+        if (currentTopic) researchTopics.push(currentTopic)
+        currentTopic = { slug: slugMatch[1].trim(), query: '' }
+        i++
+        continue
+      }
+      if (queryMatch && currentTopic) {
+        currentTopic.query = queryMatch[1].trim()
+        i++
+        continue
+      }
+      if (sourcesMatch && currentTopic) {
+        currentTopic.sources = sourcesMatch[1].split(',').map((s) => s.trim()).filter(Boolean)
+        i++
+        continue
+      }
+      if (forceMatch && currentTopic) {
+        currentTopic.force = forceMatch[1].toLowerCase() === 'true'
+        i++
+        continue
+      }
+      // Stop capture on any non-matching line
+      if (currentTopic) { researchTopics.push(currentTopic); currentTopic = null }
+      captureResearchTopics = false
     }
     if (captureOptionsRationale) {
       const prosMatch = line.match(/^\s+pros:\s*(.+)$/i)
@@ -101,7 +135,7 @@ function enrichProMarker(rawText: string, base: ProMarker): ProMarker {
     if (km) {
       const key = km[1]
       const val = km[2].trim()
-      if (key === 'DECISION_SHAPE' && /^(reply|choose|approve|route|validate|transition|decide-with-rationale)$/.test(val)) {
+      if (key === 'DECISION_SHAPE' && /^(reply|choose|approve|route|validate|transition|decide-with-rationale|research)$/.test(val)) {
         m.shape = val as ProMarker['shape']
       } else if (key === 'ARTIFACT') {
         m.artifactPath = val
@@ -110,6 +144,12 @@ function enrichProMarker(rawText: string, base: ProMarker): ProMarker {
         if (val) options.push(val)
       } else if (key === 'OPTIONS_RATIONALE') {
         captureOptionsRationale = true
+      } else if (key === 'RESEARCH_TOPICS') {
+        captureResearchTopics = true
+      } else if (key === 'RESEARCH_TOPIC') {
+        m.researchTopic = val
+      } else if (key === 'RESEARCH_FORCE') {
+        m.researchForce = val.toLowerCase() === 'true'
       } else if (key === 'ASSUMPTION') {
         m.assumption = val
       } else if (key === 'DELTA') {
@@ -124,9 +164,11 @@ function enrichProMarker(rawText: string, base: ProMarker): ProMarker {
     i++
   }
   if (currentOption) optionsRationale.push(currentOption)
+  if (currentTopic) researchTopics.push(currentTopic)
   if (options.length) m.options = options
   if (deltaLines.length) m.delta = deltaLines.join('\n').trim()
   if (optionsRationale.length) m.optionsRationale = optionsRationale
+  if (researchTopics.length) m.researchTopics = researchTopics
   return m
 }
 
@@ -779,6 +821,7 @@ export class AutopilotProStateMachine {
   }
 
   private inferArtifactKind(path: string): ArtifactKind {
+    if (/^docs\/research\/[^/]+\.md$/.test(path)) return 'research-summary'
     if (/^docs\/decisions\/\d{4}-/.test(path)) return 'adr'
     if (/final-review\.md$/.test(path)) return 'final-review'
     if (/spec\.md$/.test(path)) return 'spec'
@@ -789,6 +832,8 @@ export class AutopilotProStateMachine {
   }
 
   private inferPhaseId(path: string): string | undefined {
+    const research = path.match(/^docs\/research\/([^.]+)\.md$/)
+    if (research) return research[1]
     const adr = path.match(/^docs\/decisions\/(\d{4}-[^.]+)\.md$/)
     if (adr) return adr[1]
     const m = path.match(/(?:impl|reviews)\/([^/]+)\.md$/)
