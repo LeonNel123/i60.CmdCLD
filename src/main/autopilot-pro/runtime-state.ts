@@ -21,6 +21,13 @@ interface RuntimeStatePro extends RuntimeFlags {
   currentTaskId: string | null
   cycleCount: number
   costUsd: number
+  researchInFlight?: {
+    triggerStage: ProStage
+    pendingTopics: string[]
+    spendByTopic: Record<string, number>
+    topicBudgets: Record<string, number>
+  }
+  researchHistory?: { slug: string; costUsd: number; outcome: 'written' | 'declined' | 'overrun' | 'reused' }[]
 }
 
 function runtimePath(projectPath: string): string {
@@ -39,6 +46,8 @@ export function saveRuntime(projectPath: string, state: ProState, flags: Runtime
     cycleCount: state.cycleCount,
     costUsd: state.costUsd,
     ...flags,
+    ...(state.researchInFlight ? { researchInFlight: state.researchInFlight } : {}),
+    ...(state.researchHistory ? { researchHistory: state.researchHistory } : {}),
   }
   const tmp = `${path}.tmp`
   writeFileSync(tmp, JSON.stringify(payload, null, 2))
@@ -87,6 +96,12 @@ function validate(rt: RuntimeStatePro, projectPath: string, artifacts: Record<st
     const reviewEntries = Object.entries(artifacts).filter(([k]) => k.startsWith('reviews/'))
     const allReviewsApproved = reviewEntries.length > 0 && reviewEntries.every(([, a]) => a.approved)
     if (!hasFinalReview && !allReviewsApproved) return false
+  }
+
+  // Self-validate researchInFlight: an empty pendingTopics list is inconsistent
+  // (it should have been cleared once empty). Drop it rather than fail the load.
+  if (rt.researchInFlight && rt.researchInFlight.pendingTopics.length === 0) {
+    rt.researchInFlight = undefined
   }
 
   return true

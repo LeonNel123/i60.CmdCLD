@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync, existsSync, readFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { join } from 'path'
 import { AutopilotProStateMachine, enrichProMarker } from '../src/main/autopilot-pro/state-machine'
 import type { AutopilotProOptions, ProDecideResult } from '../src/main/autopilot-pro/types'
@@ -1014,5 +1015,55 @@ describe('Stage -1 auto-trigger (Wave 1.6)', () => {
     })
     sm.start()
     expect(sm.getState().stage).toBe('discovery')
+  })
+})
+
+describe('research runtime persistence + overrun (Wave 1.6)', () => {
+  it('round-trips researchInFlight + researchHistory through runtime.json', async () => {
+    const TMP_RT = mkdtempSync(join(tmpdir(), 'pro-run-'))
+    try {
+      // First state machine: dispatches research and writes runtime
+      const sm1 = makeSm(undefined, undefined, {
+        researchEnabled: true,
+        runtimeJson: true,
+        projectPath: TMP_RT,
+        writeToPty: () => {},
+      })
+      sm1.start()
+      await sm1.testHandleResult({
+        shape: 'research',
+        topics: [{ slug: 'a', approve: true, budgetUsd: 0.5, reuse: null }],
+      })
+
+      // Second state machine: starts fresh, should restore state
+      const sm2 = makeSm(undefined, undefined, {
+        researchEnabled: true,
+        runtimeJson: true,
+        projectPath: TMP_RT,
+        writeToPty: () => {},
+      })
+      sm2.start()
+      expect(sm2.getState().researchInFlight?.pendingTopics).toEqual(['a'])
+    } finally {
+      rmSync(TMP_RT, { recursive: true, force: true })
+    }
+  })
+
+  it('drops topic from pendingTopics when spend exceeds budget * 1.5', () => {
+    const writes: string[] = []
+    const sm = makeSm(undefined, undefined, {
+      researchEnabled: true,
+      writeToPty: (_id: string, t: string) => { writes.push(t) },
+    })
+    sm.start()
+    sm.testForceResearchInFlight({
+      triggerStage: 'discovery',
+      pendingTopics: ['hot'],
+      spendByTopic: { hot: 0 },
+      topicBudgets: { hot: 0.50 },
+    })
+    sm.testRecordResearchSpend('hot', 0.80)  // 0.80 >= 0.50 * 1.5 = 0.75 → overrun
+    expect(sm.getState().researchInFlight?.pendingTopics).toEqual([])
+    expect(writes.some((w) => w.includes('exceeded budget'))).toBe(true)
   })
 })

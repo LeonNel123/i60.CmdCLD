@@ -320,6 +320,8 @@ export class AutopilotProStateMachine {
         this.metaAutoFired = rt.metaAutoFired
         this.phaseTrackerEscalated = rt.phaseTrackerEscalated
         this.outputVolumeSinceReset = rt.outputVolumeSinceReset
+        if (rt.researchInFlight) this.state.researchInFlight = rt.researchInFlight
+        if (rt.researchHistory) this.state.researchHistory = rt.researchHistory
         this.appendActivity('orchestrator-resume', `restored from runtime.json (cycle ${rt.cycleCount})`)
       }
     }
@@ -568,6 +570,13 @@ export class AutopilotProStateMachine {
       } else if (budgetSnap.warningThreshold) {
         this.appendActivity('cost-threshold', `daily budget warning: $${budgetSnap.globalSpent.toFixed(2)} / $${budgetSnap.globalCap.toFixed(2)}`)
       }
+    }
+
+    // Per-topic research spend (Wave 1.6 T10): if a research run is in-flight
+    // and the doer's marker tagged the cost to a topic, increment that topic's
+    // spend and abort it if the per-topic budget is exceeded by 1.5x.
+    if (this.state.researchInFlight && m.researchTopic) {
+      this.recordResearchSpend(m.researchTopic, out.costUsd)
     }
 
     // Apply principles enforcement to approve verdicts.
@@ -1052,6 +1061,26 @@ export class AutopilotProStateMachine {
     this.state.researchHistory.push({ slug, costUsd, outcome })
   }
 
+  private recordResearchSpend(slug: string, deltaUsd: number): void {
+    if (!this.state.researchInFlight) return
+    const before = this.state.researchInFlight.spendByTopic[slug] ?? 0
+    const after = before + deltaUsd
+    this.state.researchInFlight.spendByTopic[slug] = after
+    const budget = this.state.researchInFlight.topicBudgets[slug] ?? this.researchTopicBudgetUsdDefault
+    if (after >= budget * 1.5) {
+      this.handleResearchOverrun(slug, after)
+    }
+  }
+
+  private handleResearchOverrun(slug: string, spent: number): void {
+    if (!this.state.researchInFlight) return
+    const idx = this.state.researchInFlight.pendingTopics.indexOf(slug)
+    if (idx >= 0) this.state.researchInFlight.pendingTopics.splice(idx, 1)
+    this.recordResearchHistory(slug, spent, 'overrun')
+    this.appendActivity('research-overrun', `${slug}: $${spent.toFixed(3)} exceeded budget*1.5`)
+    this.opts.writeToPty(this.opts.terminalId, `Research on ${slug} exceeded budget; skip to next topic / write what you have so far if useful.\r`)
+  }
+
   private notify(): void {
     try { this.opts.onUpdate(this.state) } catch { /* best effort */ }
     if (this.runtimeJsonEnabled) {
@@ -1096,6 +1125,16 @@ export class AutopilotProStateMachine {
   public async testHandleResult(result: ProDecideResult, marker?: ProMarker): Promise<void> {
     const m: ProMarker = marker ?? ({ kind: 'WAITING', text: '', raw: '', question: '', proStatus: 'awaiting-decision' } as any)
     await this.dispatch(result, m)
+  }
+
+  /** Test hook: directly set the in-flight research state. */
+  public testForceResearchInFlight(rif: NonNullable<ProState['researchInFlight']>): void {
+    this.state.researchInFlight = rif
+  }
+
+  /** Test hook: invoke recordResearchSpend without going through onSettled. */
+  public testRecordResearchSpend(slug: string, deltaUsd: number): void {
+    this.recordResearchSpend(slug, deltaUsd)
   }
 
   /** Test hook: simulate the doer writing a research-summary file. */
