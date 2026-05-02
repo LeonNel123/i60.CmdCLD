@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  AGENT_CLI_PRESETS,
+  AGENT_CLI_OPTION_GROUPS,
+  applyAgentCliLaunchOption,
   buildAgentLaunchCommand,
   getArgsForAgent,
+  getActiveAgentCliLaunchOptionIds,
   normalizeAgentCli,
   stripResumeArgsForQuickLaunch,
 } from '../src/shared/agent-cli'
@@ -37,9 +39,46 @@ describe('agent CLI utilities', () => {
     expect(stripResumeArgsForQuickLaunch('codex', '--sandbox workspace-write')).toBe('--sandbox workspace-write')
   })
 
-  it('defines separate presets for Claude and Codex', () => {
-    expect(AGENT_CLI_PRESETS.claude.some((p) => p.args.includes('--dangerously-skip-permissions'))).toBe(true)
-    expect(AGENT_CLI_PRESETS.codex.some((p) => p.args.includes('--sandbox workspace-write'))).toBe(true)
-    expect(AGENT_CLI_PRESETS.codex.some((p) => p.args.includes('--ask-for-approval never'))).toBe(true)
+  it('defines composable launch option groups for Claude and Codex', () => {
+    expect(AGENT_CLI_OPTION_GROUPS.claude.some((g) => g.id === 'permission')).toBe(true)
+    expect(AGENT_CLI_OPTION_GROUPS.codex.some((g) => g.id === 'sandbox')).toBe(true)
+    expect(AGENT_CLI_OPTION_GROUPS.codex.some((g) => g.id === 'approval')).toBe(true)
+  })
+
+  it('stacks independent Codex options while replacing mutually exclusive options', () => {
+    let args = ''
+    args = applyAgentCliLaunchOption('codex', args, 'codex-sandbox-workspace-write')
+    args = applyAgentCliLaunchOption('codex', args, 'codex-approval-never')
+    args = applyAgentCliLaunchOption('codex', args, 'codex-search')
+    expect(args).toBe('--sandbox workspace-write --ask-for-approval never --search')
+
+    args = applyAgentCliLaunchOption('codex', args, 'codex-sandbox-danger-full-access')
+    expect(args).toBe('--ask-for-approval never --search --sandbox danger-full-access')
+    expect(getActiveAgentCliLaunchOptionIds('codex', args)).toEqual([
+      'codex-sandbox-danger-full-access',
+      'codex-approval-never',
+      'codex-search',
+    ])
+  })
+
+  it('treats the Codex dangerous bypass as mutually exclusive with sandbox and approval flags', () => {
+    let args = '--sandbox workspace-write --ask-for-approval never --search'
+    args = applyAgentCliLaunchOption('codex', args, 'codex-dangerous-bypass')
+    expect(args).toBe('--search --dangerously-bypass-approvals-and-sandbox')
+
+    args = applyAgentCliLaunchOption('codex', args, 'codex-sandbox-read-only')
+    expect(args).toBe('--search --sandbox read-only')
+  })
+
+  it('stacks Claude session, model, and effort options while replacing permission modes', () => {
+    let args = ''
+    args = applyAgentCliLaunchOption('claude', args, 'claude-continue')
+    args = applyAgentCliLaunchOption('claude', args, 'claude-permission-plan')
+    args = applyAgentCliLaunchOption('claude', args, 'claude-model-opus')
+    args = applyAgentCliLaunchOption('claude', args, 'claude-effort-high')
+    expect(args).toBe('--continue --permission-mode plan --model opus --effort high')
+
+    args = applyAgentCliLaunchOption('claude', args, 'claude-skip-permissions')
+    expect(args).toBe('--continue --model opus --effort high --dangerously-skip-permissions')
   })
 })

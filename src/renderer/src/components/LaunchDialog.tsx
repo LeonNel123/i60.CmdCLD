@@ -2,9 +2,9 @@ import { useState } from 'react'
 import {
   AGENT_CLI_COMMANDS,
   AGENT_CLI_LABELS,
-  AGENT_CLI_PRESETS,
   type AgentCli,
 } from '../../../shared/agent-cli'
+import { AgentLaunchOptions } from './AgentLaunchOptions'
 
 interface LaunchDialogProps {
   folderName: string
@@ -18,31 +18,11 @@ interface LaunchDialogProps {
 export function LaunchDialog({ folderName, defaultAgentCli, defaultArgs, defaultArgsByAgent, onLaunch, onCancel }: LaunchDialogProps) {
   const [agentCli, setAgentCli] = useState<AgentCli>(defaultAgentCli)
   const [args, setArgs] = useState(defaultArgs)
-  const presets = AGENT_CLI_PRESETS[agentCli]
 
   const selectAgent = (next: AgentCli) => {
     setAgentCli(next)
     setArgs(defaultArgsByAgent?.[next] ?? '')
   }
-
-  const presetBtn = (label: string, value: string) => (
-    <button
-      key={label}
-      onClick={() => setArgs(value)}
-      style={{
-        background: args === value ? '#22c55e20' : '#ffffff08',
-        border: args === value ? '1px solid #22c55e' : '1px solid #333',
-        borderRadius: '4px',
-        padding: '3px 8px',
-        color: args === value ? '#22c55e' : '#aaa',
-        fontSize: '11px',
-        fontFamily: 'inherit',
-        cursor: 'pointer',
-      }}
-    >
-      {label}
-    </button>
-  )
 
   return (
     <div style={{
@@ -64,6 +44,8 @@ export function LaunchDialog({ folderName, defaultAgentCli, defaultArgs, default
           padding: '20px',
           maxWidth: '520px',
           width: '90%',
+          maxHeight: '88vh',
+          overflowY: 'auto',
           border: '1px solid #333',
         }}
       >
@@ -97,14 +79,12 @@ export function LaunchDialog({ folderName, defaultAgentCli, defaultArgs, default
           </div>
         </div>
 
-        {/* Presets */}
+        {/* Launch option composer */}
         <div style={{ marginBottom: '12px' }}>
           <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
-            Quick Presets
+            Launch Options
           </label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-            {presets.map((p) => presetBtn(p.label, p.args))}
-          </div>
+          <AgentLaunchOptions agentCli={agentCli} args={args} onArgsChange={setArgs} />
         </div>
 
         {/* Args text field + clear */}

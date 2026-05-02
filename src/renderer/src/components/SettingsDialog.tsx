@@ -3,10 +3,10 @@ import { X } from './icons'
 import {
   AGENT_CLI_COMMANDS,
   AGENT_CLI_LABELS,
-  AGENT_CLI_PRESETS,
   normalizeAgentCli,
   type AgentCli,
 } from '../../../shared/agent-cli'
+import { AgentLaunchOptions } from './AgentLaunchOptions'
 
 interface SettingsDialogProps {
   onClose: () => void
@@ -414,31 +414,12 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
           </div>
         </div>
 
-        {/* Presets */}
+        {/* Launch option composer */}
         <div style={{ marginBottom: '12px' }}>
           <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
-            Quick Presets
+            Launch Options
           </label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-            {AGENT_CLI_PRESETS[agentArgsTab].map((p) => (
-              <button
-                key={p.label}
-                onClick={() => setActiveAgentArgs(p.args)}
-                style={{
-                  background: activeAgentArgs === p.args ? '#22c55e20' : '#ffffff08',
-                  border: activeAgentArgs === p.args ? '1px solid #22c55e' : '1px solid #333',
-                  borderRadius: '4px',
-                  padding: '3px 8px',
-                  color: activeAgentArgs === p.args ? '#22c55e' : '#aaa',
-                  fontSize: '11px',
-                  fontFamily: 'inherit',
-                  cursor: 'pointer',
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+          <AgentLaunchOptions agentCli={agentArgsTab} args={activeAgentArgs} onArgsChange={setActiveAgentArgs} />
         </div>
 
         {/* Args text field */}
