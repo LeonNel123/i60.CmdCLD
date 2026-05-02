@@ -27,7 +27,9 @@ export interface RecentFolder {
 
 export interface SavedProject {
   path: string
+  agentCli?: 'claude' | 'codex'
   claudeArgs: string
+  codexArgs?: string
   isPlainShell: boolean
 }
 
@@ -44,7 +46,7 @@ export interface GitStatus {
 
 export interface ElectronAPI {
   platform: 'win32' | 'darwin' | 'linux'
-  createTerminal: (id: string, cwd: string) => Promise<void>
+  createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex') => Promise<void>
   writeTerminal: (id: string, data: string) => Promise<void>
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>
   killTerminal: (id: string) => Promise<void>
@@ -73,8 +75,9 @@ export interface ElectronAPI {
   getHomeDir: () => Promise<string>
   getVersion: () => Promise<string>
   projectCreate: (folderName: string) => Promise<string | null>
-  settingsGetAll: () => Promise<{ editor: string; claudeArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; favoriteFolders: string[]; restoreSessionEnabled: boolean; autopilotApiProvider: 'anthropic' | 'openrouter'; autopilotPlannerModel: string; autopilotDefaultCostCap: number; autopilotDefaultMaxIterations: number }>
+  settingsGetAll: () => Promise<{ editor: string; defaultAgentCli: 'claude' | 'codex'; claudeArgs: string; codexArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; favoriteFolders: string[]; restoreSessionEnabled: boolean; autopilotApiProvider: 'anthropic' | 'openrouter'; autopilotPlannerModel: string; autopilotDefaultCostCap: number; autopilotDefaultMaxIterations: number }>
   settingsSet: (key: string, value: unknown) => Promise<void>
+  agentCliAvailability: () => Promise<Record<'claude' | 'codex', { available: boolean; path: string | null }>>
   settingsGetBudgetState: (projectPath: string) => Promise<{
     state: { date: string; perProject: Record<string, { spentUsd: number; capUsd: number }>; global: { spentUsd: number; capUsd: number } }
     snapshot: { date: string; projectSpent: number; projectCap: number; globalSpent: number; globalCap: number; capReached: boolean; capReachedReason: 'project' | 'global' | null; warningThreshold: boolean }
@@ -92,6 +95,8 @@ export interface ElectronAPI {
   editorGetCurrent: () => Promise<string>
   editorSetCurrent: (cmd: string) => Promise<void>
   onWindowListUpdated: (callback: (windows: WindowInfo[]) => void) => () => void
+  claudeConfigRead: () => Promise<{ global: Record<string, unknown>; local: Record<string, unknown> }>
+  claudeConfigWrite: (scope: 'global' | 'local', data: Record<string, unknown>) => Promise<void>
   remoteToggle: (enabled: boolean) => Promise<{ ok: boolean; urls?: string[]; port?: number; error?: string }>
   remoteStatus: () => Promise<{ running: boolean; port: number; urls?: string[] }>
   tailscaleStatus: () => Promise<{
@@ -106,7 +111,7 @@ export interface ElectronAPI {
   }>
   tailscaleServeStart: () => Promise<{ ok: boolean; url?: string; error?: string }>
   tailscaleServeStop: () => Promise<{ ok: boolean; error?: string }>
-  onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string }) => void) => () => void
+  onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string; codexArgs?: string; agentCli?: 'claude' | 'codex' }) => void) => () => void
   autopilotKeyExists: (provider: 'anthropic' | 'openrouter') => Promise<boolean>
   autopilotKeySet: (provider: 'anthropic' | 'openrouter', key: string) => Promise<void>
   autopilotKeyClear: (provider: 'anthropic' | 'openrouter') => Promise<void>

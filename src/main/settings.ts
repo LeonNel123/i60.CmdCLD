@@ -1,9 +1,12 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { dirname } from 'path'
+import { DEFAULT_AGENT_CLI, normalizeAgentCli, type AgentCli } from '../shared/agent-cli'
 
 export interface AppSettings {
   editor: string
+  defaultAgentCli: AgentCli
   claudeArgs: string
+  codexArgs: string
   askBeforeLaunch: boolean
   defaultViewMode: 'grid' | 'focused'
   notifyOnIdle: boolean
@@ -20,7 +23,9 @@ export interface AppSettings {
 
 const DEFAULTS: AppSettings = {
   editor: 'code',
+  defaultAgentCli: DEFAULT_AGENT_CLI,
   claudeArgs: '',
+  codexArgs: '',
   askBeforeLaunch: false,
   defaultViewMode: 'grid',
   notifyOnIdle: false,
@@ -49,6 +54,7 @@ export class Settings {
       if (existsSync(this.filePath)) {
         const raw = JSON.parse(readFileSync(this.filePath, 'utf-8'))
         const merged = { ...DEFAULTS, ...raw }
+        merged.defaultAgentCli = normalizeAgentCli(merged.defaultAgentCli)
         return merged
       }
     } catch {}

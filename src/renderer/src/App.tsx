@@ -23,6 +23,12 @@ import { calculateLayout, getRowCount } from './utils/grid-layout'
 import { onActivityChange } from './utils/terminal-activity'
 import notificationSound from './assets/notification.wav'
 import type { RecentFolder } from './types/api'
+import {
+  getArgsForAgent,
+  normalizeAgentCli,
+  stripResumeArgsForQuickLaunch,
+  type AgentCli,
+} from '../../shared/agent-cli'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
@@ -31,7 +37,9 @@ interface TerminalEntry {
   path: string
   name: string
   color: string
+  agentCli?: AgentCli
   claudeArgs?: string
+  codexArgs?: string
   isPlainShell?: boolean
 }
 
@@ -47,9 +55,11 @@ export default function App() {
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
   const [recentFolders, setRecentFolders] = useState<RecentFolder[]>([])
   const [showSettings, setShowSettings] = useState(false)
-  const [pendingLaunch, setPendingLaunch] = useState<{ path: string; name: string; args?: string } | null>(null)
+  const [pendingLaunch, setPendingLaunch] = useState<{ path: string; name: string; agentCli: AgentCli; args: string; argsByAgent: Record<AgentCli, string> } | null>(null)
   const [busyTerminals, setBusyTerminals] = useState<Set<string>>(new Set())
+  const [defaultAgentCli, setDefaultAgentCli] = useState<AgentCli>('claude')
   const [claudeArgs, setClaudeArgs] = useState('--dangerously-skip-permissions')
+  const [codexArgs, setCodexArgs] = useState('')
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
   const [notifyOnIdle, setNotifyOnIdle] = useState(false)
   const [projectsRoot, setProjectsRoot] = useState('')
@@ -59,7 +69,7 @@ export default function App() {
   const [toast, setToast] = useState<{ message: string; kind: 'info' | 'warn' } | null>(null)
   const [favoriteFolders, setFavoriteFolders] = useState<string[]>([])
   const [restoreSessionEnabled, setRestoreSessionEnabled] = useState(false)
-  const [savedSessionProjects, setSavedSessionProjects] = useState<Array<{ path: string; claudeArgs: string; isPlainShell: boolean }>>([])
+  const [savedSessionProjects, setSavedSessionProjects] = useState<Array<{ path: string; agentCli?: AgentCli; claudeArgs: string; codexArgs?: string; isPlainShell: boolean }>>([])
   const [welcomeDismissed, setWelcomeDismissed] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ path: string; x: number; y: number } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -104,7 +114,9 @@ export default function App() {
       window.api.recentList().catch(() => [] as RecentFolder[]),
     ]).then(([settings, recent]) => {
       if (settings) {
+        setDefaultAgentCli(normalizeAgentCli(settings.defaultAgentCli))
         setClaudeArgs(settings.claudeArgs)
+        setCodexArgs(settings.codexArgs ?? '')
         setAskBeforeLaunch(settings.askBeforeLaunch)
         setNotifyOnIdle(settings.notifyOnIdle)
         setProjectsRoot(settings.projectsRoot)
@@ -154,7 +166,9 @@ export default function App() {
     const timer = setTimeout(() => {
       const projects = terminals.map((t) => ({
         path: t.path,
+        agentCli: t.agentCli ?? 'claude',
         claudeArgs: t.claudeArgs ?? '',
+        codexArgs: t.codexArgs ?? '',
         isPlainShell: t.isPlainShell ?? false,
       }))
       window.api.sessionSaveLast({ savedAt: Date.now(), projects }).catch(() => {})
@@ -169,7 +183,9 @@ export default function App() {
     const onBeforeUnload = () => {
       const projects = terminals.map((t) => ({
         path: t.path,
+        agentCli: t.agentCli ?? 'claude',
         claudeArgs: t.claudeArgs ?? '',
+        codexArgs: t.codexArgs ?? '',
         isPlainShell: t.isPlainShell ?? false,
       }))
       void window.api.sessionSaveLast({ savedAt: Date.now(), projects })
@@ -189,7 +205,9 @@ export default function App() {
           path: session.path,
           name: session.name,
           color: session.color || assignColor(usedColors),
+          agentCli: normalizeAgentCli(session.agentCli),
           claudeArgs: session.claudeArgs,
+          codexArgs: session.codexArgs ?? '',
         }
         const next = [...prev, newEntry]
         if (prev.length === 0 && defaultViewMode === 'focused') {
@@ -205,15 +223,18 @@ export default function App() {
     return unsub
   }, [defaultViewMode])
 
-  // Actually create a terminal with specific args
-  const createTerminal = useCallback((folderPath: string, args: string) => {
+  // Actually create a terminal with a specific agent CLI + args.
+  const createTerminal = useCallback((folderPath: string, args: string, agentCli: AgentCli = defaultAgentCli) => {
+    const normalizedAgent = normalizeAgentCli(agentCli)
     const usedColors = terminals.map((t) => t.color)
     const newEntry: TerminalEntry = {
       id: crypto.randomUUID(),
       path: folderPath,
       name: folderPath.split(/[\\/]/).pop() || folderPath,
       color: assignColor(usedColors),
-      claudeArgs: args,
+      agentCli: normalizedAgent,
+      claudeArgs: normalizedAgent === 'claude' ? args : '',
+      codexArgs: normalizedAgent === 'codex' ? args : '',
     }
 
     const newTerminals = [...terminals, newEntry]
@@ -233,17 +254,20 @@ export default function App() {
     }).then((list) => {
       setRecentFolders(list)
     }).catch(() => {})
-  }, [defaultViewMode, terminals])
+  }, [defaultAgentCli, defaultViewMode, terminals])
 
   // Start the folder-open flow (may show dialog or launch directly)
   const startAddFolder = useCallback((folderPath: string) => {
     const name = folderPath.split(/[\\/]/).pop() || folderPath
+    const agentCli = defaultAgentCli
+    const argsByAgent = { claude: claudeArgs, codex: codexArgs }
+    const args = getArgsForAgent(agentCli, { claudeArgs, codexArgs })
     if (askBeforeLaunch) {
-      setPendingLaunch({ path: folderPath, name })
+      setPendingLaunch({ path: folderPath, name, agentCli, args, argsByAgent })
     } else {
-      createTerminal(folderPath, claudeArgs)
+      createTerminal(folderPath, args, agentCli)
     }
-  }, [askBeforeLaunch, claudeArgs, createTerminal])
+  }, [askBeforeLaunch, claudeArgs, codexArgs, createTerminal, defaultAgentCli])
 
   // Spawn a plain shell for the same folder path as an existing terminal
   const handleSpawnShell = useCallback((folderPath: string, parentColor: string) => {
@@ -289,20 +313,24 @@ export default function App() {
     startAddFolder(folderPath)
   }, [startAddFolder])
 
-  const handleQuickClaude = useCallback(async () => {
+  const handleQuickAgent = useCallback(async () => {
     const homeDir = await window.api.getHomeDir()
-    // Strip --continue for quick Claude — no project folder means no session to resume
-    const quickArgs = claudeArgs
-      .replace(/--continue/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
+    const agentCli = defaultAgentCli
+    const argsByAgent = {
+      claude: stripResumeArgsForQuickLaunch('claude', claudeArgs),
+      codex: stripResumeArgsForQuickLaunch('codex', codexArgs),
+    }
+    const quickArgs = getArgsForAgent(agentCli, {
+      claudeArgs: argsByAgent.claude,
+      codexArgs: argsByAgent.codex,
+    })
     const name = homeDir.split(/[\\/]/).pop() || homeDir
     if (askBeforeLaunch) {
-      setPendingLaunch({ path: homeDir, name, args: quickArgs })
+      setPendingLaunch({ path: homeDir, name, agentCli, args: quickArgs, argsByAgent })
     } else {
-      createTerminal(homeDir, quickArgs)
+      createTerminal(homeDir, quickArgs, agentCli)
     }
-  }, [claudeArgs, askBeforeLaunch, createTerminal])
+  }, [askBeforeLaunch, claudeArgs, codexArgs, createTerminal, defaultAgentCli])
 
   // Open a plain shell in the user's home folder — no Claude.
   const handleQuickShell = useCallback(async () => {
@@ -365,9 +393,18 @@ export default function App() {
         const folderName = p.path.split(/[\\/]/).pop() || p.path
         const color = assignColor(usedColors)
         usedColors.push(color)
+        const agentCli = normalizeAgentCli(p.agentCli)
         return p.isPlainShell
           ? { id: crypto.randomUUID(), path: p.path, name: `${folderName} (shell)`, color, isPlainShell: true }
-          : { id: crypto.randomUUID(), path: p.path, name: folderName, color, claudeArgs: p.claudeArgs }
+          : {
+              id: crypto.randomUUID(),
+              path: p.path,
+              name: folderName,
+              color,
+              agentCli,
+              claudeArgs: p.claudeArgs,
+              codexArgs: p.codexArgs ?? '',
+            }
       })
       const next = [...prev, ...newEntries]
       if (prev.length === 0 && defaultViewMode === 'focused' && newEntries.length > 0) {
@@ -400,9 +437,9 @@ export default function App() {
     }
   }, [startAddFolder, showToast])
 
-  const handleLaunchConfirm = useCallback((args: string) => {
+  const handleLaunchConfirm = useCallback((args: string, agentCli: AgentCli) => {
     if (!pendingLaunch) return
-    createTerminal(pendingLaunch.path, args)
+    createTerminal(pendingLaunch.path, args, agentCli)
     setPendingLaunch(null)
   }, [pendingLaunch, createTerminal])
 
@@ -452,7 +489,9 @@ export default function App() {
   const handleSettingsClosed = useCallback(() => {
     setShowSettings(false)
     window.api.settingsGetAll().then((s) => {
+      setDefaultAgentCli(normalizeAgentCli(s.defaultAgentCli))
       setClaudeArgs(s.claudeArgs)
+      setCodexArgs(s.codexArgs ?? '')
       setAskBeforeLaunch(s.askBeforeLaunch)
       setNotifyOnIdle(s.notifyOnIdle)
       setProjectsRoot(s.projectsRoot)
@@ -552,7 +591,7 @@ export default function App() {
     <div style={{ height: '100vh', display: 'flex', background: '#1e1e1e' }}>
       <IconRail
         onAddFolder={handleAddFolder}
-        onQuickClaude={handleQuickClaude}
+        onQuickAgent={handleQuickAgent}
         onQuickShell={handleQuickShell}
         onNewWindow={handleNewWindow}
         onNewProject={() => setShowNewProject(true)}
@@ -604,7 +643,9 @@ export default function App() {
                   folderPath={t.path}
                   folderName={t.name}
                   color={t.color}
+                  agentCli={t.agentCli}
                   claudeArgs={t.claudeArgs}
+                  codexArgs={t.codexArgs}
                   isPlainShell={t.isPlainShell}
                   onClose={() => handleRequestClose(t.id)}
                   onSpawnShell={() => handleSpawnShell(t.path, t.color)}
@@ -633,7 +674,9 @@ export default function App() {
               folderPath={t.path}
               folderName={t.name}
               color={t.color}
+              agentCli={t.agentCli}
               claudeArgs={t.claudeArgs}
+              codexArgs={t.codexArgs}
               isPlainShell={t.isPlainShell}
               onClose={() => handleRequestClose(t.id)}
               onSpawnShell={() => handleSpawnShell(t.path, t.color)}
@@ -684,7 +727,9 @@ export default function App() {
       {pendingLaunch && (
         <LaunchDialog
           folderName={pendingLaunch.name}
-          defaultArgs={pendingLaunch.args ?? claudeArgs}
+          defaultAgentCli={pendingLaunch.agentCli}
+          defaultArgs={pendingLaunch.args}
+          defaultArgsByAgent={pendingLaunch.argsByAgent}
           onLaunch={handleLaunchConfirm}
           onCancel={() => setPendingLaunch(null)}
         />

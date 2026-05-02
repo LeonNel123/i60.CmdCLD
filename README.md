@@ -1,13 +1,13 @@
 # CmdCLD
 
-A desktop terminal manager for running multiple [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI sessions simultaneously. Built with Electron, React, and xterm.js.
+A desktop terminal manager for running multiple [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and Codex CLI sessions simultaneously. Built with Electron, React, and xterm.js.
 
-Open multiple project folders, each running its own Claude CLI instance in a resizable grid or focused full-screen view. Switch between projects instantly, spawn plain shells, paste screenshots directly into conversations, and manage everything from a compact sidebar.
+Open multiple project folders, each running its own Claude or Codex CLI instance in a resizable grid or focused full-screen view. Switch between projects instantly, spawn plain shells, paste screenshots directly into conversations, and manage everything from a compact sidebar.
 
 ## Features
 
 **Multi-Terminal Grid**
-- Open multiple Claude CLI sessions side-by-side in an auto-arranging grid
+- Open multiple Claude or Codex CLI sessions side-by-side in an auto-arranging grid
 - Switch to focused mode (one terminal full-screen) via the sidebar
 - Drag to rearrange, resize panels freely
 - Smart layout: 2 terminals = full-height columns, 4 = 2x2 grid, etc.
@@ -15,7 +15,7 @@ Open multiple project folders, each running its own Claude CLI instance in a res
 **Sidebar Navigation**
 - Collapsible sidebar with folder list, recent folders (SQLite-backed), and quick actions
 - Click a folder to focus it, "Show All" to return to grid
-- Busy/idle indicators: dots pulse when Claude is working
+- Busy/idle indicators: dots pulse when an agent is working
 
 **Terminal Features**
 - Ctrl+V paste with clipboard image support (screenshots saved to `.screenshots/` in your project)
@@ -32,7 +32,7 @@ Open multiple project folders, each running its own Claude CLI instance in a res
 - Right-click to switch between installed editors
 
 **Remote Access**
-- Access your Claude sessions from any device on your network (phone, tablet, another PC)
+- Access your Claude or Codex sessions from any device on your network (phone, tablet, another PC)
 - Enable from Settings — starts an Express + Socket.IO server on a configurable port
 - Dashboard shows all active sessions with busy/idle status
 - Create new sessions from favorite or recent folders remotely
@@ -42,7 +42,8 @@ Open multiple project folders, each running its own Claude CLI instance in a res
 - Includes a setup guide for Tailscale-based access from anywhere
 
 **Settings**
-- Configurable Claude CLI launch arguments with quick presets (Skip Permissions, Auto Mode, Plan Mode, etc.)
+- Configurable Claude and Codex CLI launch arguments with provider-specific quick presets
+- Default agent CLI selector with installed CLI availability detection
 - "Ask before launch" mode: edit flags each time you open a folder
 - Default view mode: grid or focused
 - Notification sound when terminal finishes work (toggle on/off)
@@ -128,14 +129,15 @@ src/
         TerminalPanel.tsx   # xterm.js terminal with all features
         Sidebar.tsx         # Navigation sidebar
         SettingsDialog.tsx  # Settings UI
-        LaunchDialog.tsx    # Claude args picker
+        LaunchDialog.tsx    # Agent CLI args picker
         MarkdownViewer.tsx  # Rendered markdown viewer
         ConfirmDialog.tsx   # Confirmation dialog
       utils/
         terminal-activity.ts  # Busy/idle tracking
         grid-layout.ts       # Grid layout calculator
-        claude-presets.ts     # CLI argument presets
         colors.ts             # Terminal color assignment
+  shared/
+    agent-cli.ts          # Agent CLI provider model and presets
   remote-ui/      # Browser-based remote client
     index.html        # Dashboard (session cards, new session modal)
     app.js            # Socket.IO connection, session management

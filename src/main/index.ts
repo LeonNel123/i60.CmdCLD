@@ -9,7 +9,7 @@ import { Store } from './store'
 import { WindowRegistry } from './window-registry'
 import { RecentDB } from './recent-db'
 import { Settings } from './settings'
-import { LastSessionStore } from './last-session-store'
+import { LastSessionStore, type SavedSession } from './last-session-store'
 import { detectEditors, getDefaultEditor } from './editor-detect'
 import { RemoteServer } from './remote-server'
 import { hardenGlobalSettings, trustFolder, readClaudeConfig, writeClaudeConfig } from './claude-config'
@@ -23,6 +23,8 @@ import type { AutopilotOptions } from './autopilot/types'
 import { formatPtyWrite } from './autopilot/pty-write'
 import { probeArtifacts } from './autopilot/probe-artifacts'
 import { loadBudget, getSnapshot as getBudgetSnapshot, setProjectCap, setGlobalCap, resetTodaySpend } from './autopilot/budget-tracker'
+import { detectAgentCliAvailability } from './agent-cli-detect'
+import { normalizeAgentCli, type AgentCli } from '../shared/agent-cli'
 
 // File logger for debugging startup issues
 const logPath = join(app.getPath('userData'), 'cmdcld.log')
@@ -298,7 +300,7 @@ function getWindowIdFromEvent(event: Electron.IpcMainInvokeEvent): string | unde
 }
 
 // PTY IPC handlers
-ipcMain.handle('pty:create', (event, id: string, cwd: string) => {
+ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: AgentCli) => {
   const windowId = getWindowIdFromEvent(event)
   if (!windowId) return
   const wc = registry.getWebContents(windowId)
@@ -310,8 +312,9 @@ ipcMain.handle('pty:create', (event, id: string, cwd: string) => {
   // Prevent overwriting existing PTY
   if (ptyManager.getMeta(id)) return
   const name = cwd.split(/[\\/]/).pop() || cwd
-  const meta: TerminalMeta = { id, path: cwd, name, color: '' }
-  trustFolder(cwd)
+  const agentCli = normalizeAgentCli(agentCliRaw)
+  const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli }
+  if (agentCli === 'claude') trustFolder(cwd)
   ptyManager.create(id, cwd, wc, meta)
 })
 
@@ -445,6 +448,8 @@ ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
   settings.set(key as any, value as any)
 })
 
+ipcMain.handle('agent-cli:availability', () => detectAgentCliAvailability())
+
 // Claude CLI config (global + local settings files)
 ipcMain.handle('claude-config:read', () => readClaudeConfig())
 
@@ -455,7 +460,7 @@ ipcMain.handle('claude-config:write', (_event, scope: 'global' | 'local', data: 
 // Last-session store — best-effort persistence of the open project set.
 // Read at mount in renderer, write debounced on terminals change, flushed
 // on beforeunload. Never throws.
-ipcMain.handle('session:saveLast', (_event, session: { savedAt: number; projects: Array<{ path: string; claudeArgs: string; isPlainShell: boolean }> }) => {
+ipcMain.handle('session:saveLast', (_event, session: SavedSession) => {
   lastSessionStore.write(session)
 })
 
@@ -681,7 +686,7 @@ ipcMain.handle('tailscale:serveStop', async () => {
   return tsStopServe()
 })
 
-// Get home directory for quick Claude sessions
+// Get home directory for quick agent sessions
 ipcMain.handle('app:getHomeDir', () => {
   return app.getPath('home')
 })

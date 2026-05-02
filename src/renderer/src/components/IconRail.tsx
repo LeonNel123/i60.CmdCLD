@@ -5,7 +5,7 @@ import { Tooltip } from './Tooltip'
 
 interface IconRailProps {
   onAddFolder: () => void
-  onQuickClaude: () => void
+  onQuickAgent: () => void
   onQuickShell: () => void
   onNewWindow: () => void
   onNewProject: () => void
@@ -17,7 +17,7 @@ const RAIL_WIDTH = 36
 
 export function IconRail({
   onAddFolder,
-  onQuickClaude,
+  onQuickAgent,
   onQuickShell,
   onNewWindow,
   onNewProject,
@@ -37,10 +37,10 @@ export function IconRail({
       padding: '8px 0',
       flexShrink: 0,
     }}>
-      <RailButton title="Open Project — pick a folder to launch Claude in" color="#22c55e" onClick={onAddFolder}>
+      <RailButton title="Open Project — pick a folder to launch the default agent in" color="#22c55e" onClick={onAddFolder}>
         <FolderOpen />
       </RailButton>
-      <RailButton title="Quick Claude (no folder)" color="#fb923c" onClick={onQuickClaude}>
+      <RailButton title="Quick Agent (home folder)" color="#fb923c" onClick={onQuickAgent}>
         <Sparkles />
       </RailButton>
       <RailButton title="Quick Shell — plain shell in your home folder" color="#94a3b8" onClick={onQuickShell}>

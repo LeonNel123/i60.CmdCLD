@@ -1,9 +1,12 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, renameSync } from 'fs'
 import { dirname } from 'path'
+import type { AgentCli } from '../shared/agent-cli'
 
 export interface SavedProject {
   path: string
+  agentCli?: AgentCli
   claudeArgs: string
+  codexArgs?: string
   isPlainShell: boolean
 }
 

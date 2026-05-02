@@ -5,8 +5,8 @@ contextBridge.exposeInMainWorld('api', {
   platform: process.platform as 'win32' | 'darwin' | 'linux',
 
   // Existing PTY methods
-  createTerminal: (id: string, cwd: string): Promise<void> =>
-    ipcRenderer.invoke('pty:create', id, cwd),
+  createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex'): Promise<void> =>
+    ipcRenderer.invoke('pty:create', id, cwd, agentCli),
 
   writeTerminal: (id: string, data: string): Promise<void> =>
     ipcRenderer.invoke('pty:write', id, data),
@@ -82,11 +82,14 @@ contextBridge.exposeInMainWorld('api', {
   projectCreate: (folderName: string): Promise<string | null> =>
     ipcRenderer.invoke('project:create', folderName),
 
-  settingsGetAll: (): Promise<{ editor: string; claudeArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; favoriteFolders: string[] }> =>
+  settingsGetAll: (): Promise<{ editor: string; defaultAgentCli: 'claude' | 'codex'; claudeArgs: string; codexArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; favoriteFolders: string[] }> =>
     ipcRenderer.invoke('settings:getAll'),
 
   settingsSet: (key: string, value: unknown): Promise<void> =>
     ipcRenderer.invoke('settings:set', key, value),
+
+  agentCliAvailability: (): Promise<Record<'claude' | 'codex', { available: boolean; path: string | null }>> =>
+    ipcRenderer.invoke('agent-cli:availability'),
 
   // Budget tracker (daily Autopilot cost cap)
   settingsGetBudgetState: (projectPath: string) =>
@@ -144,10 +147,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('claude-config:write', scope, data),
 
   // Last-session store
-  sessionSaveLast: (session: { savedAt: number; projects: Array<{ path: string; claudeArgs: string; isPlainShell: boolean }> }): Promise<void> =>
+  sessionSaveLast: (session: { savedAt: number; projects: Array<{ path: string; claudeArgs: string; codexArgs?: string; agentCli?: 'claude' | 'codex'; isPlainShell: boolean }> }): Promise<void> =>
     ipcRenderer.invoke('session:saveLast', session),
 
-  sessionLoadLast: (): Promise<{ savedAt: number; projects: Array<{ path: string; claudeArgs: string; isPlainShell: boolean }> } | null> =>
+  sessionLoadLast: (): Promise<{ savedAt: number; projects: Array<{ path: string; claudeArgs: string; codexArgs?: string; agentCli?: 'claude' | 'codex'; isPlainShell: boolean }> } | null> =>
     ipcRenderer.invoke('session:loadLast'),
 
   sessionClearLast: (): Promise<void> =>
@@ -186,7 +189,7 @@ contextBridge.exposeInMainWorld('api', {
   tailscaleServeStop: (): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('tailscale:serveStop'),
 
-  onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string }) => void): (() => void) => {
+  onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string; codexArgs?: string; agentCli?: 'claude' | 'codex' }) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, session: any): void => callback(session)
     ipcRenderer.on('remote:session-created', listener)
     return () => { ipcRenderer.removeListener('remote:session-created', listener) }

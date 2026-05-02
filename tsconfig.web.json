@@ -7,11 +7,11 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "outDir": "./out",
-    "rootDir": "./src/renderer/src",
+    "rootDir": "./src",
     "strict": true,
     "skipLibCheck": true,
     "target": "ESNext",
     "types": ["node"]
   },
-  "include": ["src/renderer/src/**/*"]
+  "include": ["src/renderer/src/**/*", "src/shared/**/*"]
 }

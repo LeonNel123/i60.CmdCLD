@@ -8,6 +8,13 @@ import { PtyManager, TerminalMeta } from './pty-manager'
 import { Settings } from './settings'
 import { RecentDB } from './recent-db'
 import { trustFolder } from './claude-config'
+import {
+  buildAgentLaunchCommand,
+  getArgsForAgent,
+  normalizeAgentCli,
+  type AgentCli,
+} from '../shared/agent-cli'
+import { detectAgentCliAvailability } from './agent-cli-detect'
 
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024 // 10MB
 
@@ -160,7 +167,7 @@ export class RemoteServer {
     })
 
     app.post('/api/sessions', (req: any, res: any) => {
-      const { path: cwd, claudeArgs } = req.body
+      const { path: cwd, agentCli: agentCliRaw, claudeArgs, codexArgs } = req.body
       if (!cwd || typeof cwd !== 'string') {
         res.status(400).json({ error: 'path is required' })
         return
@@ -177,7 +184,8 @@ export class RemoteServer {
 
       const id = crypto.randomUUID()
       const name = cwd.split(/[\\/]/).pop() || cwd
-      const meta: TerminalMeta = { id, path: cwd, name, color: '' }
+      const agentCli = normalizeAgentCli(agentCliRaw)
+      const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli }
       const wc = this.getWebContents()
 
       if (!wc) {
@@ -185,7 +193,7 @@ export class RemoteServer {
         return
       }
 
-      trustFolder(cwd)
+      if (agentCli === 'claude') trustFolder(cwd)
       this.ptyManager.create(id, cwd, wc, meta)
 
       // Track in recent folders (idempotent upsert — same behaviour as the
@@ -193,9 +201,16 @@ export class RemoteServer {
       // breaks session creation.
       this.recentDB.add(cwd).catch(() => {})
 
-      // Launch claude in the PTY
-      const args = claudeArgs || this.settings.get('claudeArgs')
-      const launchCmd = args ? `claude ${args}\r` : 'claude\r'
+      // Launch the selected agent CLI in the PTY.
+      const argsByAgent: Record<AgentCli, string> = {
+        claude: typeof claudeArgs === 'string' ? claudeArgs : this.settings.get('claudeArgs'),
+        codex: typeof codexArgs === 'string' ? codexArgs : this.settings.get('codexArgs'),
+      }
+      const args = getArgsForAgent(agentCli, {
+        claudeArgs: argsByAgent.claude,
+        codexArgs: argsByAgent.codex,
+      })
+      const launchCmd = buildAgentLaunchCommand(agentCli, args)
       setTimeout(() => {
         this.ptyManager.write(id, launchCmd)
       }, 1000)
@@ -203,7 +218,15 @@ export class RemoteServer {
       // Notify renderer to add this session to its UI
       try {
         if (!wc.isDestroyed()) {
-          wc.send('remote:session-created', { id, path: cwd, name, color: '', claudeArgs: args })
+          wc.send('remote:session-created', {
+            id,
+            path: cwd,
+            name,
+            color: '',
+            agentCli,
+            claudeArgs: argsByAgent.claude,
+            codexArgs: argsByAgent.codex,
+          })
         }
       } catch {}
 
@@ -264,7 +287,12 @@ export class RemoteServer {
     // Settings
     app.get('/api/settings', (_req: any, res: any) => {
       const all = this.settings.getAll()
-      res.json({ claudeArgs: all.claudeArgs })
+      res.json({
+        defaultAgentCli: all.defaultAgentCli,
+        claudeArgs: all.claudeArgs,
+        codexArgs: all.codexArgs,
+        cliAvailability: detectAgentCliAvailability(),
+      })
     })
 
     // Image upload

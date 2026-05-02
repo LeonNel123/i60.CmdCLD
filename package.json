@@ -1,7 +1,7 @@
 {
   "name": "cmdcld",
   "version": "1.6.0",
-  "description": "Multi-terminal Claude launcher",
+  "description": "Multi-terminal Claude and Codex launcher",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

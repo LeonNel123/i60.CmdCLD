@@ -6,11 +6,11 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "outDir": "./out",
-    "rootDir": "./src",
+    "rootDir": ".",
     "strict": true,
     "skipLibCheck": true,
     "target": "ESNext",
     "types": ["node"]
   },
-  "include": ["src/main/**/*", "src/preload/**/*", "electron.vite.config.ts"]
+  "include": ["src/main/**/*", "src/preload/**/*", "src/shared/**/*", "electron.vite.config.ts"]
 }

@@ -2,6 +2,7 @@ import * as pty from 'node-pty'
 import { WebContents } from 'electron'
 import { execFileSync } from 'child_process'
 import { EventEmitter } from 'events'
+import type { AgentCli } from '../shared/agent-cli'
 
 // Detect the best available shell for the platform
 function getShell(): string {
@@ -52,6 +53,7 @@ export interface TerminalMeta {
   path: string
   name: string
   color: string
+  agentCli?: AgentCli
 }
 
 interface PtyEntry {

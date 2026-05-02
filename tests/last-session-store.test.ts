@@ -38,7 +38,7 @@ describe('LastSessionStore', () => {
       savedAt: 1000,
       projects: [
         { path: '/x', claudeArgs: '--continue', isPlainShell: false },
-        { path: '/y', claudeArgs: '', isPlainShell: true },
+        { path: '/y', agentCli: 'codex' as const, claudeArgs: '', codexArgs: '--sandbox workspace-write', isPlainShell: true },
       ],
     }
     store.write(session)

@@ -1,6 +1,12 @@
 import { useState, useEffect } from 'react'
-import { CLAUDE_PRESETS } from '../utils/claude-presets'
 import { X } from './icons'
+import {
+  AGENT_CLI_COMMANDS,
+  AGENT_CLI_LABELS,
+  AGENT_CLI_PRESETS,
+  normalizeAgentCli,
+  type AgentCli,
+} from '../../../shared/agent-cli'
 
 interface SettingsDialogProps {
   onClose: () => void
@@ -9,7 +15,11 @@ interface SettingsDialogProps {
 
 export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogProps) {
   const [tab, setTab] = useState<'settings' | 'claude config' | 'autopilot' | 'about'>('settings')
+  const [defaultAgentCli, setDefaultAgentCli] = useState<AgentCli>('claude')
+  const [agentArgsTab, setAgentArgsTab] = useState<AgentCli>('claude')
   const [claudeArgs, setClaudeArgs] = useState('')
+  const [codexArgs, setCodexArgs] = useState('')
+  const [cliAvailability, setCliAvailability] = useState<Record<AgentCli, { available: boolean; path: string | null }> | null>(null)
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
   const [notifyOnIdle, setNotifyOnIdle] = useState(false)
@@ -75,7 +85,11 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
     window.api.getVersion().then(setAppVersion).catch(() => {})
     window.api.getBuildInfo().then(setBuildInfo).catch(() => {})
     window.api.settingsGetAll().then((s) => {
+      const loadedAgent = normalizeAgentCli(s.defaultAgentCli)
+      setDefaultAgentCli(loadedAgent)
+      setAgentArgsTab(loadedAgent)
       setClaudeArgs(s.claudeArgs)
+      setCodexArgs(s.codexArgs ?? '')
       setAskBeforeLaunch(s.askBeforeLaunch)
       setDefaultViewMode(s.defaultViewMode)
       setNotifyOnIdle(s.notifyOnIdle)
@@ -113,6 +127,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
       }
     }).catch(() => {})
     window.api.tailscaleStatus().then(setTsStatus).catch(() => {})
+    window.api.agentCliAvailability().then(setCliAvailability).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -201,7 +216,9 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   }
 
   const save = () => {
+    window.api.settingsSet('defaultAgentCli', defaultAgentCli)
     window.api.settingsSet('claudeArgs', claudeArgs)
+    window.api.settingsSet('codexArgs', codexArgs)
     window.api.settingsSet('askBeforeLaunch', askBeforeLaunch)
     window.api.settingsSet('defaultViewMode', defaultViewMode)
     window.api.settingsSet('notifyOnIdle', notifyOnIdle)
@@ -257,6 +274,13 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
     setCcAddTarget(null)
   }
 
+  const activeAgentArgs = agentArgsTab === 'codex' ? codexArgs : claudeArgs
+  const setActiveAgentArgs = (value: string) => {
+    if (agentArgsTab === 'codex') setCodexArgs(value)
+    else setClaudeArgs(value)
+  }
+  const activeAvailability = cliAvailability?.[agentArgsTab]
+
   if (!loaded) return null
 
   return (
@@ -311,7 +335,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
         {tab === 'settings' && (
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '0 0 16px 0' }}>
           <h3 style={{ color: '#e0e0e0', margin: 0, fontSize: '14px', fontFamily: 'inherit', fontWeight: 600 }}>
-            Claude CLI Settings
+            Agent CLI Settings
           </h3>
           {appVersion && (
             <span style={{ color: '#555', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace' }}>
@@ -323,22 +347,89 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
 
         {tab === 'settings' && (<>
 
+        {/* Default agent */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
+            Default Agent CLI
+          </label>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {(['claude', 'codex'] as AgentCli[]).map((cli) => {
+              const available = cliAvailability?.[cli]?.available
+              return (
+                <button
+                  key={cli}
+                  onClick={() => {
+                    setDefaultAgentCli(cli)
+                    setAgentArgsTab(cli)
+                  }}
+                  style={{
+                    background: defaultAgentCli === cli ? '#22c55e20' : '#ffffff08',
+                    border: defaultAgentCli === cli ? '1px solid #22c55e' : '1px solid #333',
+                    borderRadius: '4px',
+                    padding: '5px 10px',
+                    color: defaultAgentCli === cli ? '#22c55e' : '#aaa',
+                    fontSize: '11px',
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {AGENT_CLI_LABELS[cli]} {cliAvailability ? (available ? 'available' : 'missing') : ''}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Args provider selector */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
+            Edit Launch Arguments For
+          </label>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {(['claude', 'codex'] as AgentCli[]).map((cli) => (
+              <button
+                key={cli}
+                onClick={() => setAgentArgsTab(cli)}
+                style={{
+                  background: agentArgsTab === cli ? '#22c55e20' : '#ffffff08',
+                  border: agentArgsTab === cli ? '1px solid #22c55e' : '1px solid #333',
+                  borderRadius: '4px',
+                  padding: '4px 10px',
+                  color: agentArgsTab === cli ? '#22c55e' : '#aaa',
+                  fontSize: '11px',
+                  fontFamily: 'inherit',
+                  cursor: 'pointer',
+                }}
+              >
+                {AGENT_CLI_LABELS[cli]}
+              </button>
+            ))}
+          </div>
+          <div style={{ color: activeAvailability?.available === false ? '#ef4444' : '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '4px' }}>
+            {cliAvailability
+              ? activeAvailability?.available
+                ? `${AGENT_CLI_COMMANDS[agentArgsTab]} found at ${activeAvailability.path}`
+                : `${AGENT_CLI_COMMANDS[agentArgsTab]} was not found on PATH`
+              : 'Checking installed CLIs...'}
+          </div>
+        </div>
+
         {/* Presets */}
         <div style={{ marginBottom: '12px' }}>
           <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
             Quick Presets
           </label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-            {CLAUDE_PRESETS.map((p) => (
+            {AGENT_CLI_PRESETS[agentArgsTab].map((p) => (
               <button
                 key={p.label}
-                onClick={() => setClaudeArgs(p.args)}
+                onClick={() => setActiveAgentArgs(p.args)}
                 style={{
-                  background: claudeArgs === p.args ? '#22c55e20' : '#ffffff08',
-                  border: claudeArgs === p.args ? '1px solid #22c55e' : '1px solid #333',
+                  background: activeAgentArgs === p.args ? '#22c55e20' : '#ffffff08',
+                  border: activeAgentArgs === p.args ? '1px solid #22c55e' : '1px solid #333',
                   borderRadius: '4px',
                   padding: '3px 8px',
-                  color: claudeArgs === p.args ? '#22c55e' : '#aaa',
+                  color: activeAgentArgs === p.args ? '#22c55e' : '#aaa',
                   fontSize: '11px',
                   fontFamily: 'inherit',
                   cursor: 'pointer',
@@ -358,9 +449,9 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
           <div style={{ display: 'flex', gap: '6px' }}>
             <input
               type="text"
-              value={claudeArgs}
-              onChange={(e) => setClaudeArgs(e.target.value)}
-              placeholder="e.g. --dangerously-skip-permissions --continue"
+              value={activeAgentArgs}
+              onChange={(e) => setActiveAgentArgs(e.target.value)}
+              placeholder={agentArgsTab === 'codex' ? 'e.g. --sandbox workspace-write' : 'e.g. --dangerously-skip-permissions --continue'}
               style={{
                 flex: 1,
                 background: '#0d1117',
@@ -374,7 +465,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
               }}
             />
             <button
-              onClick={() => setClaudeArgs('')}
+              onClick={() => setActiveAgentArgs('')}
               title="Clear"
               style={{
                 background: '#333',
@@ -392,7 +483,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
             </button>
           </div>
           <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '4px' }}>
-            These flags are passed to `claude` when opening a new terminal
+            These flags are passed to `{AGENT_CLI_COMMANDS[agentArgsTab]}` when opening a new terminal
           </div>
         </div>
 
@@ -1125,7 +1216,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
               <span style={{ color: '#e0e0e0', fontSize: '14px', fontWeight: 600 }}>CmdCLD</span>
               <span style={{ color: '#555', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace' }}>{appVersion ? `v${appVersion}` : ''}</span>
             </div>
-            <div style={{ color: '#888', fontSize: '11px', marginBottom: '16px' }}>Multi-terminal Claude launcher</div>
+            <div style={{ color: '#888', fontSize: '11px', marginBottom: '16px' }}>Multi-terminal agent launcher</div>
 
             <div style={{ color: '#aaa', fontSize: '11px', marginBottom: '16px', lineHeight: '1.7' }}>
               Created by Leon Nel at i60 Global, an enterprise<br />

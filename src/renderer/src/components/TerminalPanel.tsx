@@ -7,6 +7,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { onTerminalDataReceived, removeTerminalActivity } from '../utils/terminal-activity'
 import { formatPaths } from '../utils/format-paths'
+import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
 
 // Global set of PTY IDs that have been created — prevents duplicates on remount
 const activePtys = new Set<string>()
@@ -52,7 +53,9 @@ interface TerminalPanelProps {
   folderPath: string
   folderName: string
   color: string
+  agentCli?: AgentCli
   claudeArgs?: string
+  codexArgs?: string
   isPlainShell?: boolean
   onClose: () => void
   onSpawnShell?: () => void
@@ -67,7 +70,9 @@ export function TerminalPanel({
   folderPath,
   folderName,
   color,
+  agentCli = 'claude',
   claudeArgs,
+  codexArgs,
   isPlainShell,
   onClose,
   onSpawnShell,
@@ -354,15 +359,15 @@ export function TerminalPanel({
       fitAddon.fit()
 
       if (!activePtys.has(id)) {
-        // First mount — create PTY and launch Claude
+        // First mount — create PTY and launch the selected agent CLI.
         activePtys.add(id)
-        window.api.createTerminal(id, folderPath).catch(() => {
+        window.api.createTerminal(id, folderPath, agentCli).catch(() => {
           term.write('\r\n\x1b[31m[Failed to create terminal]\x1b[0m\r\n')
           activePtys.delete(id)
         })
 
         if (!isPlainShell) {
-          const launchCmd = claudeArgs ? `claude ${claudeArgs}\r` : 'claude\r'
+          const launchCmd = buildAgentLaunchCommand(agentCli, agentCli === 'codex' ? codexArgs : claudeArgs)
           setTimeout(() => {
             window.api.writeTerminal(id, launchCmd)
             claudeLaunched = true
@@ -419,7 +424,7 @@ export function TerminalPanel({
       webglAddon = null
       try { term.dispose() } catch {}
     }
-  }, [id, folderPath])
+  }, [id, folderPath, agentCli, claudeArgs, codexArgs, isPlainShell])
 
   // Load editor info once
   useEffect(() => {
@@ -534,6 +539,11 @@ export function TerminalPanel({
                 shell
               </span>
             )}
+            {!isPlainShell && agentCli === 'codex' && (
+              <span style={{ color: '#888', fontSize: '10px', marginLeft: '6px', fontWeight: 400 }}>
+                {AGENT_CLI_LABELS.codex}
+              </span>
+            )}
           </span>
         </div>
 
@@ -564,7 +574,7 @@ export function TerminalPanel({
         </div>
 
         {/* Col 3: Autopilot */}
-        {onStartAutopilot && !isAutopilotRunning && (
+        {agentCli === 'claude' && onStartAutopilot && !isAutopilotRunning && (
           <button
             onClick={onStartAutopilot}
             title="Start Autopilot"
@@ -573,7 +583,7 @@ export function TerminalPanel({
             🤖 Autopilot
           </button>
         )}
-        {isAutopilotRunning && onShowAutopilotPanel && (
+        {agentCli === 'claude' && isAutopilotRunning && onShowAutopilotPanel && (
           <button
             onClick={onShowAutopilotPanel}
             title="Show autopilot panel"

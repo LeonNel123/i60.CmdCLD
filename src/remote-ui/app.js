@@ -8,6 +8,13 @@
   var socket = null
   var busyTimers = {}
   var busyState = {}
+  var remoteSettings = {
+    defaultAgentCli: 'claude',
+    claudeArgs: '',
+    codexArgs: '',
+    cliAvailability: null,
+  }
+  var selectedAgentCli = 'claude'
 
   // DOM refs
   var dashboardView = document.getElementById('dashboard-view')
@@ -24,6 +31,45 @@
   var terminalStatus = document.getElementById('terminal-status')
   var ctrlCBtn = document.getElementById('ctrl-c-btn')
   var killBtn = document.getElementById('kill-btn')
+  var agentCliStatus = document.getElementById('agent-cli-status')
+
+  function normalizeAgentCli(value) {
+    return value === 'codex' ? 'codex' : 'claude'
+  }
+
+  function refreshRemoteSettings() {
+    return fetch('/api/settings')
+      .then(function (r) { return r.json() })
+      .then(function (s) {
+        remoteSettings.defaultAgentCli = normalizeAgentCli(s.defaultAgentCli)
+        remoteSettings.claudeArgs = s.claudeArgs || ''
+        remoteSettings.codexArgs = s.codexArgs || ''
+        remoteSettings.cliAvailability = s.cliAvailability || null
+        selectedAgentCli = remoteSettings.defaultAgentCli
+        renderAgentCliOptions()
+      })
+      .catch(function () {
+        renderAgentCliOptions()
+      })
+  }
+
+  function renderAgentCliOptions() {
+    var buttons = document.querySelectorAll('.agent-cli-option')
+    for (var i = 0; i < buttons.length; i++) {
+      var cli = normalizeAgentCli(buttons[i].dataset.agentCli)
+      buttons[i].classList.toggle('active', cli === selectedAgentCli)
+    }
+    if (!agentCliStatus) return
+    var status = remoteSettings.cliAvailability && remoteSettings.cliAvailability[selectedAgentCli]
+    agentCliStatus.classList.toggle('missing', !!status && !status.available)
+    if (!status) {
+      agentCliStatus.textContent = ''
+    } else if (status.available) {
+      agentCliStatus.textContent = 'available'
+    } else {
+      agentCliStatus.textContent = 'not found on PATH'
+    }
+  }
 
   // Connect Socket.IO
   function connect() {
@@ -129,7 +175,7 @@
       var statusText = busy ? '⟳ Working...' : '● Idle'
       return '<div class="session-card" data-id="' + s.id + '" style="border-left-color: ' + (s.color || '#6366f1') + '">' +
         '<div class="card-info">' +
-          '<h4>' + escapeHtml(s.name) + '</h4>' +
+          '<h4>' + escapeHtml(s.name) + ' <span class="folder-badge">' + escapeHtml(normalizeAgentCli(s.agentCli)) + '</span></h4>' +
           '<div class="card-path">' + escapeHtml(s.path) + '</div>' +
         '</div>' +
         '<div class="card-status">' +
@@ -199,9 +245,10 @@
   // Open a session for a given path. If a session for this path is already
   // running, navigate to that one instead of creating a duplicate.
   function openOrCreateSession(path) {
+    var agentCli = normalizeAgentCli(selectedAgentCli)
     var existing = null
     for (var i = 0; i < sessions.length; i++) {
-      if (sessions[i].path === path) { existing = sessions[i]; break }
+      if (sessions[i].path === path && normalizeAgentCli(sessions[i].agentCli) === agentCli) { existing = sessions[i]; break }
     }
     if (existing) {
       newSessionModal.classList.add('hidden')
@@ -212,7 +259,12 @@
     fetch('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: path }),
+      body: JSON.stringify({
+        path: path,
+        agentCli: agentCli,
+        claudeArgs: remoteSettings.claudeArgs,
+        codexArgs: remoteSettings.codexArgs,
+      }),
     }).then(function (r) {
       if (!r.ok) {
         return r.json().catch(function () { return {} }).then(function (data) {
@@ -249,11 +301,11 @@
       // Map path → active session (if any) for quick lookup
       var activeByPath = {}
       for (var a = 0; a < sessions.length; a++) {
-        activeByPath[sessions[a].path] = sessions[a]
+        activeByPath[sessions[a].path + '|' + normalizeAgentCli(sessions[a].agentCli)] = sessions[a]
       }
 
       function buildItem(path, name, removable) {
-        var active = !!activeByPath[path]
+        var active = !!activeByPath[path + '|' + normalizeAgentCli(selectedAgentCli)]
         return '<div class="folder-item' + (active ? ' folder-item-active' : '') + '" data-path="' + escapeHtml(path) + '">' +
           '<div class="folder-info">' +
             '<div class="folder-name">' + escapeHtml(name) + (active ? ' <span class="folder-badge">● running</span>' : '') + '</div>' +
@@ -319,7 +371,7 @@
     var errEl = document.getElementById('custom-path-error')
     if (input) input.value = ''
     if (errEl) errEl.textContent = ''
-    renderFolderSections()
+    refreshRemoteSettings().then(renderFolderSections)
     // Don't auto-focus the path input on mobile — same reason as the
     // terminal-view decision: no unsolicited keyboard popup.
   }
@@ -328,6 +380,16 @@
   newSessionBtn.addEventListener('click', showNewSessionModal)
   cancelNewSession.addEventListener('click', function () { newSessionModal.classList.add('hidden') })
   newSessionModal.querySelector('.modal-backdrop').addEventListener('click', function () { newSessionModal.classList.add('hidden') })
+  var agentButtons = document.querySelectorAll('.agent-cli-option')
+  for (var ab = 0; ab < agentButtons.length; ab++) {
+    (function (btn) {
+      btn.addEventListener('click', function () {
+        selectedAgentCli = normalizeAgentCli(btn.dataset.agentCli)
+        renderAgentCliOptions()
+        renderFolderSections()
+      })
+    })(agentButtons[ab])
+  }
   backBtn.addEventListener('click', closeTerminal)
 
   var newFromTerminalBtn = document.getElementById('new-from-terminal-btn')
@@ -383,5 +445,6 @@
 
   // Init
   connect()
+  refreshRemoteSettings()
   refreshSessions()
 })()

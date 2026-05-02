@@ -19,8 +19,8 @@ export function EmptyWorkspace() {
       }}>
         <div style={{ color: '#888', fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Get started</div>
         <Hint icon={<FolderOpen width={14} height={14} />} color="#22c55e">Open a project from the rail or sidebar</Hint>
-        <Hint icon={<Sparkles width={14} height={14} />} color="#fb923c">Quick Claude — sandbox session in your home folder</Hint>
-        <Hint icon={<TerminalSquare width={14} height={14} />} color="#94a3b8">Quick Shell — plain shell, no Claude</Hint>
+        <Hint icon={<Sparkles width={14} height={14} />} color="#fb923c">Quick Agent — default CLI in your home folder</Hint>
+        <Hint icon={<TerminalSquare width={14} height={14} />} color="#94a3b8">Quick Shell — plain shell, no agent</Hint>
       </div>
     </div>
   )

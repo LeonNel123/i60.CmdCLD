@@ -40,7 +40,7 @@ export const FolderPlus = makeIcon(
   </>,
 )
 
-// Sparkles — for "Quick Claude"
+// Sparkles — for "Quick Agent"
 export const Sparkles = makeIcon(
   <>
     <path d="m12 3-1.5 4.5L6 9l4.5 1.5L12 15l1.5-4.5L18 9l-4.5-1.5z" />

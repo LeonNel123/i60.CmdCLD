@@ -996,6 +996,7 @@ export class AutopilotProStateMachine {
       case 'done':
         return null
     }
+    return null
   }
 
   // ---- transcript / log helpers ----
