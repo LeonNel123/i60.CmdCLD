@@ -6,12 +6,14 @@ export interface ResetProOpts {
   /** Resolves when the doer settles after the most recent write. */
   waitForSettle: () => Promise<void>
   state: ProState
+  clearCommand?: string
+  doerSystemPrompt?: string
 }
 
 /**
  * Run the PRO context-reset sequence:
  *   1. Ask the doer to write state.md (so we don't lose context).
- *   2. /clear Claude Code's context.
+ *   2. Clear the agent CLI context.
  *   3. Re-inject DOER_SYSTEM_PROMPT_PRO.
  *   4. Send a stage-aware resume prompt pointing at the right artifacts.
  *
@@ -24,11 +26,11 @@ export async function runResetSequencePro(opts: ResetProOpts): Promise<void> {
   await opts.waitForSettle()
 
   // 2. /clear context
-  opts.writeToPty('/clear\r')
+  opts.writeToPty(`${opts.clearCommand ?? '/clear'}\r`)
   await opts.waitForSettle()
 
   // 3. Re-inject system prompt
-  opts.writeToPty(DOER_SYSTEM_PROMPT_PRO + '\r')
+  opts.writeToPty((opts.doerSystemPrompt ?? DOER_SYSTEM_PROMPT_PRO) + '\r')
 
   // 4. Stage-aware resume
   opts.writeToPty(buildResumePromptPro(opts.state) + '\r')

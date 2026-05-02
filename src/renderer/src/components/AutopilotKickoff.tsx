@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react'
+import { AGENT_CLI_LABELS, getAutopilotRuntimeGuardrail, type AgentCli } from '../../../shared/agent-cli'
 
 interface Props {
   terminalId: string
   projectPath: string
+  agentCli: AgentCli
+  launchArgs: string
   defaultCostCap: number
   defaultMaxIterations: number
   onStarted: () => void
   onCancel: () => void
 }
 
-export function AutopilotKickoff({ terminalId, projectPath, defaultCostCap, defaultMaxIterations, onStarted, onCancel }: Props) {
+export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs, defaultCostCap, defaultMaxIterations, onStarted, onCancel }: Props) {
   const [idea, setIdea] = useState('')
   const [costCap, setCostCap] = useState(defaultCostCap)
   const [maxIter, setMaxIter] = useState(defaultMaxIterations)
@@ -17,6 +20,7 @@ export function AutopilotKickoff({ terminalId, projectPath, defaultCostCap, defa
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<'classic' | 'pro'>('classic')
   const [artifacts, setArtifacts] = useState<{ hasClassic: boolean; hasPro: boolean }>({ hasClassic: false, hasPro: false })
+  const guardrail = getAutopilotRuntimeGuardrail(agentCli, launchArgs)
 
   useEffect(() => {
     let cancelled = false
@@ -27,7 +31,7 @@ export function AutopilotKickoff({ terminalId, projectPath, defaultCostCap, defa
   }, [projectPath])
 
   const start = async () => {
-    if (!idea.trim()) return
+    if (!idea.trim() || !guardrail.canStart) return
     setBusy(true); setError(null)
     const res = mode === 'pro'
       ? await window.api.autopilotProStart({
@@ -42,6 +46,7 @@ export function AutopilotKickoff({ terminalId, projectPath, defaultCostCap, defa
   }
 
   const resume = async () => {
+    if (!guardrail.canStart) return
     setBusy(true); setError(null)
     const res = mode === 'pro'
       ? await window.api.autopilotProStart({
@@ -66,11 +71,29 @@ export function AutopilotKickoff({ terminalId, projectPath, defaultCostCap, defa
       display: 'flex', flexDirection: 'column', gap: 12,
     }}>
       <div style={{ color: '#a78bfa', fontWeight: 600 }}>🤖 Start Autopilot</div>
+      <div style={{
+        background: guardrail.canStart ? 'rgba(34,197,94,0.08)' : 'rgba(248,113,113,0.1)',
+        border: `1px solid ${guardrail.canStart ? 'rgba(34,197,94,0.45)' : 'rgba(248,113,113,0.55)'}`,
+        borderRadius: 4,
+        padding: 10,
+        color: guardrail.canStart ? '#86efac' : '#fca5a5',
+        fontSize: 11,
+        lineHeight: 1.4,
+      }}>
+        <div style={{ fontWeight: 600, marginBottom: guardrail.reason || guardrail.warnings.length ? 4 : 0 }}>
+          Runtime: {AGENT_CLI_LABELS[agentCli]}
+        </div>
+        {guardrail.reason && <div>{guardrail.reason}</div>}
+        {guardrail.warnings.map((warning, i) => <div key={i}>{warning}</div>)}
+        {guardrail.canStart && agentCli === 'codex' && !guardrail.warnings.length && (
+          <div>Codex sandboxed full auto is enabled for this terminal.</div>
+        )}
+      </div>
       {((mode === 'classic' && artifacts.hasClassic) || (mode === 'pro' && artifacts.hasPro)) && (
         <>
           <button
             onClick={resume}
-            disabled={busy}
+            disabled={busy || !guardrail.canStart}
             style={{
               background: 'rgba(34,197,94,0.15)',
               border: '1px solid #22c55e',
@@ -81,7 +104,7 @@ export function AutopilotKickoff({ terminalId, projectPath, defaultCostCap, defa
               fontFamily: 'inherit',
               fontSize: 12,
               fontWeight: 600,
-              opacity: busy ? 0.5 : 1,
+              opacity: busy || !guardrail.canStart ? 0.5 : 1,
             }}
           >▶ Resume existing run</button>
           <div style={{ color: '#666', fontSize: 11, textAlign: 'center', margin: '4px 0' }}>── or start fresh ──</div>
@@ -140,8 +163,8 @@ export function AutopilotKickoff({ terminalId, projectPath, defaultCostCap, defa
           style={{ background: '#333', border: 'none', color: '#ccc', cursor: 'pointer', borderRadius: 4, padding: '6px 12px', fontSize: 11 }}>
           Cancel
         </button>
-        <button onClick={start} disabled={busy || !idea.trim()}
-          style={{ background: '#a78bfa', border: 'none', color: '#000', cursor: 'pointer', borderRadius: 4, padding: '6px 12px', fontSize: 11, fontWeight: 600, opacity: busy || !idea.trim() ? 0.5 : 1 }}>
+        <button onClick={start} disabled={busy || !idea.trim() || !guardrail.canStart}
+          style={{ background: '#a78bfa', border: 'none', color: '#000', cursor: 'pointer', borderRadius: 4, padding: '6px 12px', fontSize: 11, fontWeight: 600, opacity: busy || !idea.trim() || !guardrail.canStart ? 0.5 : 1 }}>
           {busy ? 'Starting…' : 'Start'}
         </button>
       </div>

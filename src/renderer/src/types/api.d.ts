@@ -46,7 +46,7 @@ export interface GitStatus {
 
 export interface ElectronAPI {
   platform: 'win32' | 'darwin' | 'linux'
-  createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex') => Promise<void>
+  createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex', launchArgs?: string) => Promise<void>
   writeTerminal: (id: string, data: string) => Promise<void>
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>
   killTerminal: (id: string) => Promise<void>

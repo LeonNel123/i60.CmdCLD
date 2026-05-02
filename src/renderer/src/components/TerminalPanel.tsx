@@ -361,13 +361,14 @@ export function TerminalPanel({
       if (!activePtys.has(id)) {
         // First mount — create PTY and launch the selected agent CLI.
         activePtys.add(id)
-        window.api.createTerminal(id, folderPath, agentCli).catch(() => {
+        const launchArgs = agentCli === 'codex' ? codexArgs : claudeArgs
+        window.api.createTerminal(id, folderPath, agentCli, launchArgs).catch(() => {
           term.write('\r\n\x1b[31m[Failed to create terminal]\x1b[0m\r\n')
           activePtys.delete(id)
         })
 
         if (!isPlainShell) {
-          const launchCmd = buildAgentLaunchCommand(agentCli, agentCli === 'codex' ? codexArgs : claudeArgs)
+          const launchCmd = buildAgentLaunchCommand(agentCli, launchArgs)
           setTimeout(() => {
             window.api.writeTerminal(id, launchCmd)
             claudeLaunched = true
@@ -574,7 +575,7 @@ export function TerminalPanel({
         </div>
 
         {/* Col 3: Autopilot */}
-        {agentCli === 'claude' && onStartAutopilot && !isAutopilotRunning && (
+        {!isPlainShell && onStartAutopilot && !isAutopilotRunning && (
           <button
             onClick={onStartAutopilot}
             title="Start Autopilot"
@@ -583,7 +584,7 @@ export function TerminalPanel({
             🤖 Autopilot
           </button>
         )}
-        {agentCli === 'claude' && isAutopilotRunning && onShowAutopilotPanel && (
+        {!isPlainShell && isAutopilotRunning && onShowAutopilotPanel && (
           <button
             onClick={onShowAutopilotPanel}
             title="Show autopilot panel"

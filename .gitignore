@@ -28,6 +28,7 @@ Thumbs.db
 # Superpowers
 .superpowers/
 docs/superpowers/
+docs/TestSpecs/
 
 # User data (generated at runtime)
 *.db

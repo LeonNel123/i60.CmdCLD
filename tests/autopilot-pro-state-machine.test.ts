@@ -885,6 +885,93 @@ describe('PRO permissionRequest (Wave 3.6)', () => {
   })
 })
 
+describe('PRO app-owned hard guardrails', () => {
+  it('pause gates settled output until resume', async () => {
+    const writes: string[] = []
+    const client = fakeChatClient(() => ({ shape: 'reply', text: 'continue after resume' }))
+    const sm = makeSm(client, writes)
+    await sm.start()
+    writes.length = 0
+
+    sm.pause()
+    sm.feedPty('[ORCH:WAITING] paused?\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(client.chat).not.toHaveBeenCalled()
+    expect(writes).toEqual([])
+
+    sm.resume()
+    sm.feedPty('[ORCH:WAITING] resumed?\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(client.chat).toHaveBeenCalledTimes(1)
+    expect(writes.some((w) => w.includes('continue after resume'))).toBe(true)
+  })
+
+  it('hard-blocks automation when planner spend crosses the cost cap', async () => {
+    const writes: string[] = []
+    let calls = 0
+    const client: ApiClient = {
+      decide: vi.fn(),
+      debug: vi.fn(),
+      chat: vi.fn(async () => {
+        calls++
+        return {
+          text: JSON.stringify({ shape: 'reply', text: `reply ${calls}` }),
+          usage: { inputTokens: 100, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 50 } as ApiUsage,
+        }
+      }),
+      estimateCost: () => 1.0,
+    }
+    const sm = makeSm(client, writes, { costCapUsd: 0.5 })
+    await sm.start()
+    writes.length = 0
+
+    sm.feedPty('[ORCH:WAITING] first\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(calls).toBe(1)
+    expect(sm.state.escalationReason).toMatch(/cost cap/i)
+    expect(sm.state.liveStatus).toMatch(/cost cap/i)
+    expect(sm.state.recentLog.at(-1)?.kind).toBe('cost-threshold')
+    expect(writes).toEqual([])
+
+    sm.feedPty('[ORCH:WAITING] second\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(calls).toBe(1)
+  })
+
+  it('logs silence hard blocks as escalations', async () => {
+    vi.useFakeTimers()
+    try {
+      const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'x' })), undefined, {
+        maxDoerOutputPerReset: 1000,
+      })
+
+      await sm.start()
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000)
+
+      expect(sm.state.control).toBe('blocked')
+      expect(sm.state.escalationReason).toMatch(/silent/i)
+      expect(sm.state.recentLog.at(-1)?.kind).toBe('escalation')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('logs unsupported Codex permission prompts as escalations without replying to PTY', async () => {
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'x' })), writes, {
+      agentCli: 'codex',
+    })
+    sm.state.permissionRequest = { text: 'Allow command?', detectedAt: Date.now() }
+
+    sm.respondToPermission('allow')
+
+    expect(sm.state.control).toBe('blocked')
+    expect(sm.state.escalationReason).toMatch(/Codex CLI permission prompts/i)
+    expect(sm.state.recentLog.at(-1)?.kind).toBe('escalation')
+    expect(writes).toEqual([])
+  })
+})
+
 describe('ProState liveStatus + lastMarker (Wave 3.4)', () => {
   it('initial ProState has liveStatus and lastMarker as null', () => {
     const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'x' })))

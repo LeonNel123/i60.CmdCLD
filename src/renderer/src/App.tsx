@@ -526,7 +526,9 @@ export default function App() {
   useEffect(() => {
     const off = window.api.onAutopilotUpdate((terminalId, state: any) => {
       setAutopilotRunning((prev) => {
-        const isRunning = state && ['wizard', 'awaiting_goal_review', 'executing', 'paused'].includes(state.phase)
+        const isClassicRunning = state && ['wizard', 'awaiting_goal_review', 'executing', 'paused'].includes(state.phase)
+        const isProRunning = state && state.stage && state.stage !== 'done' && state.control !== 'stopped'
+        const isRunning = isClassicRunning || isProRunning
         const next = new Set(prev)
         if (isRunning) next.add(terminalId); else next.delete(terminalId)
         return next
@@ -797,6 +799,8 @@ export default function App() {
               <AutopilotKickoff
                 terminalId={t.id}
                 projectPath={t.path}
+                agentCli={normalizeAgentCli(t.agentCli)}
+                launchArgs={normalizeAgentCli(t.agentCli) === 'codex' ? t.codexArgs ?? '' : t.claudeArgs ?? ''}
                 defaultCostCap={autopilotDefaults.costCap}
                 defaultMaxIterations={autopilotDefaults.maxIterations}
                 onStarted={() => {

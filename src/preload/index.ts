@@ -5,8 +5,8 @@ contextBridge.exposeInMainWorld('api', {
   platform: process.platform as 'win32' | 'darwin' | 'linux',
 
   // Existing PTY methods
-  createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex'): Promise<void> =>
-    ipcRenderer.invoke('pty:create', id, cwd, agentCli),
+  createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex', launchArgs?: string): Promise<void> =>
+    ipcRenderer.invoke('pty:create', id, cwd, agentCli, launchArgs),
 
   writeTerminal: (id: string, data: string): Promise<void> =>
     ipcRenderer.invoke('pty:write', id, data),

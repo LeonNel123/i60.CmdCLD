@@ -4,6 +4,7 @@
 import type {
   ApiUsage, ActivityEntry, SettledSnapshot, ValidationCommands, DoerMarker,
 } from '../autopilot/types'
+import type { AgentCli } from '../../shared/agent-cli'
 
 // ----- Stages -----
 
@@ -64,6 +65,7 @@ export interface ProSettledSnapshot extends Omit<SettledSnapshot, 'marker'> {
 
 export interface ProState {
   stage: ProStage
+  control?: 'idle' | 'running' | 'paused' | 'blocked' | 'stopped'
   currentPhaseId: string | null
   currentTaskId: string | null
   artifacts: Record<string, ArtifactState>
@@ -231,6 +233,7 @@ export interface AutopilotProOptions {
   terminalId: string
   projectPath: string
   freeTextIdea: string             // initial goal seed for Stage 0
+  agentCli?: AgentCli
   costCapUsd: number
   apiProvider: 'anthropic' | 'openrouter'
   apiKey: string

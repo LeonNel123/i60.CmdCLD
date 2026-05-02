@@ -2,11 +2,12 @@ import type {
   Goal, Milestone, ActivityEntry, SettledSnapshot,
   ValidationCommands, SteeringDocs,
 } from './types'
+import type { AgentCli } from '../../shared/agent-cli'
 
 // ----- Doer system prompt -----
-// Injected into the Claude CLI session at session start and after every /clear.
+// Injected into the agent CLI session at session start and after every /clear.
 
-export const DOER_SYSTEM_PROMPT = `You are operating under an autonomous orchestrator (CmdCLD Autopilot).
+const BASE_DOER_SYSTEM_PROMPT = `You are operating under an autonomous orchestrator (CmdCLD Autopilot).
 Follow these rules exactly.
 
 GROUND PLANNING IN REAL CODE
@@ -144,6 +145,35 @@ trigger X, observe whether Y holds, report PASS, FAIL, or PARTIAL with one-line 
 TONE:
 Be direct. Skip the small talk. Your reader is a program that wants the marker.
 `
+
+const CODEX_RUNTIME_GUARDRAILS = `
+CODEX RUNTIME GUARDRAILS:
+- You are running under Codex CLI in app-approved sandboxed full-auto mode.
+- DO NOT commit locally. Do not run git commit, git tag, or git push.
+- When a subgoal is done, report FILES_CHANGED, TESTS, EVIDENCE, and a proposed commit message.
+- The app or human owns final staging and commits for Codex Autopilot runs.
+`
+
+export function buildDoerSystemPrompt(agentCli: AgentCli = 'claude'): string {
+  if (agentCli !== 'codex') return BASE_DOER_SYSTEM_PROMPT
+  return BASE_DOER_SYSTEM_PROMPT
+    .replace(
+      '  5. Commit. Use conventional-commits style (feat:, fix:, chore:, etc.).\n  6. Emit',
+      '  5. Do NOT commit. Record a proposed conventional-commits message in your final status.\n  6. Emit',
+    )
+    .replace(
+      'asking for the next instruction. The orchestrator decides whether to bundle. You commit after\n' +
+        'every subgoal. You never silently roll work into a future commit.',
+      'asking for the next instruction. The orchestrator decides whether to bundle. You never commit\n' +
+        'under Codex Autopilot; report a proposed commit message instead.',
+    )
+    .replace(
+      '- NEVER push to git remote (git push). You may commit locally.',
+      '- NEVER push to git remote (git push). Under Codex Autopilot, DO NOT commit locally.',
+    ) + CODEX_RUNTIME_GUARDRAILS
+}
+
+export const DOER_SYSTEM_PROMPT = buildDoerSystemPrompt('claude')
 
 // ----- Wizard kickoff message -----
 

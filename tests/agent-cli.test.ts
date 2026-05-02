@@ -5,6 +5,7 @@ import {
   buildAgentLaunchCommand,
   getArgsForAgent,
   getActiveAgentCliLaunchOptionIds,
+  getAutopilotRuntimeGuardrail,
   normalizeAgentCli,
   stripResumeArgsForQuickLaunch,
 } from '../src/shared/agent-cli'
@@ -68,6 +69,54 @@ describe('agent CLI utilities', () => {
 
     args = applyAgentCliLaunchOption('codex', args, 'codex-sandbox-read-only')
     expect(args).toBe('--search --sandbox read-only')
+  })
+
+  it('adds a Codex sandboxed full-auto preset for Autopilot', () => {
+    const args = applyAgentCliLaunchOption('codex', '', 'codex-autopilot-full-auto')
+    expect(args).toBe('--sandbox workspace-write --ask-for-approval never --search')
+    expect(getAutopilotRuntimeGuardrail('codex', args).canStart).toBe(true)
+  })
+
+  it('applies the Codex Autopilot preset without duplicating existing component options', () => {
+    const args = applyAgentCliLaunchOption(
+      'codex',
+      '--search --sandbox danger-full-access --ask-for-approval on-request',
+      'codex-autopilot-full-auto',
+    )
+    expect(args).toBe('--sandbox workspace-write --ask-for-approval never --search')
+  })
+
+  it('allows Codex Autopilot only when full-auto is sandboxed to workspace writes', () => {
+    const ok = getAutopilotRuntimeGuardrail('codex', '--sandbox workspace-write --ask-for-approval never --search')
+    expect(ok.canStart).toBe(true)
+    expect(ok.agentCli).toBe('codex')
+    expect(ok.warnings).toEqual([])
+
+    expect(getAutopilotRuntimeGuardrail('codex', '--sandbox danger-full-access --ask-for-approval never').canStart).toBe(false)
+    expect(getAutopilotRuntimeGuardrail('codex', '--dangerously-bypass-approvals-and-sandbox').canStart).toBe(false)
+    expect(getAutopilotRuntimeGuardrail('codex', '--sandbox read-only --ask-for-approval never').canStart).toBe(false)
+    expect(getAutopilotRuntimeGuardrail('codex', '--sandbox workspace-write --ask-for-approval on-request').canStart).toBe(false)
+  })
+
+  it('recognizes Codex guardrail aliases and equals syntax', () => {
+    expect(getAutopilotRuntimeGuardrail('codex', '-s workspace-write -a never --search').canStart).toBe(true)
+    expect(getAutopilotRuntimeGuardrail('codex', '--sandbox=workspace-write --ask-for-approval=never').canStart).toBe(true)
+    expect(getAutopilotRuntimeGuardrail('codex', '-s danger-full-access -a never').canStart).toBe(false)
+    expect(getAutopilotRuntimeGuardrail('codex', '--sandbox=read-only --ask-for-approval=never').canStart).toBe(false)
+    expect(getAutopilotRuntimeGuardrail('codex', '--sandbox=workspace-write --ask-for-approval=on-request').canStart).toBe(false)
+  })
+
+  it('keeps Claude Autopilot launchable while warning on bypass permissions', () => {
+    const guardrail = getAutopilotRuntimeGuardrail('claude', '--dangerously-skip-permissions')
+    expect(guardrail.canStart).toBe(true)
+    expect(guardrail.agentCli).toBe('claude')
+    expect(guardrail.warnings.join(' ')).toMatch(/permission/i)
+  })
+
+  it('recognizes Claude permission bypass equals syntax', () => {
+    const guardrail = getAutopilotRuntimeGuardrail('claude', '--permission-mode=bypassPermissions')
+    expect(guardrail.canStart).toBe(true)
+    expect(guardrail.warnings.join(' ')).toMatch(/permission/i)
   })
 
   it('stacks Claude session, model, and effort options while replacing permission modes', () => {

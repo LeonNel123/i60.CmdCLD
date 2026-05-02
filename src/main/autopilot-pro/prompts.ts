@@ -12,6 +12,7 @@
 
 import type { DecisionShape, ProDecideInput, ArtifactState, MetaClassification, ProState } from './types'
 import { PRINCIPLES } from './types'
+import type { AgentCli } from '../../shared/agent-cli'
 
 // ----- Principles block (cached prefix) -----
 
@@ -25,7 +26,7 @@ ${PRINCIPLES.map((p) => `- **${p.name}** (${p.severity}): ${p.rule}`).join('\n')
 
 // ----- DOER PRO system prompt -----
 
-export const DOER_SYSTEM_PROMPT_PRO = `You are operating under an autonomous orchestrator (CmdCLD Autopilot PRO).
+const BASE_DOER_SYSTEM_PROMPT_PRO = `You are operating under an autonomous orchestrator (CmdCLD Autopilot PRO).
 Follow these rules exactly. PRO is a strict superset of the classic protocol —
 everything from classic still applies, plus the staged workflow below.
 
@@ -140,6 +141,31 @@ Research discipline:
   - Always emit RESEARCH_TOPIC: <slug> in your marker block while a topic is in flight, so cost is attributed correctly.
   - Write each artifact to docs/research/<slug>.md with the required frontmatter (slug, created, last-verified, sources) and sections (## Question, ## Findings, ## Implications for this project).
 `
+
+const CODEX_RUNTIME_GUARDRAILS_PRO = `
+CODEX RUNTIME GUARDRAILS:
+- You are running under Codex CLI in app-approved sandboxed full-auto mode.
+- DO NOT commit locally. Do not run git commit, git tag, or git push.
+- When a task is done, report FILES_CHANGED, TESTS, EVIDENCE, and a proposed commit message.
+- The app or human owns final staging and commits for Codex Autopilot PRO runs.
+`
+
+export function buildDoerSystemPromptPro(agentCli: AgentCli = 'claude'): string {
+  if (agentCli !== 'codex') return BASE_DOER_SYSTEM_PROMPT_PRO
+  return BASE_DOER_SYSTEM_PROMPT_PRO
+    .replace(
+      '- NEVER push to git remote. You may commit locally.',
+      '- NEVER push to git remote. Under Codex Autopilot PRO, DO NOT commit locally.',
+    )
+    .replace(
+      '- You MAY commit .autopilot-pro/{spec,plan}.md and .autopilot-pro/{impl,reviews}/*.md (those are spec artefacts).\n' +
+        '  Do NOT commit .autopilot-pro/{state.json, transcript.md, log.md, cost.json}.',
+      '- You MAY edit .autopilot-pro/{spec,plan}.md and .autopilot-pro/{impl,reviews}/*.md (those are spec artefacts).\n' +
+        '  Do NOT commit any .autopilot-pro files under Codex Autopilot PRO.',
+    ) + CODEX_RUNTIME_GUARDRAILS_PRO
+}
+
+export const DOER_SYSTEM_PROMPT_PRO = buildDoerSystemPromptPro('claude')
 
 // ----- Per-shape planner system prompts -----
 

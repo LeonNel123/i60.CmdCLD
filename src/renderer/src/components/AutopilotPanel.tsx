@@ -18,14 +18,16 @@ interface ActivityEntry {
   summary: string
 }
 interface AutopilotState {
-  phase: string
-  goal: { goal: string } | null
-  milestones: Milestone[]
-  currentMilestoneId: string | null
+  phase?: string
+  stage?: string
+  control?: 'idle' | 'running' | 'paused' | 'blocked' | 'stopped'
+  goal?: { goal: string } | null
+  milestones?: Milestone[]
+  currentMilestoneId?: string | null
   cycleCount: number
   costUsd: number
   costCapUsd: number
-  lastDecisionText: string
+  lastDecisionText?: string
   recentLog: ActivityEntry[]
   escalationReason: string | null
   liveStatus: string | null
@@ -36,6 +38,24 @@ interface AutopilotState {
 interface Props {
   terminalId: string
   onClose: () => void
+}
+
+export function getAutopilotPanelControlFlags(state: {
+  phase?: string
+  control?: AutopilotState['control']
+}) {
+  const isPaused = state.phase === 'paused' || state.control === 'paused'
+  const isAwaitingReview = state.phase === 'awaiting_goal_review'
+  const isEscalated = state.phase === 'escalated' || state.control === 'blocked'
+  const isStopped = state.phase === 'stopped' || state.control === 'stopped'
+  const isCompleted = state.phase === 'completed'
+  return {
+    isPaused,
+    isAwaitingReview,
+    isEscalated,
+    canPause: !isPaused && !isEscalated && !isStopped && !isCompleted,
+    canResume: isPaused && !isEscalated && !isStopped,
+  }
 }
 
 export function AutopilotPanel({ terminalId, onClose }: Props) {
@@ -61,9 +81,10 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
 
   if (!state) return null
 
-  const isPaused = state.phase === 'paused'
-  const isAwaitingReview = state.phase === 'awaiting_goal_review'
-  const isEscalated = state.phase === 'escalated'
+  const statusLabel = state.phase ?? state.stage ?? 'unknown'
+  const statusKind = state.phase ? 'Phase' : 'Stage'
+  const { isPaused, isAwaitingReview, isEscalated, canPause, canResume } = getAutopilotPanelControlFlags(state)
+  const milestones = state.milestones ?? []
 
   return (
     <div style={{
@@ -80,7 +101,8 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
       </div>
 
       <div style={{ color: '#888', fontSize: 11, lineHeight: 1.5 }}>
-        Phase: <span style={{ color: '#ccc' }}>{state.phase}</span><br />
+        {statusKind}: <span style={{ color: '#ccc' }}>{statusLabel}</span>
+        {state.control && <> · <span style={{ color: '#ccc' }}>{state.control}</span></>}<br />
         {state.liveStatus && (
           <>
             Status: <span style={{ color: '#a78bfa', fontStyle: 'italic' }}>{state.liveStatus}</span><br />
@@ -166,7 +188,7 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
 
       <div>
         <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4 }}>MILESTONES</div>
-        {state.milestones.map((m) => (
+        {milestones.map((m) => (
           <div key={m.id} style={{ marginBottom: 6 }}>
             <div style={{ fontSize: 11, color: m.id === state.currentMilestoneId ? '#a78bfa' : '#ccc' }}>
               {milestoneTick(m.status)} {m.id} — {m.name}
@@ -241,10 +263,10 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
       )}
 
       <div style={{ display: 'flex', gap: 6 }}>
-        {!isPaused && (
+        {canPause && (
           <button onClick={() => window.api.autopilotPause(terminalId)} style={smallBtn}>⏸ Pause</button>
         )}
-        {isPaused && (
+        {canResume && (
           <button onClick={() => window.api.autopilotResume(terminalId)} style={smallBtn}>▶ Resume</button>
         )}
         <button onClick={() => { window.api.autopilotStop(terminalId); onClose() }} style={smallBtn}>⏹ Stop</button>

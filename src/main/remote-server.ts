@@ -185,7 +185,15 @@ export class RemoteServer {
       const id = crypto.randomUUID()
       const name = cwd.split(/[\\/]/).pop() || cwd
       const agentCli = normalizeAgentCli(agentCliRaw)
-      const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli }
+      const argsByAgent: Record<AgentCli, string> = {
+        claude: typeof claudeArgs === 'string' ? claudeArgs : this.settings.get('claudeArgs'),
+        codex: typeof codexArgs === 'string' ? codexArgs : this.settings.get('codexArgs'),
+      }
+      const args = getArgsForAgent(agentCli, {
+        claudeArgs: argsByAgent.claude,
+        codexArgs: argsByAgent.codex,
+      })
+      const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli, launchArgs: args }
       const wc = this.getWebContents()
 
       if (!wc) {
@@ -202,14 +210,6 @@ export class RemoteServer {
       this.recentDB.add(cwd).catch(() => {})
 
       // Launch the selected agent CLI in the PTY.
-      const argsByAgent: Record<AgentCli, string> = {
-        claude: typeof claudeArgs === 'string' ? claudeArgs : this.settings.get('claudeArgs'),
-        codex: typeof codexArgs === 'string' ? codexArgs : this.settings.get('codexArgs'),
-      }
-      const args = getArgsForAgent(agentCli, {
-        claudeArgs: argsByAgent.claude,
-        codexArgs: argsByAgent.codex,
-      })
       const launchCmd = buildAgentLaunchCommand(agentCli, args)
       setTimeout(() => {
         this.ptyManager.write(id, launchCmd)

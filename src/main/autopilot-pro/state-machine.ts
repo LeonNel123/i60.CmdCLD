@@ -24,11 +24,12 @@ import {
   incrementRefineCount, readState, writeState, reconcile, appendSpecUpdate,
 } from './artifacts'
 import { parsePhases, currentPhase, phaseDoneFromTasks } from './phases'
-import { DOER_SYSTEM_PROMPT_PRO, stage0Kickoff, stage3Kickoff, stage4Kickoff } from './prompts'
+import { buildDoerSystemPromptPro, stage0Kickoff, stage3Kickoff, stage4Kickoff } from './prompts'
 import { runResetSequencePro } from './reset'
 import { saveRuntime, loadRuntime } from './runtime-state'
 import { detectResearchSignals } from './research-signals'
 import { recordSpend } from '../autopilot/budget-tracker'
+import { getAutopilotRuntime, type AutopilotRuntime } from '../autopilot/runtime'
 import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 
@@ -216,12 +217,14 @@ export class AutopilotProStateMachine {
   private budgetTrackerEnabled: boolean
   private researchEnabled: boolean
   private researchTopicBudgetUsdDefault: number
+  private runtime: AutopilotRuntime
 
   constructor(opts: AutopilotProOptions, apiOverride?: ApiClient, ptyIdleMs = 1500, maxSilenceMs = DEFAULT_MAX_SILENCE_MS) {
     this.opts = opts
+    this.runtime = getAutopilotRuntime(opts.agentCli)
     this.api = apiOverride ?? makeApiClient(opts.apiProvider, opts.apiKey, opts.plannerModel)
     this.cost = new CostTracker(join(opts.projectPath, PRO_DIR), opts.costCapUsd, (pct) => {
-      if (pct === 100) this.transition('discovery', 'cost cap reached')  // pause — keep stage but stop running
+      if (pct === 100) this.blockAutomation('cost cap reached', 'cost-threshold')
     })
     this.maxSilenceMs = maxSilenceMs
     this.baseMaxSilenceMs = maxSilenceMs
@@ -236,6 +239,7 @@ export class AutopilotProStateMachine {
 
     this.state = {
       stage: this.computeInitialStage(artifacts),
+      control: 'idle',
       currentPhaseId: null,
       currentTaskId: null,
       artifacts,
@@ -302,6 +306,7 @@ export class AutopilotProStateMachine {
   }
 
   async start(): Promise<void> {
+    this.state.control = 'running'
     this.markerFallbackPromptCount = 0
 
     // Restore runtime state from disk if present and valid (must come after
@@ -327,6 +332,7 @@ export class AutopilotProStateMachine {
     }
 
     this.detachPty = this.opts.onPtyData(this.opts.terminalId, (data) => {
+      if (!this.canProcessPty()) return
       this.armSilenceTimer()
       this.outputVolumeSinceReset += data.length
       this.proBuffer += data
@@ -362,7 +368,7 @@ export class AutopilotProStateMachine {
         lines.push('Before we write spec.md, do focused research. Emit DECISION_SHAPE: research with topic slugs, queries, and any seed sources you want to fetch first. The orchestrator will approve per-topic budgets and gate writes to docs/research/<slug>.md.')
 
         const reply = lines.join('\n')
-        this.opts.writeToPty(this.opts.terminalId, DOER_SYSTEM_PROMPT_PRO + '\r')
+        this.opts.writeToPty(this.opts.terminalId, buildDoerSystemPromptPro(this.runtime.agentCli) + '\r')
         this.opts.writeToPty(this.opts.terminalId, reply + '\r')
         this.state.liveStatus = 'waiting for doer'
         this.armSilenceTimer()
@@ -371,7 +377,7 @@ export class AutopilotProStateMachine {
       }
     }
 
-    this.opts.writeToPty(this.opts.terminalId, DOER_SYSTEM_PROMPT_PRO + '\r')
+    this.opts.writeToPty(this.opts.terminalId, buildDoerSystemPromptPro(this.runtime.agentCli) + '\r')
 
     // Stage-aware kickoff message
     const kickoff = this.kickoffForStage(this.state.stage)
@@ -383,6 +389,8 @@ export class AutopilotProStateMachine {
   }
 
   pause(): void {
+    if (this.state.control === 'blocked' || this.state.control === 'stopped') return
+    this.state.control = 'paused'
     this.clearSilenceTimer()
     this.state.liveStatus = null
     this.appendActivity('orchestrator-pause', 'user pause')
@@ -390,6 +398,8 @@ export class AutopilotProStateMachine {
   }
 
   resume(): void {
+    if (this.state.control === 'blocked' || this.state.control === 'stopped') return
+    this.state.control = 'running'
     this.state.liveStatus = 'waiting for doer'
     this.armSilenceTimer()
     this.appendActivity('orchestrator-resume', 'resumed')
@@ -397,6 +407,7 @@ export class AutopilotProStateMachine {
   }
 
   stop(): void {
+    this.state.control = 'stopped'
     if (this.detachPty) { this.detachPty(); this.detachPty = null }
     this.clearSilenceTimer()
     this.state.liveStatus = null
@@ -424,6 +435,7 @@ export class AutopilotProStateMachine {
 
   /** For tests — feed raw PTY data, mirroring production listener. */
   feedPty(data: string): void {
+    if (!this.canProcessPty()) return
     this.armSilenceTimer()
     this.outputVolumeSinceReset += data.length
     this.proBuffer += data
@@ -433,6 +445,7 @@ export class AutopilotProStateMachine {
   // ---- core loop ----
 
   private async onSettled(snap: ProSettledSnapshot): Promise<void> {
+    if (!this.canProcessPty()) return
     const m = snap.marker
 
     this.markerFallbackPromptCount = 0
@@ -472,8 +485,7 @@ export class AutopilotProStateMachine {
 
     // Cost cap check.
     if (this.cost.isOverCap()) {
-      this.appendActivity('cost-threshold', 'cost cap reached — pausing')
-      this.notify()
+      this.blockAutomation('cost cap reached', 'cost-threshold')
       return
     }
 
@@ -558,14 +570,16 @@ export class AutopilotProStateMachine {
     this.state.costUsd = this.cost.totalUsd
     this.state.cycleCount++
 
+    if (this.cost.isOverCap()) {
+      this.blockAutomation('cost cap reached', 'cost-threshold')
+      return
+    }
+
     if (this.budgetTrackerEnabled && out.costUsd > 0) {
       const budgetSnap = recordSpend(this.opts.projectPath, out.costUsd)
       if (budgetSnap.capReached) {
         const reason = budgetSnap.capReachedReason ?? 'global'
-        this.state.liveStatus = `daily ${reason} budget cap reached ($${budgetSnap.globalSpent.toFixed(2)} / $${budgetSnap.globalCap.toFixed(2)} global; $${budgetSnap.projectSpent.toFixed(2)} / $${budgetSnap.projectCap.toFixed(2)} project)`
-        this.appendActivity('cost-threshold', `daily ${reason} cap reached`)
-        this.transition('discovery', `daily ${reason} budget cap reached`)
-        this.notify()
+        this.blockAutomation(`daily ${reason} budget cap reached ($${budgetSnap.globalSpent.toFixed(2)} / $${budgetSnap.globalCap.toFixed(2)} global; $${budgetSnap.projectSpent.toFixed(2)} / $${budgetSnap.projectCap.toFixed(2)} project)`, 'cost-threshold')
         return
       } else if (budgetSnap.warningThreshold) {
         this.appendActivity('cost-threshold', `daily budget warning: $${budgetSnap.globalSpent.toFixed(2)} / $${budgetSnap.globalCap.toFixed(2)}`)
@@ -948,6 +962,8 @@ export class AutopilotProStateMachine {
       writeToPty: (s) => this.opts.writeToPty(this.opts.terminalId, s),
       waitForSettle: () => new Promise<void>((res) => { this.settleResolvers.push(res) }),
       state: this.state,
+      clearCommand: this.runtime.clearCommand,
+      doerSystemPrompt: buildDoerSystemPromptPro(this.runtime.agentCli),
     })
     this.outputVolumeSinceReset = 0
     this.appendActivity('orchestrator-resume', 'reset complete')
@@ -957,6 +973,15 @@ export class AutopilotProStateMachine {
   private transition(_phase: ProStage, reason: string): void {
     this.appendActivity('orchestrator-pause', reason)
     this.clearSilenceTimer()
+  }
+
+  private blockAutomation(reason: string, kind: ActivityEntry['kind'] = 'escalation'): void {
+    this.state.control = 'blocked'
+    this.state.liveStatus = reason
+    this.state.escalationReason = reason
+    this.appendActivity(kind, reason)
+    this.clearSilenceTimer()
+    this.notify()
   }
 
   private inferArtifactKind(path: string): ArtifactKind {
@@ -1043,7 +1068,11 @@ export class AutopilotProStateMachine {
 
   respondToPermission(verdict: 'allow' | 'deny'): void {
     if (!this.state.permissionRequest) return
-    const reply = verdict === 'allow' ? '1\r' : '3\r'
+    if (!this.runtime.permissionReplies) {
+      this.blockAutomation(`${this.runtime.label} permission prompts are not supported by Autopilot PRO; stop and relaunch with a supported full-auto preset.`)
+      return
+    }
+    const reply = this.runtime.permissionReplies[verdict]
     this.opts.writeToPty(this.opts.terminalId, reply)
     this.state.permissionRequest = null
     this.appendActivity('orchestrator-reply', `permission ${verdict}`)
@@ -1113,11 +1142,14 @@ export class AutopilotProStateMachine {
     }
   }
 
+  private canProcessPty(): boolean {
+    return this.state.control === 'running'
+  }
+
   private onSilenceExceeded(): void {
+    if (!this.canProcessPty()) return
     const minutes = Math.round(this.maxSilenceMs / 60000)
-    this.state.escalationReason = `doer silent for ${minutes}+ minutes`
-    this.appendActivity('escalation', this.state.escalationReason)
-    this.notify()
+    this.blockAutomation(`doer silent for ${minutes}+ minutes`)
   }
 
   // ---- test hooks (Wave 1.6) ----

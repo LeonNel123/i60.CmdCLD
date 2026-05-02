@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DOER_SYSTEM_PROMPT, buildDecisionPrompt, buildWizardKickoff, DEBUG_SYSTEM_PROMPT, buildDebugPrompt } from '../src/main/autopilot/prompts'
+import { DOER_SYSTEM_PROMPT, buildDecisionPrompt, buildDoerSystemPrompt, buildWizardKickoff, DEBUG_SYSTEM_PROMPT, buildDebugPrompt } from '../src/main/autopilot/prompts'
 import type { Goal, Milestone, SettledSnapshot, ActivityEntry, ValidationCommands, SteeringDocs } from '../src/main/autopilot/types'
 
 describe('DOER_SYSTEM_PROMPT', () => {
@@ -54,6 +54,13 @@ describe('DOER_SYSTEM_PROMPT', () => {
 
   it('mentions EARS-form acceptance evaluation', () => {
     expect(DOER_SYSTEM_PROMPT).toMatch(/WHEN .* SHALL/)
+  })
+
+  it('adds a Codex runtime policy that forbids local commits', () => {
+    const codexPrompt = buildDoerSystemPrompt('codex')
+    expect(codexPrompt).toMatch(/Codex runtime guardrails/i)
+    expect(codexPrompt).toMatch(/DO NOT commit/i)
+    expect(codexPrompt).toMatch(/proposed commit/i)
   })
 })
 

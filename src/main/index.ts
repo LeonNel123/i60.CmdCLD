@@ -24,7 +24,7 @@ import { formatPtyWrite } from './autopilot/pty-write'
 import { probeArtifacts } from './autopilot/probe-artifacts'
 import { loadBudget, getSnapshot as getBudgetSnapshot, setProjectCap, setGlobalCap, resetTodaySpend } from './autopilot/budget-tracker'
 import { detectAgentCliAvailability } from './agent-cli-detect'
-import { normalizeAgentCli, type AgentCli } from '../shared/agent-cli'
+import { getArgsForAgent, getAutopilotRuntimeGuardrail, normalizeAgentCli, type AgentCli } from '../shared/agent-cli'
 
 // File logger for debugging startup issues
 const logPath = join(app.getPath('userData'), 'cmdcld.log')
@@ -300,7 +300,7 @@ function getWindowIdFromEvent(event: Electron.IpcMainInvokeEvent): string | unde
 }
 
 // PTY IPC handlers
-ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: AgentCli) => {
+ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: AgentCli, launchArgsRaw?: string) => {
   const windowId = getWindowIdFromEvent(event)
   if (!windowId) return
   const wc = registry.getWebContents(windowId)
@@ -313,7 +313,11 @@ ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: Agen
   if (ptyManager.getMeta(id)) return
   const name = cwd.split(/[\\/]/).pop() || cwd
   const agentCli = normalizeAgentCli(agentCliRaw)
-  const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli }
+  const launchArgs = typeof launchArgsRaw === 'string' ? launchArgsRaw : getArgsForAgent(agentCli, {
+    claudeArgs: settings.get('claudeArgs'),
+    codexArgs: settings.get('codexArgs'),
+  })
+  const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli, launchArgs }
   if (agentCli === 'claude') trustFolder(cwd)
   ptyManager.create(id, cwd, wc, meta)
 })
@@ -487,16 +491,34 @@ ipcMain.handle('autopilot:keyClear', (_event, provider: 'anthropic' | 'openroute
   clearAutopilotKey(provider)
 })
 
+function getAutopilotRuntimeStartContext(terminalId: string): { ok: true; agentCli: AgentCli; launchArgs: string } | { ok: false; error: string } {
+  const meta = ptyManager.getMeta(terminalId)
+  if (!meta) return { ok: false, error: 'Terminal session not found.' }
+  const agentCli = normalizeAgentCli(meta.agentCli)
+  const launchArgs = meta.launchArgs ?? getArgsForAgent(agentCli, {
+    claudeArgs: settings.get('claudeArgs'),
+    codexArgs: settings.get('codexArgs'),
+  })
+  const guardrail = getAutopilotRuntimeGuardrail(agentCli, launchArgs)
+  if (!guardrail.canStart) {
+    return { ok: false, error: guardrail.reason ?? `${agentCli} Autopilot is blocked by launch guardrails.` }
+  }
+  return { ok: true, agentCli, launchArgs }
+}
+
 ipcMain.handle('autopilot:start', async (_event, args: { terminalId: string; projectPath: string; freeTextIdea: string; costCapUsd: number; maxIterations: number }) => {
   const provider = settings.get('autopilotApiProvider')
   const apiKey = readAutopilotKey(provider)
   if (!apiKey) return { ok: false, error: `No API key for ${provider}. Add one in Settings.` }
-  if (autopilots.has(args.terminalId)) return { ok: false, error: 'Autopilot already running for this terminal.' }
+  if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId)) return { ok: false, error: 'Autopilot already running for this terminal.' }
+  const runtime = getAutopilotRuntimeStartContext(args.terminalId)
+  if (!runtime.ok) return runtime
 
   const opts: AutopilotOptions = {
     terminalId: args.terminalId,
     projectPath: args.projectPath,
     freeTextIdea: args.freeTextIdea,
+    agentCli: runtime.agentCli,
     costCapUsd: args.costCapUsd,
     maxIterations: args.maxIterations,
     apiProvider: provider,
@@ -583,11 +605,14 @@ ipcMain.handle('autopilot-pro:start', async (_event, args: { terminalId: string;
   if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId)) {
     return { ok: false, error: 'Autopilot already running for this terminal.' }
   }
+  const runtime = getAutopilotRuntimeStartContext(args.terminalId)
+  if (!runtime.ok) return runtime
 
   const opts: AutopilotProOptions = {
     terminalId: args.terminalId,
     projectPath: args.projectPath,
     freeTextIdea: args.freeTextIdea,
+    agentCli: runtime.agentCli,
     costCapUsd: args.costCapUsd,
     apiProvider: provider,
     apiKey,

@@ -54,6 +54,7 @@ export interface TerminalMeta {
   name: string
   color: string
   agentCli?: AgentCli
+  launchArgs?: string
 }
 
 interface PtyEntry {

@@ -9,10 +9,11 @@ import { discoverValidation } from './validation'
 import { decide } from './decision'
 import { runResetSequence } from './reset'
 import { makeApiClient } from './api-client'
-import { DOER_SYSTEM_PROMPT, buildWizardKickoff } from './prompts'
+import { buildDoerSystemPrompt, buildWizardKickoff } from './prompts'
 import { debugCall } from './debug'
 import { saveRuntimeClassic, loadRuntimeClassic } from './runtime-state'
 import { recordSpend } from './budget-tracker'
+import { getAutopilotRuntime, type AutopilotRuntime } from './runtime'
 
 export class AutopilotStateMachine {
   state: AutopilotState
@@ -33,9 +34,11 @@ export class AutopilotStateMachine {
   private maxSilenceMs: number
   private runtimeJsonEnabled: boolean
   private budgetTrackerEnabled: boolean
+  private runtime: AutopilotRuntime
 
   constructor(opts: AutopilotOptions, apiOverride?: ApiClient, ptyIdleMs = 1500, maxSilenceMs = 30 * 60 * 1000) {
     this.opts = opts
+    this.runtime = getAutopilotRuntime(opts.agentCli)
     this.api = apiOverride ?? makeApiClient(opts.apiProvider, opts.apiKey, opts.plannerModel)
     this.cost = new CostTracker(opts.projectPath, opts.costCapUsd, (pct) => {
       if (pct === 100) this.transition('paused', 'cost cap reached')
@@ -105,6 +108,7 @@ export class AutopilotStateMachine {
     }
 
     this.detachPty = this.opts.onPtyData(this.opts.terminalId, (data) => {
+      if (!this.canProcessPty()) return
       this.outputVolumeSinceReset += data.length
       this.armSilenceTimer()
       this.watcher.feed(data)
@@ -113,7 +117,7 @@ export class AutopilotStateMachine {
     // Discover validation once at start
     this.state.validation = discoverValidation(this.opts.projectPath)
 
-    this.opts.writeToPty(this.opts.terminalId, DOER_SYSTEM_PROMPT + '\r')
+    this.opts.writeToPty(this.opts.terminalId, buildDoerSystemPrompt(this.runtime.agentCli) + '\r')
 
     if (autopilotDirExists(this.opts.projectPath) && this.state.goal && this.state.milestones.length > 0) {
       this.transition('executing', 'goal already defined; resuming')
@@ -169,6 +173,7 @@ export class AutopilotStateMachine {
 
   private async onSettled(snap: SettledSnapshot): Promise<void> {
     while (this.settleResolvers.length) this.settleResolvers.shift()?.()
+    if (!this.canProcessPty()) return
 
     this.markerFallbackPromptCount = 0
 
@@ -417,6 +422,8 @@ export class AutopilotStateMachine {
       writeToPty: (s) => this.opts.writeToPty(this.opts.terminalId, s),
       waitForSettle: () => new Promise<void>((res) => { this.settleResolvers.push(res) }),
       currentMilestoneId: this.state.currentMilestoneId,
+      clearCommand: this.runtime.clearCommand,
+      doerSystemPrompt: buildDoerSystemPrompt(this.runtime.agentCli),
     })
     this.outputVolumeSinceReset = 0
   }
@@ -461,8 +468,7 @@ export class AutopilotStateMachine {
   private handleMissingMarker(): void {
     if (this.markerFallbackPromptCount >= 2) {
       this.state.escalationReason = 'doer not emitting markers — manual intervention needed'
-      this.appendActivity('escalation', this.state.escalationReason)
-      this.notify()
+      this.transition('escalated', this.state.escalationReason)
       return
     }
     this.markerFallbackPromptCount++
@@ -474,7 +480,12 @@ export class AutopilotStateMachine {
 
   respondToPermission(verdict: 'allow' | 'deny'): void {
     if (!this.state.permissionRequest) return
-    const reply = verdict === 'allow' ? '1\r' : '3\r'
+    if (!this.runtime.permissionReplies) {
+      this.state.escalationReason = `${this.runtime.label} permission prompts are not supported by Autopilot; stop and relaunch with a supported full-auto preset.`
+      this.transition('escalated', this.state.escalationReason)
+      return
+    }
+    const reply = this.runtime.permissionReplies[verdict]
     this.opts.writeToPty(this.opts.terminalId, reply)
     this.state.permissionRequest = null
     this.appendActivity('orchestrator-reply', `permission ${verdict}`)
@@ -518,6 +529,10 @@ export class AutopilotStateMachine {
     }
   }
 
+  private canProcessPty(): boolean {
+    return this.state.phase === 'wizard' || this.state.phase === 'executing'
+  }
+
   private onSilenceExceeded(): void {
     if (this.state.phase !== 'executing' && this.state.phase !== 'wizard') return
     const minutes = Math.round(this.maxSilenceMs / 60000)
@@ -527,6 +542,7 @@ export class AutopilotStateMachine {
 
   // For tests — mirrors the production onPtyData listener (volume + silence + watcher feed)
   feedPty(data: string): void {
+    if (!this.canProcessPty()) return
     this.outputVolumeSinceReset += data.length
     this.armSilenceTimer()
     this.watcher.feed(data)

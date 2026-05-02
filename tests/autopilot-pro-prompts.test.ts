@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   DOER_SYSTEM_PROMPT_PRO, PRINCIPLES_BLOCK,
+  buildDoerSystemPromptPro,
   buildPlannerPrompt, META_REFLECT_SYSTEM_PROMPT, buildMetaReflectPrompt,
   stage3Kickoff, stage4Kickoff, stage0Kickoff,
   RESET_SUMMARISE_PROMPT_PRO, buildResumePromptPro,
@@ -51,6 +52,13 @@ describe('DOER_SYSTEM_PROMPT_PRO', () => {
     for (const name of ['TDD', 'YAGNI', 'VERIFICATION', 'SECURITY', 'BOUNDARY', 'RESEARCH']) {
       expect(DOER_SYSTEM_PROMPT_PRO).toContain(name)
     }
+  })
+
+  it('adds a Codex runtime policy that forbids local commits', () => {
+    const codexPrompt = buildDoerSystemPromptPro('codex')
+    expect(codexPrompt).toMatch(/Codex runtime guardrails/i)
+    expect(codexPrompt).toMatch(/DO NOT commit/i)
+    expect(codexPrompt).toMatch(/proposed commit/i)
   })
 
   it('PRINCIPLES_BLOCK lists six principles with severities', () => {

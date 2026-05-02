@@ -1,5 +1,7 @@
 // Shared types for the Autopilot Orchestrator.
 
+import type { AgentCli } from '../../shared/agent-cli'
+
 export type AutopilotPhase = 'idle' | 'wizard' | 'awaiting_goal_review' | 'executing' | 'paused' | 'escalated' | 'completed' | 'stopped'
 
 export type MarkerKind = 'WAITING' | 'PROGRESS' | 'GOAL_READY' | 'STUCK'
@@ -159,6 +161,7 @@ export interface AutopilotOptions {
   terminalId: string
   projectPath: string
   freeTextIdea: string
+  agentCli?: AgentCli
   costCapUsd: number
   maxIterations: number
   apiProvider: ApiProvider

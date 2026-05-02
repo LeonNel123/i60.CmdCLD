@@ -20,6 +20,13 @@ export interface AgentArgsSettings {
   codexArgs?: string
 }
 
+export interface AutopilotRuntimeGuardrail {
+  agentCli: AgentCli
+  canStart: boolean
+  reason: string | null
+  warnings: string[]
+}
+
 export const DEFAULT_AGENT_CLI: AgentCli = 'claude'
 
 export const AGENT_CLI_LABELS: Record<AgentCli, string> = {
@@ -99,6 +106,28 @@ export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup
     },
   ],
   codex: [
+    {
+      id: 'automation',
+      label: 'Automation',
+      mode: 'multi',
+      options: [
+        {
+          id: 'codex-autopilot-full-auto',
+          label: 'Autopilot Full Auto',
+          args: '--sandbox workspace-write --ask-for-approval never --search',
+          conflictsWith: [
+            'codex-sandbox-read-only',
+            'codex-sandbox-workspace-write',
+            'codex-sandbox-danger-full-access',
+            'codex-approval-untrusted',
+            'codex-approval-on-request',
+            'codex-approval-never',
+            'codex-search',
+            'codex-dangerous-bypass',
+          ],
+        },
+      ],
+    },
     {
       id: 'session',
       label: 'Session',
@@ -185,6 +214,86 @@ export function stripResumeArgsForQuickLaunch(agentCli: AgentCli, args: string):
   return next.replace(/\s+/g, ' ').trim()
 }
 
+export function getAutopilotRuntimeGuardrail(agentCli: AgentCli, args: string): AutopilotRuntimeGuardrail {
+  const normalized = normalizeAgentCli(agentCli)
+  const tokens = tokenizeArgs(args)
+  const has = (sequence: string): boolean => hasTokenSequence(tokens, tokenizeArgs(sequence))
+  const hasAny = (...sequences: string[]): boolean => sequences.some((sequence) => has(sequence))
+  const hasOptionValue = (names: string[], value: string): boolean => getOptionValues(tokens, names).includes(value)
+
+  if (normalized === 'claude') {
+    const warnings: string[] = []
+    if (hasAny('--dangerously-skip-permissions') || hasOptionValue(['--permission-mode'], 'bypassPermissions')) {
+      warnings.push('Claude permission bypass is enabled; Autopilot will still enforce app-level pause, cost, and marker guardrails.')
+    }
+    return { agentCli: normalized, canStart: true, reason: null, warnings }
+  }
+
+  if (has('resume --last')) {
+    return {
+      agentCli: normalized,
+      canStart: false,
+      reason: 'Codex Autopilot requires a fresh Codex session; remove resume --last before starting Autopilot.',
+      warnings: [],
+    }
+  }
+
+  if (has('--dangerously-bypass-approvals-and-sandbox')) {
+    return {
+      agentCli: normalized,
+      canStart: false,
+      reason: 'Codex Autopilot blocks --dangerously-bypass-approvals-and-sandbox. Use sandboxed full auto instead.',
+      warnings: [],
+    }
+  }
+
+  if (hasOptionValue(['--sandbox', '-s'], 'danger-full-access')) {
+    return {
+      agentCli: normalized,
+      canStart: false,
+      reason: 'Codex Autopilot blocks danger-full-access. Use --sandbox workspace-write.',
+      warnings: [],
+    }
+  }
+
+  if (hasOptionValue(['--sandbox', '-s'], 'read-only')) {
+    return {
+      agentCli: normalized,
+      canStart: false,
+      reason: 'Codex Autopilot needs workspace-write sandbox access so the Doer can edit project files.',
+      warnings: [],
+    }
+  }
+
+  const fullAutoCompat = has('--full-auto')
+  if (!fullAutoCompat && !hasOptionValue(['--sandbox', '-s'], 'workspace-write')) {
+    return {
+      agentCli: normalized,
+      canStart: false,
+      reason: 'Codex Autopilot requires --sandbox workspace-write.',
+      warnings: [],
+    }
+  }
+
+  if (!fullAutoCompat && !hasOptionValue(['--ask-for-approval', '-a'], 'never')) {
+    return {
+      agentCli: normalized,
+      canStart: false,
+      reason: 'Codex Autopilot requires --ask-for-approval never so the app is not blocked by unsupported Codex approval prompts.',
+      warnings: [],
+    }
+  }
+
+  const warnings: string[] = []
+  if (fullAutoCompat) {
+    warnings.push('--full-auto is accepted for compatibility; prefer --sandbox workspace-write --ask-for-approval never.')
+  }
+  if (has('--oss')) {
+    warnings.push('Codex OSS provider is enabled; verify it supports the expected tool and marker behavior before long runs.')
+  }
+  return { agentCli: normalized, canStart: true, reason: null, warnings }
+}
+
 export function getActiveAgentCliLaunchOptionIds(agentCli: AgentCli, args: string): string[] {
   const tokens = tokenizeArgs(args)
   return getAllLaunchOptions(agentCli)
@@ -223,9 +332,7 @@ function getConflictingOptions(agentCli: AgentCli, target: AgentCliLaunchOption)
   return allOptions.filter((option) => {
     if (option.id === target.id) return false
     const sameSingleGroup = group?.mode === 'single' && group.options.some((candidate) => candidate.id === option.id)
-    const explicitConflict =
-      target.conflictsWith?.includes(option.id) ||
-      option.conflictsWith?.includes(target.id)
+    const explicitConflict = target.conflictsWith?.includes(option.id)
     return sameSingleGroup || !!explicitConflict
   })
 }
@@ -236,6 +343,27 @@ function normalizeArgs(args: string): string {
 
 function tokenizeArgs(args: string): string[] {
   return args.match(/"[^"]*"|'[^']*'|\S+/g) ?? []
+}
+
+function getOptionValues(tokens: string[], names: string[]): string[] {
+  const values: string[] = []
+  for (let i = 0; i < tokens.length; i += 1) {
+    for (const name of names) {
+      if (tokens[i] === name && tokens[i + 1]) {
+        values.push(unquoteToken(tokens[i + 1]))
+      } else if (tokens[i].startsWith(`${name}=`)) {
+        values.push(unquoteToken(tokens[i].slice(name.length + 1)))
+      }
+    }
+  }
+  return values
+}
+
+function unquoteToken(token: string): string {
+  if ((token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'"))) {
+    return token.slice(1, -1)
+  }
+  return token
 }
 
 function hasTokenSequence(tokens: string[], sequence: string[]): boolean {
