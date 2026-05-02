@@ -19,8 +19,22 @@
       <div id="session-cards"></div>
 
       <div id="new-session-bar">
-        <button id="new-session-btn" class="btn-primary">+ New Session</button>
-        <a href="/setup.html" style="margin-left:12px;color:#666;font-size:11px;text-decoration:none;display:flex;align-items:center" title="Setup Guide">? Setup Guide</a>
+        <button id="new-session-btn" class="btn-primary icon-label-btn">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            <path d="M12 11v6"></path>
+            <path d="M9 14h6"></path>
+          </svg>
+          <span>New Session</span>
+        </button>
+        <a href="/setup.html" class="setup-link" title="Setup Guide" aria-label="Setup Guide">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="9"></circle>
+            <path d="M9.5 9a2.5 2.5 0 1 1 4.2 1.8c-.9.6-1.7 1.2-1.7 2.4"></path>
+            <path d="M12 17h.01"></path>
+          </svg>
+          <span>Setup</span>
+        </a>
       </div>
 
       <!-- New session modal -->
@@ -50,17 +64,33 @@
     <div id="terminal-view" class="hidden">
       <header id="terminal-header">
         <div class="terminal-header-left">
-          <button id="back-btn" class="btn-icon">← Back</button>
+          <button id="back-btn" class="btn-icon" aria-label="Back to sessions" title="Back to sessions">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M15 18 9 12l6-6"></path>
+            </svg>
+          </button>
           <span id="terminal-name"></span>
           <span id="terminal-status"></span>
         </div>
         <div class="terminal-header-right">
           <button id="font-dec-btn" class="btn-small mobile-only" title="Smaller terminal text">A−</button>
           <button id="font-inc-btn" class="btn-small mobile-only" title="Larger terminal text">A+</button>
-          <button id="help-btn" class="btn-small mobile-only" title="Show button help">?</button>
-          <button id="new-from-terminal-btn" class="btn-small mobile-only" title="Open new session">+ New</button>
-          <button id="ctrl-c-btn" class="btn-small">Ctrl+C</button>
-          <button id="kill-btn" class="btn-small btn-danger">Kill</button>
+          <button id="ctrl-c-btn" class="btn-small icon-only-btn" title="Interrupt session" aria-label="Interrupt session">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="9"></circle>
+              <path d="M9 9l6 6"></path>
+              <path d="M15 9l-6 6"></path>
+            </svg>
+          </button>
+          <button id="kill-btn" class="btn-small btn-danger icon-only-btn" title="Kill session" aria-label="Kill session">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M3 6h18"></path>
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+              <path d="M10 11v6"></path>
+              <path d="M14 11v6"></path>
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -128,13 +158,30 @@
           <div class="quick-row-break"></div>
           <button class="quick-btn quick-btn-danger" data-input="/clear&#13;" title="Clear conversation (destructive)">Clr</button>
           <button class="quick-btn quick-btn-danger" data-input="Run all preparatory steps and tests, if a test setup is available. Upon successful completion, apply all required updates to databases and related systems, then commit and push the current branch. If any tests fail, attempt to fix the code and rerun the process once. If the tests still fail, report the issue and wait for further instructions. The objective is to deploy the latest feature set to production. Proceed thoroughly and methodically.&#13;" title="Full deploy (destructive)">FY</button>
+          <button id="help-btn" class="quick-btn quick-help-btn" title="Show button help" aria-label="Show button help">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="9"></circle>
+              <path d="M9.5 9a2.5 2.5 0 1 1 4.2 1.8c-.9.6-1.7 1.2-1.7 2.4"></path>
+              <path d="M12 17h.01"></path>
+            </svg>
+          </button>
         </div>
         <div id="mobile-input-bar">
           <input type="text" id="mobile-input" placeholder="Type a command..." enterkeyhint="send" autocomplete="off">
-          <button id="mobile-send-btn" class="btn-primary">Send</button>
-          <label id="mobile-image-btn" class="btn-icon" title="Upload image">
+          <button id="mobile-send-btn" class="btn-primary icon-label-btn">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M22 2 11 13"></path>
+              <path d="m22 2-7 20-4-9-9-4z"></path>
+            </svg>
+            <span>Send</span>
+          </button>
+          <label id="mobile-image-btn" class="btn-icon icon-only-btn" title="Upload image" aria-label="Upload image">
             <input type="file" accept="image/*" id="mobile-image-input" hidden>
-            📷
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+              <circle cx="8.5" cy="10.5" r="1.5"></circle>
+              <path d="m21 16-5-5L5 21"></path>
+            </svg>
           </label>
         </div>
       </div>

@@ -14,7 +14,7 @@ import type {
   ProDecideResult, ArtifactKind,
 } from './types'
 import { PRO_DIR } from './types'
-import { PtyWatcher, findLastMarker } from '../autopilot/pty-watcher'
+import { PtyWatcher, findLastMarker, parseTerminalMarkerLine, splitTerminalLines, stripTerminalAnsi } from '../autopilot/pty-watcher'
 import { CostTracker } from '../autopilot/cost-tracker'
 import { discoverValidation } from '../autopilot/validation'
 import { makeApiClient } from '../autopilot/api-client'
@@ -44,8 +44,8 @@ const DEFAULT_MAX_SILENCE_MS = 30 * 60 * 1000
 
 function enrichProMarker(rawText: string, base: ProMarker): ProMarker {
   // Find the structured block lines AFTER the marker line.
-  const lines = rawText.split(/\r?\n/)
-  const idx = lines.findIndex((l) => /^\[ORCH:(WAITING|PROGRESS|GOAL_READY|STUCK)\]/.test(l))
+  const lines = splitTerminalLines(stripTerminalAnsi(rawText))
+  const idx = lines.findIndex((l) => parseTerminalMarkerLine(l) !== null)
   if (idx < 0) return base
   const after = lines.slice(idx + 1)
 

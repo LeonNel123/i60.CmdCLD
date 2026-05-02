@@ -2,7 +2,7 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #111;
+  background: #1e1e1e;
   color: #e0e0e0;
   height: 100vh;
   overflow: hidden;
@@ -20,8 +20,8 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 8px 16px;
-  background: #1a1a2e;
-  border-bottom: 1px solid #333;
+  background: #181818;
+  border-bottom: 1px solid #2d2d2d;
   flex-shrink: 0;
 }
 
@@ -50,14 +50,15 @@ body {
 #session-cards {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  background: #1e1e1e;
 }
 
 .session-card {
-  background: #1e1e2e;
+  background: #252526;
   border-left: 3px solid #666;
   border-radius: 4px;
   padding: 12px 14px;
@@ -69,7 +70,7 @@ body {
 }
 
 .session-card:hover {
-  background: #252540;
+  background: #2a2a2a;
 }
 
 .session-card .card-info h4 {
@@ -110,24 +111,28 @@ body {
 /* New session bar */
 #new-session-bar {
   padding: 8px 12px;
-  border-top: 1px solid #333;
+  border-top: 1px solid #2d2d2d;
+  background: #181818;
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 10px;
   flex-shrink: 0;
 }
 
 /* Buttons */
 .btn-primary {
-  background: #6366f1;
-  color: white;
+  background: #22c55e;
+  color: #000;
   border: none;
-  border-radius: 6px;
-  padding: 8px 20px;
+  border-radius: 4px;
+  padding: 8px 14px;
   font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
 }
 
-.btn-primary:hover { background: #5558e6; }
+.btn-primary:hover { background: #16a34a; }
 
 .btn-secondary {
   background: #333;
@@ -140,18 +145,67 @@ body {
 }
 
 .btn-small {
-  background: #1e1e2e;
-  color: #888;
-  border: 1px solid #444;
+  background: #ffffff08;
+  color: #ccc;
+  border: 1px solid #333;
   border-radius: 4px;
-  padding: 4px 10px;
+  padding: 4px 8px;
   font-size: 11px;
   cursor: pointer;
 }
 
-.btn-small:hover { border-color: #666; color: #ccc; }
+.btn-small:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: #444;
+  color: #fff;
+}
 .btn-danger { color: #ef4444; }
-.btn-danger:hover { border-color: #ef4444; }
+.btn-danger:hover {
+  border-color: #7f1d1d;
+  color: #f87171;
+}
+
+.icon-label-btn,
+.icon-only-btn,
+.setup-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.icon-label-btn svg,
+.icon-only-btn svg,
+.setup-link svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+.icon-only-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+
+.setup-link {
+  color: #888;
+  font-size: 11px;
+  text-decoration: none;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 4px;
+}
+
+.setup-link:hover {
+  background: rgba(255,255,255,0.06);
+  color: #ccc;
+}
 
 /* Mobile-only helper: hidden on desktop, shown on mobile */
 .mobile-only { display: none; }
@@ -159,8 +213,34 @@ body {
   .mobile-only { display: inline-block; }
 }
 
-/* Compact font-size and help buttons in the terminal header */
-#font-dec-btn, #font-inc-btn, #help-btn {
+@media (max-width: 768px) {
+  body,
+  #app {
+    height: 100dvh;
+  }
+
+  #dashboard-view {
+    height: 100dvh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+
+  #session-cards {
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  #new-session-bar {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+}
+
+/* Compact font-size buttons in the terminal header */
+#font-dec-btn, #font-inc-btn {
   padding: 4px 8px;
   font-weight: 600;
   min-width: 28px;
@@ -194,7 +274,7 @@ body {
 }
 
 .help-key {
-  background: #1e1e2e;
+  background: #252526;
   color: #ccc;
   border: 1px solid #333;
   border-radius: 3px;
@@ -214,7 +294,7 @@ body {
 .btn-icon {
   background: none;
   border: none;
-  color: #6366f1;
+  color: #999;
   cursor: pointer;
   font-size: 13px;
 }
@@ -283,7 +363,8 @@ body {
 }
 
 .folder-item:hover {
-  border-color: #6366f1;
+  background: rgba(255,255,255,0.06);
+  border-color: #444;
   color: #fff;
 }
 
@@ -309,11 +390,11 @@ body {
 }
 
 .folder-item-active {
-  border-color: #10b981;
-  background: #0d1f17;
+  border-color: #22c55e;
+  background: #22c55e20;
 }
 
-.folder-item-active:hover { border-color: #10b981; }
+.folder-item-active:hover { border-color: #22c55e; }
 
 .folder-badge {
   color: #10b981;
@@ -360,7 +441,7 @@ body {
   min-width: 0;
 }
 
-#custom-path-input:focus { border-color: #6366f1; }
+#custom-path-input:focus { border-color: #22c55e; }
 
 #custom-path-open {
   padding: 8px 14px;
@@ -467,35 +548,83 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   padding: 6px 12px;
-  background: #1a1a2e;
-  border-bottom: 1px solid #333;
+  background: #252526;
+  border-bottom: 1px solid #2d2d2d;
   flex-shrink: 0;
 }
 
 .terminal-header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
+}
+
+#back-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: #ccc;
+}
+
+#back-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+}
+
+#back-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .terminal-header-right {
   display: flex;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 #terminal-name {
+  color: #e0e0e0;
   font-weight: 600;
   font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-#terminal-status {
-  font-size: 11px;
+#terminal-status.terminal-status-dot {
+  font-size: 14px;
+  line-height: 1;
+  width: 14px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+#terminal-status.terminal-status-dot.busy {
+  color: #f59e0b;
+}
+
+#terminal-status.terminal-status-dot.idle {
+  color: #10b981;
 }
 
 #terminal-container {
   flex: 1;
-  background: #0d0d0d;
+  background: #1e1e1e;
   overflow: auto;
 }
 
@@ -504,7 +633,7 @@ body {
 
 #mobile-output {
   flex: 1;
-  background: #0d0d0d;
+  background: #1e1e1e;
   overflow: auto;
   min-height: 0;
 }
@@ -513,8 +642,8 @@ body {
   display: flex;
   gap: 6px;
   padding: 8px;
-  background: #13131f;
-  border-top: 1px solid #333;
+  background: #181818;
+  border-top: 1px solid #2d2d2d;
   flex-wrap: wrap;
   flex-shrink: 0;
 }
@@ -531,7 +660,7 @@ body {
 }
 
 .quick-btn {
-  background: #1e1e2e;
+  background: #ffffff08;
   color: #ccc;
   border: 1px solid #333;
   border-radius: 4px;
@@ -541,7 +670,26 @@ body {
   cursor: pointer;
 }
 
-.quick-btn:hover { border-color: #6366f1; }
+.quick-btn:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: #444;
+}
+
+.quick-help-btn {
+  min-width: 30px;
+  width: 30px;
+  padding: 0;
+}
+
+.quick-help-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 /* Destructive quick buttons: visually separated and red-tinted */
 .quick-btn-danger {
@@ -564,14 +712,14 @@ body {
   display: flex;
   gap: 6px;
   padding: 8px;
-  background: #1a1a2e;
-  border-top: 1px solid #333;
+  background: #181818;
+  border-top: 1px solid #2d2d2d;
   flex-shrink: 0;
 }
 
 #mobile-input {
   flex: 1;
-  background: #0d0d0d;
+  background: #0d1117;
   border: 1px solid #333;
   border-radius: 4px;
   padding: 8px 10px;
@@ -580,16 +728,30 @@ body {
   outline: none;
 }
 
+#mobile-input:focus {
+  border-color: #22c55e;
+}
+
 #mobile-send-btn {
   padding: 8px 14px;
   font-size: 13px;
 }
 
 #mobile-image-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  font-size: 18px;
+  justify-content: center;
+  background: #ffffff08;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ccc;
   cursor: pointer;
+}
+
+#mobile-image-btn:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: #444;
+  color: #fff;
 }
 
 /* Responsive: mobile */

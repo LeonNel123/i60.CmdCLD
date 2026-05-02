@@ -673,6 +673,31 @@ describe('enrichProMarker', () => {
     const m = enrichProMarker(text, { kind: 'WAITING', text: 'just a question', raw: '[ORCH:WAITING] just a question' })
     expect(m.shape).toBeUndefined()
   })
+
+  it('parses approve details from carriage-return structured blocks', () => {
+    const text = [
+      '[ORCH:WAITING]\r',
+      'STATUS: waiting\r',
+      'DECISION_SHAPE: approve\r',
+      'ARTIFACT: .autopilot-pro/spec.md\r',
+      'QUESTION: Approve .autopilot-pro/spec.md to proceed to Stage 1 planning?\r',
+    ].join('')
+    const m = enrichProMarker(text, { kind: 'WAITING', text: '', raw: '[ORCH:WAITING]' })
+    expect(m.shape).toBe('approve')
+    expect(m.artifactPath).toBe('.autopilot-pro/spec.md')
+  })
+
+  it('parses approve details when terminal prompt prefixes the marker line', () => {
+    const text = [
+      '> [ORCH:WAITING]\r',
+      'STATUS: waiting\r',
+      'DECISION_SHAPE: approve\r',
+      'ARTIFACT: .autopilot-pro/spec.md\r',
+    ].join('')
+    const m = enrichProMarker(text, { kind: 'WAITING', text: '', raw: '> [ORCH:WAITING]' })
+    expect(m.shape).toBe('approve')
+    expect(m.artifactPath).toBe('.autopilot-pro/spec.md')
+  })
 })
 
 describe('enrichProMarker — research (Wave 1.6)', () => {
@@ -886,6 +911,30 @@ describe('PRO permissionRequest (Wave 3.6)', () => {
 })
 
 describe('PRO app-owned hard guardrails', () => {
+  it.each(['claude', 'codex'] as const)('responds to %s carriage-return approval markers', async (agentCli) => {
+    writeArtifact(TMP, 'spec', '# discovery spec')
+    const writes: string[] = []
+    const client = fakeChatClient(() => ({ shape: 'approve', verdict: 'approve', why: 'spec is sufficient' }))
+    const sm = makeSm(client, writes, { agentCli })
+    await sm.start()
+    writes.length = 0
+
+    sm.feedPty([
+      '[ORCH:WAITING]\r',
+      'STATUS: waiting\r',
+      'DECISION_SHAPE: approve\r',
+      'ARTIFACT: .autopilot-pro/spec.md\r',
+      'FILES_CHANGED:\r',
+      '\r',
+      '- .autopilot-pro/spec.md\r',
+      'QUESTION: Approve .autopilot-pro/spec.md to proceed to Stage 1 planning?\r',
+    ].join(''))
+    await flush()
+
+    expect(client.chat).toHaveBeenCalledTimes(1)
+    expect(writes.some((w) => w.includes('Approved: .autopilot-pro/spec.md'))).toBe(true)
+  })
+
   it('pause gates settled output until resume', async () => {
     const writes: string[] = []
     const client = fakeChatClient(() => ({ shape: 'reply', text: 'continue after resume' }))

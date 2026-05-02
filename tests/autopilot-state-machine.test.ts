@@ -88,7 +88,7 @@ describe('AutopilotStateMachine', () => {
   })
 })
 
-function makeSm(idea: string, api: ApiClient, writes?: string[], maxSilenceMs?: number): AutopilotStateMachine {
+function makeSm(idea: string, api: ApiClient, writes?: string[], maxSilenceMs?: number, agentCli?: AutopilotOptions['agentCli']): AutopilotStateMachine {
   const opts: AutopilotOptions = {
     terminalId: 't',
     projectPath: TMP,
@@ -104,6 +104,7 @@ function makeSm(idea: string, api: ApiClient, writes?: string[], maxSilenceMs?: 
     runtimeJson: false,
     budgetTracker: false,
   }
+  if (agentCli) opts.agentCli = agentCli
   // Default maxSilenceMs to a huge value (24h) so existing tests aren't
   // affected by the silence-escalate guard. Tests that exercise the guard
   // pass a small value explicitly.
@@ -165,6 +166,26 @@ it('passes learnings into decide() so the planner sees them', async () => {
   sm.feedPty('[ORCH:WAITING] q\n')
   await waitForFlush()
   expect(captured.learnings).toEqual(expect.arrayContaining([expect.stringContaining('npm install first')]))
+})
+
+it.each(['claude', 'codex'] as const)('responds to %s carriage-return waiting markers', async (agentCli) => {
+  writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+  const writes: string[] = []
+  const api = makeApi(() => ({ kind: 'reply', text: 'Proceed with the next step.' }))
+  const sm = makeSm('idea', api, writes, undefined, agentCli)
+  await sm.start()
+  sm.approveGoal()
+  writes.length = 0
+
+  sm.feedPty([
+    '[ORCH:WAITING]\r',
+    'STATUS: waiting\r',
+    'QUESTION: Should I continue with the next step?\r',
+  ].join(''))
+  await waitForFlush()
+
+  expect(api.decide).toHaveBeenCalledTimes(1)
+  expect(writes.some((w) => w === 'Proceed with the next step.\r')).toBe(true)
 })
 
 it('STUCK marker triggers debug call; on retry stays in executing and types instruction', async () => {

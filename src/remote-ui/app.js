@@ -127,6 +127,14 @@
 
   // Activity tracking — only update the status label, don't rebuild the DOM
   function trackBusy(id, dataReceived) {
+    if (!dataReceived) {
+      busyState[id] = false
+      clearTimeout(busyTimers[id])
+      updateCardStatus(id)
+      renderTerminalStatus(id)
+      return
+    }
+
     if (dataReceived) {
       var wasBusy = busyState[id]
       busyState[id] = true
@@ -134,8 +142,12 @@
       busyTimers[id] = setTimeout(function () {
         busyState[id] = false
         updateCardStatus(id)
+        renderTerminalStatus(id)
       }, 2000)
-      if (!wasBusy) updateCardStatus(id)
+      if (!wasBusy) {
+        updateCardStatus(id)
+        renderTerminalStatus(id)
+      }
     }
   }
 
@@ -147,6 +159,15 @@
     var busy = busyState[id]
     label.className = 'status-label ' + (busy ? 'busy' : 'idle')
     label.textContent = busy ? '⟳ Working...' : '● Idle'
+  }
+
+  function renderTerminalStatus(id) {
+    if (!terminalStatus || id !== currentSessionId) return
+    var busy = !!busyState[id]
+    terminalStatus.textContent = '●'
+    terminalStatus.className = 'terminal-status-dot ' + (busy ? 'busy' : 'idle')
+    terminalStatus.title = busy ? 'Working' : 'Idle'
+    terminalStatus.setAttribute('aria-label', busy ? 'Working' : 'Idle')
   }
 
   // Fetch sessions via REST
@@ -207,8 +228,7 @@
 
     terminalName.textContent = session.name
     document.title = session.name + ' — CmdCLD Remote'
-    terminalStatus.textContent = busyState[id] ? '⟳ Working' : '● Idle'
-    terminalStatus.style.color = busyState[id] ? '#f59e0b' : '#10b981'
+    renderTerminalStatus(id)
 
     dashboardView.style.display = 'none'
     terminalView.style.height = ''
@@ -391,14 +411,6 @@
     })(agentButtons[ab])
   }
   backBtn.addEventListener('click', closeTerminal)
-
-  var newFromTerminalBtn = document.getElementById('new-from-terminal-btn')
-  if (newFromTerminalBtn) {
-    newFromTerminalBtn.addEventListener('click', function () {
-      closeTerminal()
-      showNewSessionModal()
-    })
-  }
 
   // Custom path input — submit on Open button click or Enter key
   var customPathInput = document.getElementById('custom-path-input')

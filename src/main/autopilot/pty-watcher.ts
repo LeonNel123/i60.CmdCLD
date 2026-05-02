@@ -12,10 +12,21 @@ interface Options {
   markerFallbackMs?: number
 }
 
-const ANSI_RE = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b[PX^_].*?\x1b\\|\x1b\][^\x1b]*\x1b\\/g
+const ANSI_RE = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\x1b[PX^_].*?\x1b\\|\x1b\][^\x1b]*\x1b\\/g
+const MARKER_LINE_RE = /^[\s>|│┃║╎╏┆┇┊┋▌▍▎▏›❯]*\[ORCH:(WAITING|PROGRESS|GOAL_READY|STUCK)\](?:\s+(.*))?$/
 
-function stripAnsi(s: string): string {
+export function stripTerminalAnsi(s: string): string {
   return s.replace(ANSI_RE, '')
+}
+
+export function splitTerminalLines(s: string): string[] {
+  return s.split(/\r\n|\n|\r/)
+}
+
+export function parseTerminalMarkerLine(line: string): { kind: MarkerKind; tail: string } | null {
+  const m = line.match(MARKER_LINE_RE)
+  if (!m) return null
+  return { kind: m[1] as MarkerKind, tail: (m[2] ?? '').trim() }
 }
 
 const STRUCTURED_KEYS = new Set([
@@ -53,8 +64,8 @@ function parseStructuredBlock(lines: string[]): StructuredFields {
       }
       // multi-line form: indented "  - file" continuation
       let j = i + 1
-      while (j < lines.length && /^\s+-\s+/.test(lines[j])) {
-        files.push(lines[j].replace(/^\s+-\s+/, '').trim())
+      while (j < lines.length && /^\s*-\s+/.test(lines[j])) {
+        files.push(lines[j].replace(/^\s*-\s+/, '').trim())
         j++
       }
       out.filesChanged = files
@@ -84,14 +95,13 @@ function parseStructuredBlock(lines: string[]): StructuredFields {
 }
 
 export function findLastMarker(text: string): { marker: DoerMarker; before: string } | null {
-  const cleaned = stripAnsi(text)
-  const lines = cleaned.split(/\r?\n/)
+  const cleaned = stripTerminalAnsi(text)
+  const lines = splitTerminalLines(cleaned)
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i]
-    const m = line.match(/^\[ORCH:(WAITING|PROGRESS|GOAL_READY|STUCK)\](?:\s+(.*))?$/)
-    if (!m) continue
-    const kind = m[1] as MarkerKind
-    const tail = (m[2] ?? '').trim()
+    const parsed = parseTerminalMarkerLine(line)
+    if (!parsed) continue
+    const { kind, tail } = parsed
     let subgoalId: string | undefined
     let status: 'done' | 'partial' | 'blocked' | undefined
     if (kind === 'PROGRESS') {
@@ -184,7 +194,7 @@ export class PtyWatcher {
   }
 
   private checkSettled(): void {
-    const cleaned = stripAnsi(this.buffer)
+    const cleaned = stripTerminalAnsi(this.buffer)
 
     // Permission prompt detection: scan the last 1KB of cleaned output.
     const tail = cleaned.slice(-1024)
@@ -213,9 +223,9 @@ export class PtyWatcher {
 
     const idx = cleaned.lastIndexOf(found.marker.raw)
     const after = cleaned.slice(idx + found.marker.raw.length)
-    const afterTrimmed = after.split(/\r?\n/).filter((l) => l.trim().length > 0)
+    const afterTrimmed = splitTerminalLines(after).filter((l) => l.trim().length > 0)
     const allStructured = afterTrimmed.every((l) =>
-      /^[A-Z_]+:/.test(l) || /^\s+\S/.test(l)
+      /^[A-Z_]+:/.test(l) || /^\s+\S/.test(l) || /^\s*-\s+/.test(l)
     )
     if (afterTrimmed.length > 0 && !allStructured) {
       if (this.forceSettleMs > 0 && !this.forceSettleTimer) {

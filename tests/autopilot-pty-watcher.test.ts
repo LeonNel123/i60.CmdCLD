@@ -135,6 +135,28 @@ describe('PtyWatcher', () => {
     vi.useRealTimers()
   })
 
+  it('accepts marker lines with terminal prompt prefixes', async () => {
+    vi.useFakeTimers()
+    const events: SettledSnapshot[] = []
+    const w = new PtyWatcher({ idleMs: IDLE_MS, nudgeMs: NUDGE_MS, onSettle: (s) => events.push(s) })
+    w.feed('> [ORCH:WAITING] ready?\n')
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(events).toHaveLength(1)
+    expect(events[0].marker.kind).toBe('WAITING')
+    expect(events[0].marker.text).toBe('ready?')
+    vi.useRealTimers()
+  })
+
+  it('does not treat prose that mentions marker names as a marker', async () => {
+    vi.useFakeTimers()
+    const events: SettledSnapshot[] = []
+    const w = new PtyWatcher({ idleMs: IDLE_MS, nudgeMs: NUDGE_MS, onSettle: (s) => events.push(s) })
+    w.feed('Please emit [ORCH:WAITING] with your question.\n')
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(events).toHaveLength(0)
+    vi.useRealTimers()
+  })
+
   it('parses partial structured blocks without throwing', async () => {
     vi.useFakeTimers()
     const events: SettledSnapshot[] = []
@@ -170,6 +192,38 @@ describe('PtyWatcher', () => {
 
 describe('PtyWatcher force-settle (Wave 3.3)', () => {
   const FORCE_SETTLE_MS = 100  // small for fast tests; default in production is 3000
+
+  it('force-settles CLI marker blocks that use bare carriage returns and prompt chrome', async () => {
+    vi.useFakeTimers()
+    const events: SettledSnapshot[] = []
+    const w = new PtyWatcher({
+      idleMs: IDLE_MS,
+      nudgeMs: NUDGE_MS,
+      forceSettleMs: FORCE_SETTLE_MS,
+      onSettle: (s) => events.push(s),
+    })
+    w.feed([
+      'Spec ready for approval.\r',
+      '[ORCH:WAITING]\r',
+      'STATUS: waiting\r',
+      'DECISION_SHAPE: approve\r',
+      'ARTIFACT: .autopilot-pro/spec.md\r',
+      'FILES_CHANGED:\r',
+      '\r',
+      '- .autopilot-pro/spec.md\r',
+      'TESTS: 0 pass / 0 fail; not run, discovery artifact only\r',
+      'QUESTION: Approve .autopilot-pro/spec.md to proceed to Stage 1 planning?\r',
+      'Use /skills to list available skills\r',
+      'gpt-5.5 xhigh · D:\\2026\\AiProjecteTasks\r',
+    ].join(''))
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(events).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(FORCE_SETTLE_MS + 5)
+    expect(events).toHaveLength(1)
+    expect(events[0].marker.kind).toBe('WAITING')
+    expect(events[0].marker.question).toMatch(/Approve \.autopilot-pro\/spec\.md/i)
+    vi.useRealTimers()
+  })
 
   it('force-settles after FORCE_SETTLE_MS when chrome follows marker', async () => {
     vi.useFakeTimers()
