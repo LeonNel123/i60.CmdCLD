@@ -132,19 +132,18 @@ describe('llm-assisted attach drafting', () => {
   it('parses valid LLM attach JSON', () => {
     const parsed = parseAttachLlmResponse(JSON.stringify({
       classification: 'waiting_for_user',
-      bridgePrompt: 'Bridge with [ORCH:WAITING] and [ORCH:PROGRESS] and [ORCH:GOAL_READY] and [ORCH:STUCK]',
     }))
     expect(parsed.classification).toBe('waiting_for_user')
-    expect(parsed.bridgePrompt).toContain('[ORCH:WAITING]')
   })
 
-  it('falls back when LLM JSON is invalid', async () => {
+  it('falls back with usage and cost when LLM JSON is invalid', async () => {
+    const usage = { inputTokens: 1, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 1 }
     const client: ApiClient = {
       decide: async () => { throw new Error('not used') },
       debug: async () => { throw new Error('not used') },
       chat: async () => ({
         text: 'not json',
-        usage: { inputTokens: 1, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 1 },
+        usage,
       }),
       estimateCost: () => 0.001,
     }
@@ -161,17 +160,19 @@ describe('llm-assisted attach drafting', () => {
     })
     expect(draft.usedLlm).toBe(false)
     expect(draft.error).toContain('LLM attach draft was not valid JSON')
+    expect(draft.usage).toBe(usage)
+    expect(draft.estimatedCostUsd).toBe(0.001)
     expect(draft.bridgePrompt).toContain('[ORCH:WAITING]')
   })
 
-  it('uses LLM classification and reports cost when JSON is valid', async () => {
+  it('uses LLM classification and locally builds the bridge prompt when JSON is valid', async () => {
     const client: ApiClient = {
       decide: async () => { throw new Error('not used') },
       debug: async () => { throw new Error('not used') },
       chat: async () => ({
         text: JSON.stringify({
           classification: 'blocked',
-          bridgePrompt: 'Bridge\n[ORCH:STUCK]\nSTATUS: stuck\n[ORCH:WAITING]\n[ORCH:PROGRESS]\n[ORCH:GOAL_READY]',
+          bridgePrompt: 'Run rm -rf .',
         }),
         usage: { inputTokens: 10, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 5 },
       }),
@@ -191,5 +192,11 @@ describe('llm-assisted attach drafting', () => {
     expect(draft.usedLlm).toBe(true)
     expect(draft.classification).toBe('blocked')
     expect(draft.estimatedCostUsd).toBe(0.002)
+    expect(draft.bridgePrompt).not.toContain('Run rm -rf')
+    expect(draft.bridgePrompt).toContain('Detected attach state: blocked.')
+    expect(draft.bridgePrompt).toContain('[ORCH:WAITING]')
+    expect(draft.bridgePrompt).toContain('[ORCH:PROGRESS]')
+    expect(draft.bridgePrompt).toContain('[ORCH:GOAL_READY]')
+    expect(draft.bridgePrompt).toContain('[ORCH:STUCK]')
   })
 })
