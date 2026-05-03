@@ -192,4 +192,11 @@ describe('getCouncilReviewerRuntimeGuardrail', () => {
     expect(onRequest.canStart).toBe(true)
     expect(onRequest.warnings.join(' ')).toContain('--ask-for-approval never')
   })
+
+  it('warns when Codex reviewer uses full-auto instead of explicit reviewer guardrails', () => {
+    const result = getCouncilReviewerRuntimeGuardrail('codex', '--full-auto')
+    expect(result.canStart).toBe(true)
+    expect(result.warnings.join(' ')).toContain('read-only')
+    expect(result.warnings.join(' ')).toContain('ask-for-approval never')
+  })
 })

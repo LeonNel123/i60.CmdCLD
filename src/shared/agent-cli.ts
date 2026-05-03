@@ -341,11 +341,11 @@ export function getCouncilReviewerRuntimeGuardrail(agentCli: AgentCli, args: str
   const warnings: string[] = []
   if (hasOptionValue(['--sandbox', '-s'], 'workspace-write')) {
     warnings.push('Codex council reviewers should run read-only; prefer --sandbox read-only unless write access is explicitly required.')
-  } else if (!hasOption(['--sandbox', '-s']) && !has('--full-auto')) {
+  } else if (!hasOption(['--sandbox', '-s'])) {
     warnings.push('Codex council reviewers should specify --sandbox read-only.')
   }
 
-  if (!hasOptionValue(['--ask-for-approval', '-a'], 'never') && !has('--full-auto')) {
+  if (!hasOptionValue(['--ask-for-approval', '-a'], 'never')) {
     warnings.push('Codex council reviewers should specify --ask-for-approval never to avoid unsupported approval prompts.')
   }
 
