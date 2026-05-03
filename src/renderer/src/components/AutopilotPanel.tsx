@@ -143,12 +143,16 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
     return state.costCapUsd > 0 ? (state.costUsd / state.costCapUsd) * 100 : 0
   }, [state])
 
-  if (!state) return null
-
-  const statusLabel = state.phase ?? state.stage ?? 'unknown'
-  const statusKind = state.phase ? 'Phase' : 'Stage'
-  const { isPaused, isAwaitingReview, isEscalated, canPause, canResume } = getAutopilotPanelControlFlags(state)
-  const milestones = state.milestones ?? []
+  const flags = state
+    ? getAutopilotPanelControlFlags(state)
+    : { isPaused: false, isAwaitingReview: false, isEscalated: false, canPause: false, canResume: false }
+  const { isPaused, isAwaitingReview, isEscalated, canPause, canResume } = flags
+  const milestones = state?.milestones ?? []
+  const clearAttachDraft = () => {
+    setAttachDraft(null)
+    setAttachStatus(null)
+    setAttachError(null)
+  }
   const checkLatestOutput = async () => {
     setCheckingOutput(true)
     setInspectionError(null)
@@ -216,35 +220,39 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
         <button onClick={onClose} style={iconBtn}>×</button>
       </div>
 
-      <div style={{ color: '#888', fontSize: 11, lineHeight: 1.5 }}>
-        {statusKind}: <span style={{ color: '#ccc' }}>{statusLabel}</span>
-        {state.control && <> · <span style={{ color: '#ccc' }}>{state.control}</span></>}<br />
-        {state.liveStatus && (
-          <>
-            Status: <span style={{ color: '#a78bfa', fontStyle: 'italic' }}>{state.liveStatus}</span><br />
-          </>
-        )}
-        Cycle {state.cycleCount}
-      </div>
-
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#888' }}>
-          <span>Cost</span>
-          <span style={{ color: pct >= 100 ? '#f87171' : pct >= 80 ? '#fbbf24' : '#888', fontFamily: 'monospace' }}>
-            ${state.costUsd.toFixed(3)} / ${state.costCapUsd.toFixed(2)}
-          </span>
+      {state && (
+        <div style={{ color: '#888', fontSize: 11, lineHeight: 1.5 }}>
+          {state.phase ? 'Phase' : 'Stage'}: <span style={{ color: '#ccc' }}>{state.phase ?? state.stage ?? 'unknown'}</span>
+          {state.control && <> · <span style={{ color: '#ccc' }}>{state.control}</span></>}<br />
+          {state.liveStatus && (
+            <>
+              Status: <span style={{ color: '#a78bfa', fontStyle: 'italic' }}>{state.liveStatus}</span><br />
+            </>
+          )}
+          Cycle {state.cycleCount}
         </div>
-        <div style={{ height: 4, background: '#2d2d2d', borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
-          <div style={{
-            width: `${Math.min(100, pct)}%`,
-            height: '100%',
-            background: pct >= 100 ? '#f87171' : pct >= 80 ? '#fbbf24' : '#22c55e',
-            transition: 'width 0.3s',
-          }} />
-        </div>
-      </div>
+      )}
 
-      {state.permissionRequest && (
+      {state && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#888' }}>
+            <span>Cost</span>
+            <span style={{ color: pct >= 100 ? '#f87171' : pct >= 80 ? '#fbbf24' : '#888', fontFamily: 'monospace' }}>
+              ${state.costUsd.toFixed(3)} / ${state.costCapUsd.toFixed(2)}
+            </span>
+          </div>
+          <div style={{ height: 4, background: '#2d2d2d', borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
+            <div style={{
+              width: `${Math.min(100, pct)}%`,
+              height: '100%',
+              background: pct >= 100 ? '#f87171' : pct >= 80 ? '#fbbf24' : '#22c55e',
+              transition: 'width 0.3s',
+            }} />
+          </div>
+        </div>
+      )}
+
+      {state?.permissionRequest && (
         <div style={{
           background: 'rgba(251,191,36,0.15)',
           border: '1px solid #fbbf24',
@@ -295,30 +303,32 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
         </div>
       )}
 
-      {state.goal && (
+      {state?.goal && (
         <div>
           <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4 }}>GOAL</div>
           <div style={{ fontSize: 12, lineHeight: 1.4 }}>{state.goal.goal}</div>
         </div>
       )}
 
-      <div>
-        <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4 }}>MILESTONES</div>
-        {milestones.map((m) => (
-          <div key={m.id} style={{ marginBottom: 6 }}>
-            <div style={{ fontSize: 11, color: m.id === state.currentMilestoneId ? '#a78bfa' : '#ccc' }}>
-              {milestoneTick(m.status)} {m.id} — {m.name}
-            </div>
-            {m.id === state.currentMilestoneId && m.subgoals.map((s) => (
-              <div key={s.id} style={{ paddingLeft: 16, fontSize: 11, color: '#aaa' }}>
-                {subgoalTick(s.status)} {s.id}: {s.description}
+      {state && (
+        <div>
+          <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4 }}>MILESTONES</div>
+          {milestones.map((m) => (
+            <div key={m.id} style={{ marginBottom: 6 }}>
+              <div style={{ fontSize: 11, color: m.id === state.currentMilestoneId ? '#a78bfa' : '#ccc' }}>
+                {milestoneTick(m.status)} {m.id} — {m.name}
               </div>
-            ))}
-          </div>
-        ))}
-      </div>
+              {m.id === state.currentMilestoneId && m.subgoals.map((s) => (
+                <div key={s.id} style={{ paddingLeft: 16, fontSize: 11, color: '#aaa' }}>
+                  {subgoalTick(s.status)} {s.id}: {s.description}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
 
-      {state.lastDecisionText && (
+      {state?.lastDecisionText && (
         <div>
           <div
             style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4, cursor: 'pointer', userSelect: 'none' }}
@@ -342,7 +352,7 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
         </div>
       )}
 
-      {state.lastMarker && (
+      {state?.lastMarker && (
         <div>
           <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4 }}>LAST MARKER</div>
           <div style={{ fontSize: 11, color: '#aaa', fontFamily: 'monospace' }}>
@@ -354,14 +364,16 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
         </div>
       )}
 
-      <div>
-        <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4 }}>ACTIVITY</div>
-        {state.recentLog.slice(-10).reverse().map((e, i) => (
-          <div key={i} style={{ fontSize: 10, color: '#888', fontFamily: 'monospace', marginBottom: 2 }}>
-            {e.kind}: {e.summary.slice(0, 60)}
-          </div>
-        ))}
-      </div>
+      {state && (
+        <div>
+          <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4 }}>ACTIVITY</div>
+          {state.recentLog.slice(-10).reverse().map((e, i) => (
+            <div key={i} style={{ fontSize: 10, color: '#888', fontFamily: 'monospace', marginBottom: 2 }}>
+              {e.kind}: {e.summary.slice(0, 60)}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div>
         <button
@@ -423,7 +435,10 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
         </div>
         <textarea
           value={attachAnswer}
-          onChange={(e) => setAttachAnswer(e.target.value)}
+          onChange={(e) => {
+            setAttachAnswer(e.target.value)
+            clearAttachDraft()
+          }}
           placeholder="Optional answer to the CLI's current prompt..."
           style={{
             width: '100%',
@@ -443,7 +458,10 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
           <input
             type="checkbox"
             checked={attachUseLlm}
-            onChange={(e) => setAttachUseLlm(e.target.checked)}
+            onChange={(e) => {
+              setAttachUseLlm(e.target.checked)
+              clearAttachDraft()
+            }}
           />
           Use Autopilot LLM to interpret current state
         </label>
@@ -488,7 +506,7 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
         )}
       </div>
 
-      {isAwaitingReview && (
+      {state && isAwaitingReview && (
         <div style={{ background: 'rgba(167,139,250,0.08)', padding: 10, borderRadius: 4, fontSize: 11 }}>
           Goal files written to <code>.autopilot/</code>. Review and approve.
           <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
@@ -497,23 +515,25 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
         </div>
       )}
 
-      {isEscalated && (
+      {state && isEscalated && (
         <div style={{ background: 'rgba(248,113,113,0.08)', padding: 10, borderRadius: 4, fontSize: 11, color: '#f87171' }}>
           Escalated: {state.escalationReason}
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 6 }}>
-        {canPause && (
-          <button onClick={() => window.api.autopilotPause(terminalId)} style={smallBtn}>⏸ Pause</button>
-        )}
-        {canResume && (
-          <button onClick={() => window.api.autopilotResume(terminalId)} style={smallBtn}>▶ Resume</button>
-        )}
-        <button onClick={() => { window.api.autopilotStop(terminalId); onClose() }} style={smallBtn}>⏹ Stop</button>
-      </div>
+      {state && (
+        <div style={{ display: 'flex', gap: 6 }}>
+          {canPause && (
+            <button onClick={() => window.api.autopilotPause(terminalId)} style={smallBtn}>⏸ Pause</button>
+          )}
+          {canResume && (
+            <button onClick={() => window.api.autopilotResume(terminalId)} style={smallBtn}>▶ Resume</button>
+          )}
+          <button onClick={() => { window.api.autopilotStop(terminalId); onClose() }} style={smallBtn}>⏹ Stop</button>
+        </div>
+      )}
 
-      {(isPaused || isEscalated || isAwaitingReview) && (
+      {state && (isPaused || isEscalated || isAwaitingReview) && (
         <div>
           <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4 }}>MANUAL REPLY</div>
           <textarea
