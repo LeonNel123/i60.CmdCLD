@@ -113,6 +113,18 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
   const attachInputsRef = useRef({ answer: '', useLlm: true })
 
   useEffect(() => {
+    attachDraftSeq.current += 1
+    activeAttachDraftSeq.current = null
+    attachInputsRef.current = { answer: '', useLlm: true }
+    setAttachAnswer('')
+    setAttachUseLlm(true)
+    setAttachDraft(null)
+    setAttachStatus(null)
+    setAttachError(null)
+    setAttachBusy(false)
+  }, [terminalId])
+
+  useEffect(() => {
     let cancelled = false
     void (window.api.autopilotGetStatus(terminalId) as Promise<AutopilotState | null>).then((s) => {
       if (!cancelled) setState(s)
