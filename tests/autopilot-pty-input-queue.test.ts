@@ -60,4 +60,28 @@ describe('Autopilot PTY input queue', () => {
       vi.useRealTimers()
     }
   })
+
+  it('resolves queued writes only after the delayed submit chunk is written', async () => {
+    vi.useFakeTimers()
+    try {
+      const writes: string[] = []
+      const writer = new QueuedPtyWriter(
+        (_terminalId, data) => {
+          writes.push(data)
+        },
+        { submitDelayMs: 50, chunkDelayMs: 1 },
+      )
+
+      const promise = writer.write('term-1', 'line one\nline two\r')
+      expect(promise).toBeInstanceOf(Promise)
+      expect(writes[writes.length - 1]).not.toBe('\r')
+
+      await vi.advanceTimersByTimeAsync(50)
+      await promise
+
+      expect(writes[writes.length - 1]).toBe('\r')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

@@ -50,7 +50,7 @@ export class QueuedPtyWriter {
     this.submitDelayMs = opts.submitDelayMs ?? 300
   }
 
-  write(terminalId: string, data: string): void {
+  write(terminalId: string, data: string): Promise<void> {
     const prior = this.queues.get(terminalId)
     const run = prior
       ? prior.catch(() => {}).then(() => this.writeChunks(terminalId, data))
@@ -62,6 +62,7 @@ export class QueuedPtyWriter {
       }
     })
     this.queues.set(terminalId, tracked)
+    return run
   }
 
   private async writeChunks(terminalId: string, data: string): Promise<void> {
