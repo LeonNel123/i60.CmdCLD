@@ -27,6 +27,7 @@ Thumbs.db
 
 # Superpowers
 .superpowers/
+.worktrees/
 docs/superpowers/
 docs/TestSpecs/
 
