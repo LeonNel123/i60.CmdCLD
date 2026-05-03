@@ -1,6 +1,6 @@
 {
   "name": "cmdcld",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Multi-terminal Claude and Codex launcher",
   "main": "./out/main/index.js",
   "scripts": {
@@ -9,10 +9,12 @@
     "postinstall": "node -e \"if(process.platform==='darwin')require('child_process').execSync('electron-builder install-app-deps',{stdio:'inherit'})\"",
     "test": "vitest run",
     "test:watch": "vitest",
+    "version:check": "node scripts/verify-release-version.mjs",
     "package": "electron-vite build && electron-builder",
     "package:win": "electron-vite build && electron-builder --win nsis",
     "package:mac": "electron-vite build && electron-builder --mac dmg",
-    "package:linux": "electron-vite build && electron-builder --linux AppImage"
+    "package:linux": "electron-vite build && electron-builder --linux AppImage",
+    "release:win": "npm version patch --no-git-tag-version && npm run package:win && npm run version:check"
   },
   "build": {
     "appId": "com.i60.cmdcld",
