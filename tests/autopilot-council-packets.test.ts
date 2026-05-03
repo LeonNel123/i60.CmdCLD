@@ -56,6 +56,8 @@ describe('autopilot council packets', () => {
     expect(text).toContain('# Council Review Packet 001-spec-review')
     expect(text).toContain('Gate: spec')
     expect(text).toContain('## Reviewer Task')
+    expect(text).toContain('## Terminal Tail')
+    expect(text).toContain('(empty)')
   })
 
   it('parses direct reviewer JSON', () => {

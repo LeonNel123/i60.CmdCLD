@@ -110,9 +110,7 @@ export function formatReviewPacketForReviewer(packet: ReviewPacket): string {
     sections.push(['## JSON Marker', fenced(JSON.stringify(packet.marker, null, 2), 'json')].join('\n'))
   }
 
-  if (packet.terminalTail.trim().length > 0) {
-    sections.push(['## Terminal Tail', fenced(packet.terminalTail)].join('\n'))
-  }
+  sections.push(['## Terminal Tail', fenced(packet.terminalTail || '(empty)')].join('\n'))
 
   return sections.join('\n\n')
 }
