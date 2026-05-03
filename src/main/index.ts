@@ -187,6 +187,12 @@ function cancelAttachSession(terminalId: string): void {
   attachSessions.delete(terminalId)
 }
 
+function clearAttachSession(terminalId: string): void {
+  stopAttachSubscription(terminalId)
+  attachSessions.delete(terminalId)
+  attachWriteInFlightTerminals.delete(terminalId)
+}
+
 function broadcastAutopilotUpdate(terminalId: string, state: AutopilotState): void {
   for (const wcId of registry.list().map((w) => w.id)) {
     const wc = registry.getWebContents(wcId)
@@ -336,6 +342,7 @@ function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: s
     }
     const owned = ptyManager.listByWebContents(win.webContents)
     for (const meta of owned) {
+      clearAttachSession(meta.id)
       ptyManager.kill(meta.id)
     }
     registry.unregister(id)
@@ -402,6 +409,7 @@ ipcMain.handle('pty:scrollback', (_event, id: string) => {
 })
 
 ipcMain.handle('pty:kill', (_event, id: string) => {
+  clearAttachSession(id)
   ptyManager.kill(id)
 })
 
@@ -1049,6 +1057,9 @@ app.on('window-all-closed', () => {
 // Cleanup resources when app is quitting (works on all platforms including macOS Cmd+Q)
 app.on('before-quit', () => {
   log('App quitting — cleaning up')
+  for (const meta of ptyManager.listAll()) {
+    clearAttachSession(meta.id)
+  }
   ptyManager.killAll()
   remoteServer.stop()
   recentDB.close()
