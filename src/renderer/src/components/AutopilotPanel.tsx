@@ -110,11 +110,17 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
   const [attachBusy, setAttachBusy] = useState(false)
   const attachDraftSeq = useRef(0)
   const activeAttachDraftSeq = useRef<number | null>(null)
+  const attachConfirmSeq = useRef(0)
+  const activeAttachConfirmSeq = useRef<number | null>(null)
   const attachInputsRef = useRef({ answer: '', useLlm: true })
+  const terminalIdRef = useRef(terminalId)
+  terminalIdRef.current = terminalId
 
   useEffect(() => {
     attachDraftSeq.current += 1
     activeAttachDraftSeq.current = null
+    attachConfirmSeq.current += 1
+    activeAttachConfirmSeq.current = null
     attachInputsRef.current = { answer: '', useLlm: true }
     setAttachAnswer('')
     setAttachUseLlm(true)
@@ -218,22 +224,35 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
   }
   const confirmAttach = async () => {
     if (!attachDraft?.bridgePrompt.trim()) return
+    const confirmTerminalId = terminalId
+    const bridgePrompt = attachDraft.bridgePrompt
+    const seq = ++attachConfirmSeq.current
+    activeAttachConfirmSeq.current = seq
+    const isCurrentConfirmRequest = () => (
+      seq === attachConfirmSeq.current &&
+      terminalIdRef.current === confirmTerminalId
+    )
     setAttachBusy(true)
     setAttachError(null)
     try {
       const result = await window.api.autopilotAttachConfirm({
-        terminalId,
-        bridgePrompt: attachDraft.bridgePrompt,
+        terminalId: confirmTerminalId,
+        bridgePrompt,
       })
+      if (!isCurrentConfirmRequest()) return
       if (!result.ok || !result.status) {
         setAttachError(result.error ?? 'Failed to attach Autopilot.')
         return
       }
       setAttachStatus(result.status)
     } catch (e: any) {
+      if (!isCurrentConfirmRequest()) return
       setAttachError(e?.message ?? 'Failed to attach Autopilot.')
     } finally {
-      setAttachBusy(false)
+      if (activeAttachConfirmSeq.current === seq) {
+        activeAttachConfirmSeq.current = null
+        setAttachBusy(false)
+      }
     }
   }
 
