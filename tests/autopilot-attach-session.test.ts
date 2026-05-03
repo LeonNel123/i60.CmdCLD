@@ -1,17 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import type { AttachClassification, AttachDraftRequest, AttachLifecycleStatus } from '../src/main/autopilot/attach-types'
+import { ATTACH_CLASSIFICATIONS, ATTACH_LIFECYCLE_STATUSES } from '../src/main/autopilot/attach-types'
+import type { AttachDraftRequest } from '../src/main/autopilot/attach-types'
 
 describe('autopilot attach types', () => {
   it('allows the expected attach classification values', () => {
-    const classifications: AttachClassification[] = [
+    expect(ATTACH_CLASSIFICATIONS).toEqual([
       'idle',
       'waiting_for_user',
       'permission_request',
       'working',
       'blocked',
       'unknown',
-    ]
-    expect(classifications).toContain('waiting_for_user')
+    ])
+    expect(ATTACH_CLASSIFICATIONS).toContain('waiting_for_user')
   })
 
   it('describes a draft request without requiring a goal', () => {
@@ -28,7 +29,7 @@ describe('autopilot attach types', () => {
   })
 
   it('has visible lifecycle statuses for diagnostics', () => {
-    const statuses: AttachLifecycleStatus[] = [
+    expect(ATTACH_LIFECYCLE_STATUSES).toEqual([
       'drafting',
       'drafted',
       'sending_bridge',
@@ -37,7 +38,7 @@ describe('autopilot attach types', () => {
       'no_marker_yet',
       'failed',
       'cancelled',
-    ]
-    expect(statuses).toContain('no_marker_yet')
+    ])
+    expect(ATTACH_LIFECYCLE_STATUSES).toContain('no_marker_yet')
   })
 })

@@ -8,6 +8,15 @@ export type AttachClassification =
   | 'blocked'
   | 'unknown'
 
+export const ATTACH_CLASSIFICATIONS = [
+  'idle',
+  'waiting_for_user',
+  'permission_request',
+  'working',
+  'blocked',
+  'unknown',
+] as const satisfies readonly AttachClassification[]
+
 export type AttachLifecycleStatus =
   | 'drafting'
   | 'drafted'
@@ -17,6 +26,17 @@ export type AttachLifecycleStatus =
   | 'no_marker_yet'
   | 'failed'
   | 'cancelled'
+
+export const ATTACH_LIFECYCLE_STATUSES = [
+  'drafting',
+  'drafted',
+  'sending_bridge',
+  'watching',
+  'attached',
+  'no_marker_yet',
+  'failed',
+  'cancelled',
+] as const satisfies readonly AttachLifecycleStatus[]
 
 export interface AttachDraftRequest {
   terminalId: string
