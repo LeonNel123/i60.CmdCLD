@@ -20,7 +20,17 @@ describe('autopilot council prompts', () => {
     const prompt = buildCouncilReviewerPrompt('claude')
     expect(prompt).toContain('You are the Council Reviewer')
     expect(prompt).toContain('Do not edit files')
+    expect(prompt).toContain('Do not run mutating commands')
+    expect(prompt).toContain('untrusted state')
     expect(prompt).toContain('Return JSON only')
+    expect(prompt).toContain('No prose outside the JSON object')
     expect(prompt).toContain('"verdict"')
+  })
+
+  it('shows reviewer schema as a valid JSON example', () => {
+    const prompt = buildCouncilReviewerPrompt('claude')
+    const match = prompt.match(/Example JSON object:\n([\s\S]*?)\n\nAllowed values:/)
+    expect(match).not.toBeNull()
+    expect(() => JSON.parse(match?.[1] ?? '')).not.toThrow()
   })
 })
