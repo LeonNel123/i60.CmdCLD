@@ -119,18 +119,20 @@ export function parseReviewerDecision(text: string): ParseReviewerDecisionResult
   const raw = text
   const candidate = stripMarkdownFence(text.trim())
   const direct = parseJson(candidate)
-  const parsed = direct.ok ? direct : parseExtractedJson(candidate)
 
-  if (!parsed.ok) return { ok: false, error: parsed.error, raw }
+  if (direct.ok) {
+    const validation = validateReviewerDecision(direct.value)
+    if (!validation.ok) return { ok: false, error: validation.error, raw }
+    return { ok: true, decision: validation.decision }
+  }
 
-  const validation = validateReviewerDecision(parsed.value)
-  if (!validation.ok) return { ok: false, error: validation.error, raw }
-
-  return { ok: true, decision: validation.decision }
+  const extracted = parseExtractedReviewerDecision(candidate)
+  return extracted.ok ? extracted : { ok: false, error: extracted.error, raw }
 }
 
 function fenced(text: string, language = ''): string {
-  return `\`\`\`${language}\n${text}\n\`\`\``
+  const fence = '`'.repeat(Math.max(3, longestBacktickRun(text) + 1))
+  return `${fence}${language}\n${text}\n${fence}`
 }
 
 function stripMarkdownFence(text: string): string {
@@ -138,10 +140,22 @@ function stripMarkdownFence(text: string): string {
   return match ? match[1].trim() : text
 }
 
-function parseExtractedJson(text: string): { ok: true; value: unknown } | { ok: false; error: string } {
-  const extracted = extractFirstBalancedJsonObject(text)
-  if (extracted === null) return { ok: false, error: 'No JSON object found in reviewer output' }
-  return parseJson(extracted)
+function parseExtractedReviewerDecision(text: string): ParseReviewerDecisionResult {
+  let lastError = 'No JSON object found in reviewer output'
+
+  for (const candidate of extractBalancedJsonObjects(text)) {
+    const parsed = parseJson(candidate)
+    if (!parsed.ok) {
+      lastError = parsed.error
+      continue
+    }
+
+    const validation = validateReviewerDecision(parsed.value)
+    if (validation.ok) return { ok: true, decision: validation.decision }
+    lastError = validation.error
+  }
+
+  return { ok: false, error: lastError, raw: text }
 }
 
 function parseJson(text: string): { ok: true; value: unknown } | { ok: false; error: string } {
@@ -152,7 +166,8 @@ function parseJson(text: string): { ok: true; value: unknown } | { ok: false; er
   }
 }
 
-function extractFirstBalancedJsonObject(text: string): string | null {
+function extractBalancedJsonObjects(text: string): string[] {
+  const candidates: string[] = []
   let start = -1
   let depth = 0
   let inString = false
@@ -165,6 +180,8 @@ function extractFirstBalancedJsonObject(text: string): string | null {
       if (char === '{') {
         start = index
         depth = 1
+        inString = false
+        escaped = false
       }
       continue
     }
@@ -188,10 +205,21 @@ function extractFirstBalancedJsonObject(text: string): string | null {
 
     if (char === '{') depth += 1
     if (char === '}') depth -= 1
-    if (depth === 0) return text.slice(start, index + 1)
+    if (depth === 0) {
+      candidates.push(text.slice(start, index + 1))
+      start = -1
+      inString = false
+      escaped = false
+    }
   }
 
-  return null
+  return candidates
+}
+
+function longestBacktickRun(text: string): number {
+  const matches = text.match(/`+/g)
+  if (matches === null) return 0
+  return Math.max(...matches.map((match) => match.length))
 }
 
 function validateReviewerDecision(value: unknown): { ok: true; decision: ReviewerDecision } | { ok: false; error: string } {

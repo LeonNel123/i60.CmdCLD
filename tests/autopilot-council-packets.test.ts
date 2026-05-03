@@ -60,6 +60,29 @@ describe('autopilot council packets', () => {
     expect(text).toContain('(empty)')
   })
 
+  it('formats reviewer packets with a fence longer than embedded backticks', () => {
+    const packet = buildReviewPacket({
+      sequence: 2,
+      gate: 'plan',
+      stage: 'planning',
+      projectPath: 'D:/repo',
+      goalSummary: 'goal',
+      implementerCli: 'claude',
+      reviewerCli: 'codex',
+      marker: null,
+      artifactPath: 'plan.md',
+      artifactContent: 'before\n```\ninside\n```',
+      diffSummary: null,
+      filesChanged: [],
+      testEvidence: null,
+      recentDecisions: [],
+      terminalTail: 'tail\n```\ninside tail\n```',
+    })
+    const text = formatReviewPacketForReviewer(packet)
+    expect(text).toContain('````\nbefore\n```\ninside\n```\n````')
+    expect(text).toContain('````\ntail\n```\ninside tail\n```\n````')
+  })
+
   it('parses direct reviewer JSON', () => {
     const parsed = parseReviewerDecision(JSON.stringify({
       verdict: 'refine',
@@ -78,6 +101,31 @@ describe('autopilot council packets', () => {
   it('extracts JSON from noisy reviewer output', () => {
     const parsed = parseReviewerDecision('text before {"verdict":"approve","risk":"low","findings":[],"recommended_instruction":"","rationale":"ok"} text after')
     expect(parsed.ok).toBe(true)
+  })
+
+  it('skips invalid balanced objects before valid reviewer JSON', () => {
+    const parsed = parseReviewerDecision('noise {not json} then {"verdict":"approve","risk":"low","findings":[],"recommended_instruction":"","rationale":"ok"}')
+    expect(parsed.ok).toBe(true)
+  })
+
+  it('parses reviewer JSON fields containing braces, escaped quotes, and backslashes', () => {
+    const parsed = parseReviewerDecision('noise before ' + JSON.stringify({
+      verdict: 'approve',
+      risk: 'low',
+      findings: [{
+        title: 'Finding with {braces}',
+        severity: 'info',
+        reason: 'Escaped "quote" and C:\\tmp\\file',
+        recommended_fix: 'Keep {"json":"literal"} and C:\\repo',
+      }],
+      recommended_instruction: 'Inspect {"path":"C:\\repo"} before saying "ok".',
+      rationale: 'Path C:\\repo\\file and braces {inside string}.',
+    }) + ' noise after')
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.decision.findings[0].reason).toContain('C:\\tmp\\file')
+      expect(parsed.decision.rationale).toContain('{inside string}')
+    }
   })
 
   it('rejects invalid reviewer JSON schema', () => {
