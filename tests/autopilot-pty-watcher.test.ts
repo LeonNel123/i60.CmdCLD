@@ -499,3 +499,40 @@ describe('PtyWatcher missing-marker fallback (Wave 3.6)', () => {
     vi.useRealTimers()
   })
 })
+
+describe('PtyWatcher attach baseline', () => {
+  it('ignores ORCH markers before the baseline offset', async () => {
+    vi.useFakeTimers()
+    const snapshots: any[] = []
+    const echoedBridge = '[ORCH:WAITING]\nSTATUS: waiting\nQUESTION: echoed bridge\n'
+    const watcher = new PtyWatcher({
+      idleMs: 1,
+      forceSettleMs: 1,
+      markerFallbackMs: 0,
+      baselineChars: echoedBridge.length,
+      onSettle: (snapshot) => snapshots.push(snapshot),
+    })
+    watcher.feed(echoedBridge)
+    await vi.advanceTimersByTimeAsync(5)
+    expect(snapshots).toHaveLength(0)
+    vi.useRealTimers()
+  })
+
+  it('settles on ORCH markers after the baseline offset', async () => {
+    vi.useFakeTimers()
+    const snapshots: any[] = []
+    const echoedBridge = '[ORCH:WAITING]\nSTATUS: waiting\nQUESTION: echoed bridge\n'
+    const watcher = new PtyWatcher({
+      idleMs: 1,
+      markerFallbackMs: 0,
+      baselineChars: echoedBridge.length,
+      onSettle: (snapshot) => snapshots.push(snapshot),
+    })
+    watcher.feed(echoedBridge)
+    watcher.feed('real answer\n[ORCH:WAITING]\nSTATUS: waiting\nQUESTION: next input?\n')
+    await vi.advanceTimersByTimeAsync(5)
+    expect(snapshots).toHaveLength(1)
+    expect(snapshots[0].marker.question).toBe('next input?')
+    vi.useRealTimers()
+  })
+})

@@ -4,6 +4,7 @@ interface Options {
   idleMs?: number
   nudgeMs?: number          // currently informational; consumer handles nudging
   forceSettleMs?: number    // when allStructured fails after a marker, settle anyway after this many ms with no new bytes (default 3000; 0 disables)
+  baselineChars?: number
   onSettle: (snapshot: SettledSnapshot) => void
   onForceSettleArmed?: (firesAt: number) => void   // unix ms when force-settle will fire
   onForceSettleCanceled?: () => void
@@ -168,12 +169,14 @@ export class PtyWatcher {
   private markerFallbackMs: number
   private markerFallbackTimer: ReturnType<typeof setTimeout> | null = null
   private permissionPromptActive = false
+  private baselineChars: number
 
   constructor(opts: Options) {
     this.idleMs = opts.idleMs ?? 1500
     this.nudgeMs = opts.nudgeMs ?? 10000
     this.forceSettleMs = opts.forceSettleMs ?? 3000
     this.markerFallbackMs = opts.markerFallbackMs ?? 30000
+    this.baselineChars = opts.baselineChars ?? 0
     this.onSettle = opts.onSettle
     this.opts = opts
   }
@@ -193,6 +196,10 @@ export class PtyWatcher {
     this.idleTimer = setTimeout(() => this.checkSettled(), this.idleMs)
   }
 
+  private activeBuffer(): string {
+    return this.baselineChars > 0 ? this.buffer.slice(this.baselineChars) : this.buffer
+  }
+
   reset(): void {
     this.buffer = ''
     if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null }
@@ -209,7 +216,8 @@ export class PtyWatcher {
   }
 
   private checkSettled(): void {
-    const cleaned = stripTerminalAnsi(this.buffer)
+    const active = this.activeBuffer()
+    const cleaned = stripTerminalAnsi(active)
 
     // Permission prompt detection: scan the last 1KB of cleaned output.
     const tail = cleaned.slice(-1024)
@@ -222,7 +230,7 @@ export class PtyWatcher {
       this.permissionPromptActive = false
     }
 
-    const found = findLastMarker(this.buffer)
+    const found = findLastMarker(active)
     if (!found) {
       // No marker yet. Arm marker-fallback if buffer has substantive output.
       if (this.markerFallbackMs > 0 && !this.markerFallbackTimer && cleaned.length > 100) {
@@ -277,7 +285,7 @@ export class PtyWatcher {
 
   private forceSettle(): void {
     this.forceSettleTimer = null
-    const found = findLastMarker(this.buffer)
+    const found = findLastMarker(this.activeBuffer())
     if (!found) return    // marker disappeared (e.g., reset() between arming and firing)
     this.emitSettle(found)
   }

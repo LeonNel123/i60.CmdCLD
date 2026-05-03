@@ -26,12 +26,14 @@ const SHELL = getShell()
 export class ScrollbackBuffer {
   private chunks: string[] = []
   private totalLength = 0
+  private totalWritten = 0
 
   constructor(private maxSize: number) {}
 
   push(data: string): void {
     this.chunks.push(data)
     this.totalLength += data.length
+    this.totalWritten += data.length
     while (this.totalLength > this.maxSize && this.chunks.length > 1) {
       const removed = this.chunks.shift()!
       this.totalLength -= removed.length
@@ -42,9 +44,22 @@ export class ScrollbackBuffer {
     return this.chunks.join('')
   }
 
+  getOffset(): number {
+    return this.totalWritten
+  }
+
+  getSinceOffset(offset: number): string {
+    const all = this.getAll()
+    const firstAvailableOffset = this.totalWritten - this.totalLength
+    if (offset <= firstAvailableOffset) return all
+    if (offset >= this.totalWritten) return ''
+    return all.slice(offset - firstAvailableOffset)
+  }
+
   clear(): void {
     this.chunks = []
     this.totalLength = 0
+    this.totalWritten = 0
   }
 }
 
@@ -170,6 +185,14 @@ export class PtyManager extends EventEmitter {
 
   getScrollback(id: string): string {
     return this.ptys.get(id)?.scrollback.getAll() || ''
+  }
+
+  getScrollbackOffset(id: string): number {
+    return this.ptys.get(id)?.scrollback.getOffset() ?? 0
+  }
+
+  getScrollbackSinceOffset(id: string, offset: number): string {
+    return this.ptys.get(id)?.scrollback.getSinceOffset(offset) ?? ''
   }
 
   write(id: string, data: string): void {
