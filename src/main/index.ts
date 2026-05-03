@@ -129,6 +129,7 @@ const autopilots = new Map<string, AutopilotHandle>()  // keyed by terminalId â€
 const autopilotPros = new Map<string, AutopilotProHandle>()  // keyed by terminalId â€” PRO mode
 const attachSessions = new Map<string, AttachSessionStatus>()
 const cancelledAttachSessionIds = new Set<string>()
+let attachSessionSeq = 0
 
 function makeAutopilotApiClient(provider: 'anthropic' | 'openrouter', apiKey: string, model: string) {
   return provider === 'anthropic'
@@ -627,7 +628,7 @@ ipcMain.handle('autopilot:attachConfirm', async (_event, args: { terminalId: str
   if (current && (current.status === 'sending_bridge' || current.status === 'watching')) {
     return { ok: false, error: 'Attach is already active for this terminal.', status: current }
   }
-  const id = `${args.terminalId}:${Date.now()}`
+  const id = `${args.terminalId}:${++attachSessionSeq}`
   const status: AttachSessionStatus = {
     id,
     terminalId: args.terminalId,
