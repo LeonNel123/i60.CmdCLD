@@ -294,6 +294,64 @@ export function getAutopilotRuntimeGuardrail(agentCli: AgentCli, args: string): 
   return { agentCli: normalized, canStart: true, reason: null, warnings }
 }
 
+export function getCouncilReviewerRuntimeGuardrail(agentCli: AgentCli, args: string): AutopilotRuntimeGuardrail {
+  const normalized = normalizeAgentCli(agentCli)
+  const tokens = tokenizeArgs(args)
+  const has = (sequence: string): boolean => hasTokenSequence(tokens, tokenizeArgs(sequence))
+  const hasAny = (...sequences: string[]): boolean => sequences.some((sequence) => has(sequence))
+  const hasOptionValue = (names: string[], value: string): boolean => getOptionValues(tokens, names).includes(value)
+  const hasOption = (names: string[]): boolean =>
+    tokens.some((token) => names.some((name) => token === name || token.startsWith(`${name}=`)))
+
+  if (normalized === 'claude') {
+    const warnings: string[] = []
+    if (hasAny('--dangerously-skip-permissions') || hasOptionValue(['--permission-mode'], 'bypassPermissions')) {
+      warnings.push('Claude permission bypass is enabled for a reviewer session; prefer a review-only permission mode.')
+    }
+    return { agentCli: normalized, canStart: true, reason: null, warnings }
+  }
+
+  if (has('resume --last')) {
+    return {
+      agentCli: normalized,
+      canStart: false,
+      reason: 'Codex council reviewer blocks resume --last because reviewer sessions must start from a clean prompt.',
+      warnings: [],
+    }
+  }
+
+  if (has('--dangerously-bypass-approvals-and-sandbox')) {
+    return {
+      agentCli: normalized,
+      canStart: false,
+      reason: 'Codex council reviewer blocks --dangerously-bypass-approvals-and-sandbox. Use --sandbox read-only.',
+      warnings: [],
+    }
+  }
+
+  if (hasOptionValue(['--sandbox', '-s'], 'danger-full-access')) {
+    return {
+      agentCli: normalized,
+      canStart: false,
+      reason: 'Codex council reviewer blocks danger-full-access. Use --sandbox read-only.',
+      warnings: [],
+    }
+  }
+
+  const warnings: string[] = []
+  if (hasOptionValue(['--sandbox', '-s'], 'workspace-write')) {
+    warnings.push('Codex council reviewers should run read-only; prefer --sandbox read-only unless write access is explicitly required.')
+  } else if (!hasOption(['--sandbox', '-s']) && !has('--full-auto')) {
+    warnings.push('Codex council reviewers should specify --sandbox read-only.')
+  }
+
+  if (!hasOption(['--ask-for-approval', '-a']) && !has('--full-auto')) {
+    warnings.push('Codex council reviewers should specify --ask-for-approval never to avoid unsupported approval prompts.')
+  }
+
+  return { agentCli: normalized, canStart: true, reason: null, warnings }
+}
+
 export function getActiveAgentCliLaunchOptionIds(agentCli: AgentCli, args: string): string[] {
   const tokens = tokenizeArgs(args)
   return getAllLaunchOptions(agentCli)

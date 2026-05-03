@@ -6,6 +6,7 @@ import {
   getArgsForAgent,
   getActiveAgentCliLaunchOptionIds,
   getAutopilotRuntimeGuardrail,
+  getCouncilReviewerRuntimeGuardrail,
   normalizeAgentCli,
   stripResumeArgsForQuickLaunch,
 } from '../src/shared/agent-cli'
@@ -129,5 +130,31 @@ describe('agent CLI utilities', () => {
 
     args = applyAgentCliLaunchOption('claude', args, 'claude-skip-permissions')
     expect(args).toBe('--continue --model opus --effort high --dangerously-skip-permissions')
+  })
+})
+
+describe('getCouncilReviewerRuntimeGuardrail', () => {
+  it('allows Claude reviewer sessions', () => {
+    const result = getCouncilReviewerRuntimeGuardrail('claude', '--permission-mode default')
+    expect(result.canStart).toBe(true)
+    expect(result.reason).toBeNull()
+  })
+
+  it('allows Codex reviewer sessions in read-only mode', () => {
+    const result = getCouncilReviewerRuntimeGuardrail('codex', '--sandbox read-only --ask-for-approval never --search')
+    expect(result.canStart).toBe(true)
+    expect(result.reason).toBeNull()
+  })
+
+  it('blocks dangerous Codex reviewer bypass', () => {
+    const result = getCouncilReviewerRuntimeGuardrail('codex', '--dangerously-bypass-approvals-and-sandbox')
+    expect(result.canStart).toBe(false)
+    expect(result.reason).toContain('blocks')
+  })
+
+  it('warns when Codex reviewer has workspace write access', () => {
+    const result = getCouncilReviewerRuntimeGuardrail('codex', '--sandbox workspace-write --ask-for-approval never')
+    expect(result.canStart).toBe(true)
+    expect(result.warnings.join(' ')).toContain('read-only')
   })
 })
