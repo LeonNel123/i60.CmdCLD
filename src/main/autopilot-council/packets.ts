@@ -168,52 +168,41 @@ function parseJson(text: string): { ok: true; value: unknown } | { ok: false; er
 
 function extractBalancedJsonObjects(text: string): string[] {
   const candidates: string[] = []
-  let start = -1
+
+  for (let start = 0; start < text.length; start += 1) {
+    if (text[start] !== '{') continue
+
+    const candidate = extractBalancedJsonObjectFrom(text, start)
+    if (candidate !== null) candidates.push(candidate)
+  }
+
+  return candidates
+}
+
+function extractBalancedJsonObjectFrom(text: string, start: number): string | null {
   let depth = 0
   let inString = false
   let escaped = false
 
-  for (let index = 0; index < text.length; index += 1) {
+  for (let index = start; index < text.length; index += 1) {
     const char = text[index]
-
-    if (start === -1) {
-      if (char === '{') {
-        start = index
-        depth = 1
-        inString = false
-        escaped = false
-      }
-      continue
-    }
 
     if (escaped) {
       escaped = false
-      continue
-    }
-
-    if (char === '\\') {
-      escaped = inString
-      continue
-    }
-
-    if (char === '"') {
+    } else if (char === '\\' && inString) {
+      escaped = true
+    } else if (char === '"') {
       inString = !inString
-      continue
-    }
+    } else if (!inString && char === '{') {
+      depth += 1
+    } else if (!inString && char === '}') {
+      depth -= 1
 
-    if (inString) continue
-
-    if (char === '{') depth += 1
-    if (char === '}') depth -= 1
-    if (depth === 0) {
-      candidates.push(text.slice(start, index + 1))
-      start = -1
-      inString = false
-      escaped = false
+      if (depth === 0) return text.slice(start, index + 1)
     }
   }
 
-  return candidates
+  return null
 }
 
 function longestBacktickRun(text: string): number {

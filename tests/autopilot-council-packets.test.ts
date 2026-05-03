@@ -108,6 +108,11 @@ describe('autopilot council packets', () => {
     expect(parsed.ok).toBe(true)
   })
 
+  it('recovers valid reviewer JSON after an unmatched opening brace', () => {
+    const parsed = parseReviewerDecision('noise { unfinished before {"verdict":"approve","risk":"low","findings":[],"recommended_instruction":"","rationale":"ok"}')
+    expect(parsed.ok).toBe(true)
+  })
+
   it('parses reviewer JSON fields containing braces, escaped quotes, and backslashes', () => {
     const parsed = parseReviewerDecision('noise before ' + JSON.stringify({
       verdict: 'approve',
