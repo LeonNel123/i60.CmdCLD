@@ -43,6 +43,19 @@ interface OutputInspection {
   structuredFields: Record<string, string>
   summary: string
 }
+interface AttachDraft {
+  classification: string
+  bridgePrompt: string
+  cleanTail: string
+  usedLlm: boolean
+  estimatedCostUsd?: number
+  error?: string
+}
+interface AttachStatus {
+  status: string
+  message: string
+  lastMarker?: { kind: string; receivedAt: number; text?: string } | null
+}
 
 interface Props {
   terminalId: string
@@ -65,6 +78,17 @@ export function getAutopilotPanelControlFlags(state: {
     canPause: !isPaused && !isEscalated && !isStopped && !isCompleted,
     canResume: isPaused && !isEscalated && !isStopped,
   }
+}
+
+export function shouldAllowAttachDraft(state: AutopilotState | null): boolean {
+  if (!state) return true
+  const phase = state.phase ?? state.stage
+  return !phase || phase === 'idle' || phase === 'stopped' || phase === 'completed'
+}
+
+export function getAttachStatusLabel(status: AttachStatus | null): string {
+  if (!status) return 'not attached'
+  return `${status.status}: ${status.message}`
 }
 
 export function AutopilotPanel({ terminalId, onClose }: Props) {
