@@ -128,6 +128,7 @@ const confirmedClose = new WeakSet<BrowserWindow>()
 const autopilots = new Map<string, AutopilotHandle>()  // keyed by terminalId — Classic mode
 const autopilotPros = new Map<string, AutopilotProHandle>()  // keyed by terminalId — PRO mode
 const attachSessions = new Map<string, AttachSessionStatus>()
+const cancelledAttachSessionIds = new Set<string>()
 
 function makeAutopilotApiClient(provider: 'anthropic' | 'openrouter', apiKey: string, model: string) {
   return provider === 'anthropic'
@@ -618,7 +619,14 @@ ipcMain.handle('autopilot:attachDraft', async (_event, args: { terminalId: strin
 
 ipcMain.handle('autopilot:attachConfirm', async (_event, args: { terminalId: string; bridgePrompt: string }) => {
   if (!ptyManager.has(args.terminalId)) return { ok: false, error: 'Terminal session not found.' }
+  if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId)) {
+    return { ok: false, error: 'Autopilot is already running for this terminal.' }
+  }
   if (!args.bridgePrompt.trim()) return { ok: false, error: 'Bridge prompt is empty.' }
+  const current = attachSessions.get(args.terminalId)
+  if (current && (current.status === 'sending_bridge' || current.status === 'watching')) {
+    return { ok: false, error: 'Attach is already active for this terminal.', status: current }
+  }
   const id = `${args.terminalId}:${Date.now()}`
   const status: AttachSessionStatus = {
     id,
@@ -633,12 +641,28 @@ ipcMain.handle('autopilot:attachConfirm', async (_event, args: { terminalId: str
   attachSessions.set(args.terminalId, status)
   try {
     await autopilotPtyWriter.write(args.terminalId, args.bridgePrompt)
+    const latest = attachSessions.get(args.terminalId)
+    if (cancelledAttachSessionIds.has(id) || latest?.id !== id || status.status === 'cancelled') {
+      cancelledAttachSessionIds.delete(id)
+      status.status = 'cancelled'
+      status.message = 'Attach was cancelled.'
+      if (latest?.id === id) attachSessions.delete(args.terminalId)
+      return { ok: false, error: 'Attach was cancelled.', status }
+    }
     status.bridgeSentAt = Date.now()
     status.baselineOffset = ptyManager.getScrollbackOffset(args.terminalId)
     status.status = 'watching'
     status.message = `Watching from output offset ${status.baselineOffset}.`
     return { ok: true, status }
   } catch (e: any) {
+    const latest = attachSessions.get(args.terminalId)
+    if (cancelledAttachSessionIds.has(id) || latest?.id !== id || status.status === 'cancelled') {
+      cancelledAttachSessionIds.delete(id)
+      status.status = 'cancelled'
+      status.message = 'Attach was cancelled.'
+      if (latest?.id === id) attachSessions.delete(args.terminalId)
+      return { ok: false, error: 'Attach was cancelled.', status }
+    }
     const error = e?.message ?? 'Failed to send attach bridge prompt.'
     status.status = 'failed'
     status.lastError = error
@@ -654,8 +678,12 @@ ipcMain.handle('autopilot:attachStatus', (_event, terminalId: string) => {
 ipcMain.handle('autopilot:attachCancel', (_event, terminalId: string) => {
   const current = attachSessions.get(terminalId)
   if (current) {
+    const wasSendingBridge = current.status === 'sending_bridge'
     current.status = 'cancelled'
     current.message = 'Attach cancelled.'
+    if (wasSendingBridge) {
+      cancelledAttachSessionIds.add(current.id)
+    }
   }
   attachSessions.delete(terminalId)
   return { ok: true }
