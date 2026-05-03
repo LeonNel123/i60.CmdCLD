@@ -102,6 +102,12 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
   const [checkingOutput, setCheckingOutput] = useState(false)
   const [inspection, setInspection] = useState<OutputInspection | null>(null)
   const [inspectionError, setInspectionError] = useState<string | null>(null)
+  const [attachAnswer, setAttachAnswer] = useState('')
+  const [attachUseLlm, setAttachUseLlm] = useState(true)
+  const [attachDraft, setAttachDraft] = useState<AttachDraft | null>(null)
+  const [attachStatus, setAttachStatus] = useState<AttachStatus | null>(null)
+  const [attachError, setAttachError] = useState<string | null>(null)
+  const [attachBusy, setAttachBusy] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -113,6 +119,24 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
     })
     return () => { cancelled = true; off() }
   }, [terminalId])
+
+  useEffect(() => {
+    if (attachStatus?.status !== 'watching' && attachStatus?.status !== 'no_marker_yet') return
+    let cancelled = false
+    const pollAttachStatus = async () => {
+      try {
+        const nextStatus = await window.api.autopilotAttachStatus(terminalId)
+        if (!cancelled && nextStatus) setAttachStatus(nextStatus)
+      } catch {
+        // Keep the last known status visible; draft/confirm paths surface actionable errors.
+      }
+    }
+    const interval = window.setInterval(() => void pollAttachStatus(), 3000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [terminalId, attachStatus?.status])
 
   const pct = useMemo(() => {
     if (!state) return 0
@@ -135,6 +159,46 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
       setInspectionError(e?.message ?? 'Failed to inspect output')
     } finally {
       setCheckingOutput(false)
+    }
+  }
+  const draftAttach = async () => {
+    setAttachBusy(true)
+    setAttachError(null)
+    try {
+      const result = await window.api.autopilotAttachDraft({
+        terminalId,
+        userAnswer: attachAnswer,
+        useLlm: attachUseLlm,
+      })
+      if (!result.ok || !result.draft) {
+        setAttachError(result.error ?? 'Failed to draft attach bridge.')
+        return
+      }
+      setAttachDraft(result.draft)
+    } catch (e: any) {
+      setAttachError(e?.message ?? 'Failed to draft attach bridge.')
+    } finally {
+      setAttachBusy(false)
+    }
+  }
+  const confirmAttach = async () => {
+    if (!attachDraft?.bridgePrompt.trim()) return
+    setAttachBusy(true)
+    setAttachError(null)
+    try {
+      const result = await window.api.autopilotAttachConfirm({
+        terminalId,
+        bridgePrompt: attachDraft.bridgePrompt,
+      })
+      if (!result.ok || !result.status) {
+        setAttachError(result.error ?? 'Failed to attach Autopilot.')
+        return
+      }
+      setAttachStatus(result.status)
+    } catch (e: any) {
+      setAttachError(e?.message ?? 'Failed to attach Autopilot.')
+    } finally {
+      setAttachBusy(false)
     }
   }
 
@@ -344,6 +408,82 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
               wordBreak: 'break-word',
               color: '#777',
             }}>{inspection.cleanTail || '(empty scrollback)'}</pre>
+          </div>
+        )}
+      </div>
+
+      <div style={{
+        background: '#111827',
+        border: '1px solid #2d2d2d',
+        borderRadius: 4,
+        padding: 8,
+      }}>
+        <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 6 }}>
+          ATTACH AUTOPILOT
+        </div>
+        <textarea
+          value={attachAnswer}
+          onChange={(e) => setAttachAnswer(e.target.value)}
+          placeholder="Optional answer to the CLI's current prompt..."
+          style={{
+            width: '100%',
+            minHeight: 54,
+            background: '#0d1117',
+            border: '1px solid #2d2d2d',
+            borderRadius: 4,
+            padding: 8,
+            color: '#ccc',
+            fontSize: 11,
+            fontFamily: 'monospace',
+            resize: 'vertical',
+            boxSizing: 'border-box',
+          }}
+        />
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, color: '#aaa', fontSize: 11 }}>
+          <input
+            type="checkbox"
+            checked={attachUseLlm}
+            onChange={(e) => setAttachUseLlm(e.target.checked)}
+          />
+          Use Autopilot LLM to interpret current state
+        </label>
+        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          <button
+            onClick={draftAttach}
+            disabled={attachBusy || !shouldAllowAttachDraft(state)}
+            style={smallBtn}
+          >
+            {attachBusy ? 'Working...' : 'Draft bridge'}
+          </button>
+          <button
+            onClick={confirmAttach}
+            disabled={attachBusy || !attachDraft}
+            style={primaryBtn}
+          >
+            Attach
+          </button>
+        </div>
+        {attachError && <div style={{ color: '#f87171', fontSize: 11, marginTop: 6 }}>{attachError}</div>}
+        {attachDraft && (
+          <div style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 10, color: '#aaa' }}>
+            <div style={{ color: '#86efac' }}>
+              {attachDraft.usedLlm ? 'LLM-assisted' : 'Deterministic'} · {attachDraft.classification}
+              {typeof attachDraft.estimatedCostUsd === 'number' && ` · $${attachDraft.estimatedCostUsd.toFixed(4)}`}
+            </div>
+            {attachDraft.error && <div style={{ color: '#fbbf24' }}>{attachDraft.error}</div>}
+            <pre style={{
+              margin: '6px 0 0',
+              maxHeight: 160,
+              overflow: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              color: '#777',
+            }}>{attachDraft.bridgePrompt}</pre>
+          </div>
+        )}
+        {attachStatus && (
+          <div style={{ marginTop: 8, fontSize: 11, color: '#a78bfa' }}>
+            {getAttachStatusLabel(attachStatus)}
           </div>
         )}
       </div>
