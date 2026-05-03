@@ -345,7 +345,7 @@ export function getCouncilReviewerRuntimeGuardrail(agentCli: AgentCli, args: str
     warnings.push('Codex council reviewers should specify --sandbox read-only.')
   }
 
-  if (!hasOption(['--ask-for-approval', '-a']) && !has('--full-auto')) {
+  if (!hasOptionValue(['--ask-for-approval', '-a'], 'never') && !has('--full-auto')) {
     warnings.push('Codex council reviewers should specify --ask-for-approval never to avoid unsupported approval prompts.')
   }
 

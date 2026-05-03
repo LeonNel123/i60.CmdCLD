@@ -140,10 +140,23 @@ describe('getCouncilReviewerRuntimeGuardrail', () => {
     expect(result.reason).toBeNull()
   })
 
+  it('warns when Claude reviewer bypasses permissions', () => {
+    const result = getCouncilReviewerRuntimeGuardrail('claude', '--dangerously-skip-permissions')
+    expect(result.canStart).toBe(true)
+    expect(result.warnings.join(' ')).toMatch(/permission bypass/i)
+  })
+
   it('allows Codex reviewer sessions in read-only mode', () => {
     const result = getCouncilReviewerRuntimeGuardrail('codex', '--sandbox read-only --ask-for-approval never --search')
     expect(result.canStart).toBe(true)
     expect(result.reason).toBeNull()
+    expect(result.warnings).toEqual([])
+  })
+
+  it('blocks Codex reviewer resume sessions', () => {
+    const result = getCouncilReviewerRuntimeGuardrail('codex', 'resume --last --sandbox read-only --ask-for-approval never')
+    expect(result.canStart).toBe(false)
+    expect(result.reason).toContain('resume --last')
   })
 
   it('blocks dangerous Codex reviewer bypass', () => {
@@ -152,9 +165,31 @@ describe('getCouncilReviewerRuntimeGuardrail', () => {
     expect(result.reason).toContain('blocks')
   })
 
+  it('blocks Codex reviewer full filesystem access', () => {
+    const result = getCouncilReviewerRuntimeGuardrail('codex', '--sandbox danger-full-access --ask-for-approval never')
+    expect(result.canStart).toBe(false)
+    expect(result.reason).toContain('danger-full-access')
+  })
+
   it('warns when Codex reviewer has workspace write access', () => {
     const result = getCouncilReviewerRuntimeGuardrail('codex', '--sandbox workspace-write --ask-for-approval never')
     expect(result.canStart).toBe(true)
     expect(result.warnings.join(' ')).toContain('read-only')
+  })
+
+  it('warns when Codex reviewer is missing explicit sandbox mode', () => {
+    const result = getCouncilReviewerRuntimeGuardrail('codex', '--ask-for-approval never --search')
+    expect(result.canStart).toBe(true)
+    expect(result.warnings.join(' ')).toContain('--sandbox read-only')
+  })
+
+  it('warns when Codex reviewer is missing never approval mode', () => {
+    const missing = getCouncilReviewerRuntimeGuardrail('codex', '--sandbox read-only --search')
+    expect(missing.canStart).toBe(true)
+    expect(missing.warnings.join(' ')).toContain('--ask-for-approval never')
+
+    const onRequest = getCouncilReviewerRuntimeGuardrail('codex', '--sandbox read-only --ask-for-approval on-request')
+    expect(onRequest.canStart).toBe(true)
+    expect(onRequest.warnings.join(' ')).toContain('--ask-for-approval never')
   })
 })

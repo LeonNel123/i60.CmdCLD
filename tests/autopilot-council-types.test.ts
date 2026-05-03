@@ -5,6 +5,7 @@ import {
   HIGH_RISK_CATEGORIES,
   isCouncilGate,
   isCouncilIntensity,
+  isReviewerRisk,
   isReviewerVerdict,
 } from '../src/main/autopilot-council/types'
 
@@ -24,6 +25,11 @@ describe('autopilot council types', () => {
     expect(isReviewerVerdict('disagree')).toBe(true)
     expect(isReviewerVerdict('escalate')).toBe(true)
     expect(isReviewerVerdict('block')).toBe(false)
+
+    expect(isReviewerRisk('low')).toBe(true)
+    expect(isReviewerRisk('medium')).toBe(true)
+    expect(isReviewerRisk('high')).toBe(true)
+    expect(isReviewerRisk('critical')).toBe(false)
   })
 
   it('maps intensity to gates', () => {
