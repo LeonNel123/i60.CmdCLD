@@ -209,6 +209,7 @@ function broadcastAutopilotProUpdate(terminalId: string, state: ProState): void 
 
 try {
   ptyManager = new PtyManager()
+  ptyManager.on('exit', ({ id }: { id: string }) => clearAttachSession(id))
   autopilotPtyWriter = new QueuedPtyWriter((terminalId, data) => {
     ptyManager.write(terminalId, data)
   })
