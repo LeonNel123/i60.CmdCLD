@@ -129,6 +129,7 @@ const autopilots = new Map<string, AutopilotHandle>()  // keyed by terminalId â€
 const autopilotPros = new Map<string, AutopilotProHandle>()  // keyed by terminalId â€” PRO mode
 const attachSessions = new Map<string, AttachSessionStatus>()
 const cancelledAttachSessionIds = new Set<string>()
+const attachWriteInFlightTerminals = new Set<string>()
 let attachSessionSeq = 0
 
 function makeAutopilotApiClient(provider: 'anthropic' | 'openrouter', apiKey: string, model: string) {
@@ -139,7 +140,9 @@ function makeAutopilotApiClient(provider: 'anthropic' | 'openrouter', apiKey: st
 
 function hasActiveAttachSession(terminalId: string): boolean {
   const current = attachSessions.get(terminalId)
-  return current?.status === 'sending_bridge' || current?.status === 'watching'
+  return attachWriteInFlightTerminals.has(terminalId)
+    || current?.status === 'sending_bridge'
+    || current?.status === 'watching'
 }
 
 function broadcastAutopilotUpdate(terminalId: string, state: AutopilotState): void {
@@ -631,8 +634,10 @@ ipcMain.handle('autopilot:attachConfirm', async (_event, args: { terminalId: str
   }
   if (!args.bridgePrompt.trim()) return { ok: false, error: 'Bridge prompt is empty.' }
   const current = attachSessions.get(args.terminalId)
-  if (current && (current.status === 'sending_bridge' || current.status === 'watching')) {
-    return { ok: false, error: 'Attach is already active for this terminal.', status: current }
+  if (hasActiveAttachSession(args.terminalId)) {
+    return current
+      ? { ok: false, error: 'Attach is already active for this terminal.', status: current }
+      : { ok: false, error: 'Attach is already active for this terminal.' }
   }
   const id = `${args.terminalId}:${++attachSessionSeq}`
   const status: AttachSessionStatus = {
@@ -646,6 +651,7 @@ ipcMain.handle('autopilot:attachConfirm', async (_event, args: { terminalId: str
     message: 'Sending attach bridge prompt.',
   }
   attachSessions.set(args.terminalId, status)
+  attachWriteInFlightTerminals.add(args.terminalId)
   try {
     await autopilotPtyWriter.write(args.terminalId, args.bridgePrompt)
     const latest = attachSessions.get(args.terminalId)
@@ -675,6 +681,8 @@ ipcMain.handle('autopilot:attachConfirm', async (_event, args: { terminalId: str
     status.lastError = error
     status.message = error
     return { ok: false, error, status }
+  } finally {
+    attachWriteInFlightTerminals.delete(args.terminalId)
   }
 })
 
