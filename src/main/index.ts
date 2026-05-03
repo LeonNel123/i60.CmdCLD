@@ -137,6 +137,11 @@ function makeAutopilotApiClient(provider: 'anthropic' | 'openrouter', apiKey: st
     : new OpenRouterClient(apiKey, model)
 }
 
+function hasActiveAttachSession(terminalId: string): boolean {
+  const current = attachSessions.get(terminalId)
+  return current?.status === 'sending_bridge' || current?.status === 'watching'
+}
+
 function broadcastAutopilotUpdate(terminalId: string, state: AutopilotState): void {
   for (const wcId of registry.list().map((w) => w.id)) {
     const wc = registry.getWebContents(wcId)
@@ -528,6 +533,7 @@ ipcMain.handle('autopilot:start', async (_event, args: { terminalId: string; pro
   const apiKey = readAutopilotKey(provider)
   if (!apiKey) return { ok: false, error: `No API key for ${provider}. Add one in Settings.` }
   if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId)) return { ok: false, error: 'Autopilot already running for this terminal.' }
+  if (hasActiveAttachSession(args.terminalId)) return { ok: false, error: 'Attach is already active for this terminal.' }
   const runtime = getAutopilotRuntimeStartContext(args.terminalId)
   if (!runtime.ok) return runtime
 
@@ -720,6 +726,9 @@ ipcMain.handle('autopilot-pro:start', async (_event, args: { terminalId: string;
   if (!apiKey) return { ok: false, error: `No API key for ${provider}. Add one in Settings.` }
   if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId)) {
     return { ok: false, error: 'Autopilot already running for this terminal.' }
+  }
+  if (hasActiveAttachSession(args.terminalId)) {
+    return { ok: false, error: 'Attach is already active for this terminal.' }
   }
   const runtime = getAutopilotRuntimeStartContext(args.terminalId)
   if (!runtime.ok) return runtime
