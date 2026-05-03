@@ -44,6 +44,57 @@ export interface GitStatus {
   dirty: boolean
 }
 
+export type ApiProvider = 'anthropic' | 'openrouter'
+
+export type ApiUsage = {
+  inputTokens: number
+  cachedInputTokens: number
+  cacheCreationTokens: number
+  outputTokens: number
+}
+
+export type AttachClassification =
+  | 'idle'
+  | 'waiting_for_user'
+  | 'permission_request'
+  | 'working'
+  | 'blocked'
+  | 'unknown'
+
+export type MarkerKind = 'WAITING' | 'PROGRESS' | 'GOAL_READY' | 'STUCK'
+
+export interface AttachDraft {
+  terminalId: string
+  classification: AttachClassification
+  bridgePrompt: string
+  cleanTail: string
+  usedLlm: boolean
+  provider: ApiProvider
+  model: string
+  usage?: ApiUsage
+  estimatedCostUsd?: number
+  error?: string
+}
+
+export interface AttachSessionStatus {
+  id: string
+  terminalId: string
+  status:
+    | 'drafting'
+    | 'drafted'
+    | 'sending_bridge'
+    | 'watching'
+    | 'attached'
+    | 'no_marker_yet'
+    | 'failed'
+    | 'cancelled'
+  baselineOffset: number
+  bridgeSentAt: number | null
+  lastMarker: { kind: MarkerKind; receivedAt: number; text?: string; raw?: string } | null
+  lastError: string | null
+  message: string
+}
+
 export interface ElectronAPI {
   platform: 'win32' | 'darwin' | 'linux'
   createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex', launchArgs?: string) => Promise<void>
@@ -134,7 +185,7 @@ export interface ElectronAPI {
     useLlm: boolean
   }) => Promise<{
     ok: boolean
-    draft?: unknown
+    draft?: AttachDraft
     error?: string
   }>
   autopilotAttachConfirm: (args: {
@@ -142,10 +193,10 @@ export interface ElectronAPI {
     bridgePrompt: string
   }) => Promise<{
     ok: boolean
-    status?: unknown
+    status?: AttachSessionStatus
     error?: string
   }>
-  autopilotAttachStatus: (terminalId: string) => Promise<unknown>
+  autopilotAttachStatus: (terminalId: string) => Promise<AttachSessionStatus | null>
   autopilotAttachCancel: (terminalId: string) => Promise<{ ok: boolean }>
   onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void) => () => void
 }
