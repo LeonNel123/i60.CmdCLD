@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { formatRelativeTime } from '../utils/format-relative-time'
 
 interface Subgoal {
@@ -108,6 +108,9 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
   const [attachStatus, setAttachStatus] = useState<AttachStatus | null>(null)
   const [attachError, setAttachError] = useState<string | null>(null)
   const [attachBusy, setAttachBusy] = useState(false)
+  const attachDraftSeq = useRef(0)
+  const activeAttachDraftSeq = useRef<number | null>(null)
+  const attachInputsRef = useRef({ answer: '', useLlm: true })
 
   useEffect(() => {
     let cancelled = false
@@ -149,6 +152,7 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
   const { isPaused, isAwaitingReview, isEscalated, canPause, canResume } = flags
   const milestones = state?.milestones ?? []
   const clearAttachDraft = () => {
+    attachDraftSeq.current += 1
     setAttachDraft(null)
     setAttachStatus(null)
     setAttachError(null)
@@ -166,23 +170,38 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
     }
   }
   const draftAttach = async () => {
+    const userAnswer = attachAnswer
+    const useLlm = attachUseLlm
+    const seq = ++attachDraftSeq.current
+    activeAttachDraftSeq.current = seq
+    attachInputsRef.current = { answer: userAnswer, useLlm }
+    const isCurrentDraftRequest = () => (
+      seq === attachDraftSeq.current &&
+      attachInputsRef.current.answer === userAnswer &&
+      attachInputsRef.current.useLlm === useLlm
+    )
     setAttachBusy(true)
     setAttachError(null)
     try {
       const result = await window.api.autopilotAttachDraft({
         terminalId,
-        userAnswer: attachAnswer,
-        useLlm: attachUseLlm,
+        userAnswer,
+        useLlm,
       })
+      if (!isCurrentDraftRequest()) return
       if (!result.ok || !result.draft) {
         setAttachError(result.error ?? 'Failed to draft attach bridge.')
         return
       }
       setAttachDraft(result.draft)
     } catch (e: any) {
+      if (!isCurrentDraftRequest()) return
       setAttachError(e?.message ?? 'Failed to draft attach bridge.')
     } finally {
-      setAttachBusy(false)
+      if (activeAttachDraftSeq.current === seq) {
+        activeAttachDraftSeq.current = null
+        setAttachBusy(false)
+      }
     }
   }
   const confirmAttach = async () => {
@@ -436,7 +455,9 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
         <textarea
           value={attachAnswer}
           onChange={(e) => {
-            setAttachAnswer(e.target.value)
+            const answer = e.target.value
+            setAttachAnswer(answer)
+            attachInputsRef.current = { answer, useLlm: attachUseLlm }
             clearAttachDraft()
           }}
           placeholder="Optional answer to the CLI's current prompt..."
@@ -459,7 +480,9 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
             type="checkbox"
             checked={attachUseLlm}
             onChange={(e) => {
-              setAttachUseLlm(e.target.checked)
+              const useLlm = e.target.checked
+              setAttachUseLlm(useLlm)
+              attachInputsRef.current = { answer: attachAnswer, useLlm }
               clearAttachDraft()
             }}
           />
