@@ -140,6 +140,23 @@ describe('llm-assisted attach drafting', () => {
     expect(parsed.classification).toBe('waiting_for_user')
   })
 
+  it('parses fenced LLM attach JSON', () => {
+    const parsed = parseAttachLlmResponse('```json\n{"classification":"working","bridgePrompt":"advisory"}\n```')
+    expect(parsed.classification).toBe('working')
+  })
+
+  it('parses prose-wrapped LLM attach JSON', () => {
+    const parsed = parseAttachLlmResponse('Here is the JSON: {"classification":"idle","bridgePrompt":"advisory"}')
+    expect(parsed.classification).toBe('idle')
+  })
+
+  it('rejects unsupported LLM attach classifications', () => {
+    expect(() => parseAttachLlmResponse(JSON.stringify({
+      classification: 'done',
+      bridgePrompt: 'advisory',
+    }))).toThrow('LLM attach draft classification is unsupported')
+  })
+
   it('falls back with usage and cost when LLM JSON is invalid', async () => {
     const usage = { inputTokens: 1, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 1 }
     const client: ApiClient = {
