@@ -128,6 +128,7 @@ const confirmedClose = new WeakSet<BrowserWindow>()
 const autopilots = new Map<string, AutopilotHandle>()  // keyed by terminalId — Classic mode
 const autopilotPros = new Map<string, AutopilotProHandle>()  // keyed by terminalId — PRO mode
 const attachSessions = new Map<string, AttachSessionStatus>()
+const attachUnsubscribers = new Map<string, () => void>()
 const cancelledAttachSessionIds = new Set<string>()
 const attachWriteInFlightTerminals = new Set<string>()
 let attachSessionSeq = 0
@@ -143,6 +144,47 @@ function hasActiveAttachSession(terminalId: string): boolean {
   return attachWriteInFlightTerminals.has(terminalId)
     || current?.status === 'sending_bridge'
     || current?.status === 'watching'
+    || current?.status === 'no_marker_yet'
+}
+
+function stopAttachSubscription(terminalId: string): void {
+  const unsubscribe = attachUnsubscribers.get(terminalId)
+  if (unsubscribe) {
+    unsubscribe()
+    attachUnsubscribers.delete(terminalId)
+  }
+}
+
+function updateAttachMarkerStatus(terminalId: string, data: string): void {
+  const session = attachSessions.get(terminalId)
+  if (!session || (session.status !== 'watching' && session.status !== 'no_marker_yet')) return
+  const outputSinceBaseline = ptyManager.getScrollbackSinceOffset(terminalId, session.baselineOffset)
+  const inspection = inspectAutopilotOutput(outputSinceBaseline || data)
+  if (inspection.marker) {
+    session.status = 'attached'
+    session.lastMarker = {
+      kind: inspection.marker.kind,
+      receivedAt: Date.now(),
+      text: inspection.marker.text || inspection.marker.question,
+      raw: inspection.marker.raw,
+    }
+    session.message = `Attached; last marker ${inspection.marker.kind}.`
+    stopAttachSubscription(terminalId)
+  }
+}
+
+function cancelAttachSession(terminalId: string): void {
+  stopAttachSubscription(terminalId)
+  const current = attachSessions.get(terminalId)
+  if (current) {
+    const wasSendingBridge = current.status === 'sending_bridge'
+    current.status = 'cancelled'
+    current.message = 'Attach cancelled.'
+    if (wasSendingBridge) {
+      cancelledAttachSessionIds.add(current.id)
+    }
+  }
+  attachSessions.delete(terminalId)
 }
 
 function broadcastAutopilotUpdate(terminalId: string, state: AutopilotState): void {
@@ -573,6 +615,7 @@ ipcMain.handle('autopilot:stop', (_event, terminalId: string) => {
   autopilots.delete(terminalId)
   autopilotPros.get(terminalId)?.stop()
   autopilotPros.delete(terminalId)
+  cancelAttachSession(terminalId)
 })
 ipcMain.handle('autopilot:approveGoal', (_event, terminalId: string) => {
   autopilots.get(terminalId)?.approveGoal()
@@ -650,6 +693,7 @@ ipcMain.handle('autopilot:attachConfirm', async (_event, args: { terminalId: str
     lastError: null,
     message: 'Sending attach bridge prompt.',
   }
+  stopAttachSubscription(args.terminalId)
   attachSessions.set(args.terminalId, status)
   attachWriteInFlightTerminals.add(args.terminalId)
   try {
@@ -666,6 +710,16 @@ ipcMain.handle('autopilot:attachConfirm', async (_event, args: { terminalId: str
     status.baselineOffset = ptyManager.getScrollbackOffset(args.terminalId)
     status.status = 'watching'
     status.message = `Watching from output offset ${status.baselineOffset}.`
+    stopAttachSubscription(args.terminalId)
+    const unsubscribe = ptyManager.subscribeOutput(args.terminalId, (data) => updateAttachMarkerStatus(args.terminalId, data))
+    attachUnsubscribers.set(args.terminalId, unsubscribe)
+    setTimeout(() => {
+      const current = attachSessions.get(args.terminalId)
+      if (current?.id === id && current.status === 'watching') {
+        current.status = 'no_marker_yet'
+        current.message = 'No parser-visible marker detected yet.'
+      }
+    }, 30000)
     return { ok: true, status }
   } catch (e: any) {
     const latest = attachSessions.get(args.terminalId)
@@ -691,16 +745,7 @@ ipcMain.handle('autopilot:attachStatus', (_event, terminalId: string) => {
 })
 
 ipcMain.handle('autopilot:attachCancel', (_event, terminalId: string) => {
-  const current = attachSessions.get(terminalId)
-  if (current) {
-    const wasSendingBridge = current.status === 'sending_bridge'
-    current.status = 'cancelled'
-    current.message = 'Attach cancelled.'
-    if (wasSendingBridge) {
-      cancelledAttachSessionIds.add(current.id)
-    }
-  }
-  attachSessions.delete(terminalId)
+  cancelAttachSession(terminalId)
   return { ok: true }
 })
 
