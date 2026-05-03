@@ -26,6 +26,18 @@ describe('Autopilot attach panel helpers', () => {
     expect(shouldAllowAttachDraft({ phase: 'executing' } as any)).toBe(false)
   })
 
+  it('blocks attach draft when control state is running', () => {
+    expect(shouldAllowAttachDraft({ control: 'running' } as any)).toBe(false)
+  })
+
+  it('allows attach draft when control state is stopped', () => {
+    expect(shouldAllowAttachDraft({ control: 'stopped' } as any)).toBe(true)
+  })
+
+  it('blocks attach draft for non-null empty state', () => {
+    expect(shouldAllowAttachDraft({} as any)).toBe(false)
+  })
+
   it('formats attach status labels', () => {
     expect(getAttachStatusLabel({ status: 'watching', message: 'Watching from output offset 20.' } as any))
       .toBe('watching: Watching from output offset 20.')

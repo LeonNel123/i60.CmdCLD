@@ -82,8 +82,12 @@ export function getAutopilotPanelControlFlags(state: {
 
 export function shouldAllowAttachDraft(state: AutopilotState | null): boolean {
   if (!state) return true
-  const phase = state.phase ?? state.stage
-  return !phase || phase === 'idle' || phase === 'stopped' || phase === 'completed'
+  const runStates = [state.phase, state.stage, state.control].filter((value): value is string => Boolean(value))
+  if (runStates.length === 0) return false
+  if (runStates.some((value) => value === 'executing' || value === 'running' || value === 'paused' || value === 'blocked')) {
+    return false
+  }
+  return runStates.every((value) => value === 'idle' || value === 'stopped' || value === 'completed')
 }
 
 export function getAttachStatusLabel(status: AttachStatus | null): string {
