@@ -535,4 +535,26 @@ describe('PtyWatcher attach baseline', () => {
     expect(snapshots[0].marker.question).toBe('next input?')
     vi.useRealTimers()
   })
+
+  it('does not apply the attach baseline after the first settle', async () => {
+    vi.useFakeTimers()
+    const snapshots: any[] = []
+    const echoedBridge = '[ORCH:WAITING]\nSTATUS: waiting\nQUESTION: echoed bridge\n'
+    const watcher = new PtyWatcher({
+      idleMs: 1,
+      markerFallbackMs: 0,
+      baselineChars: echoedBridge.length,
+      onSettle: (snapshot) => snapshots.push(snapshot),
+    })
+    watcher.feed(echoedBridge)
+    watcher.feed('real answer\n[ORCH:WAITING]\nSTATUS: waiting\nQUESTION: next input?\n')
+    await vi.advanceTimersByTimeAsync(5)
+    expect(snapshots).toHaveLength(1)
+
+    watcher.feed('[ORCH:WAITING] second question?\n')
+    await vi.advanceTimersByTimeAsync(5)
+    expect(snapshots).toHaveLength(2)
+    expect(snapshots[1].marker.text).toBe('second question?')
+    vi.useRealTimers()
+  })
 })

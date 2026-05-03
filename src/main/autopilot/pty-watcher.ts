@@ -202,6 +202,7 @@ export class PtyWatcher {
 
   reset(): void {
     this.buffer = ''
+    this.baselineChars = 0
     if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null }
     if (this.forceSettleTimer) {
       clearTimeout(this.forceSettleTimer)
@@ -297,6 +298,7 @@ export class PtyWatcher {
       receivedAt: Date.now(),
     }
     this.buffer = ''
+    this.baselineChars = 0
     if (this.forceSettleTimer) { clearTimeout(this.forceSettleTimer); this.forceSettleTimer = null }
     if (this.markerFallbackTimer) { clearTimeout(this.markerFallbackTimer); this.markerFallbackTimer = null }
     this.permissionPromptActive = false
