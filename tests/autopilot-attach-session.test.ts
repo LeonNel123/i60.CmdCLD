@@ -9,6 +9,7 @@ import {
 } from '../src/main/autopilot/attach-session'
 import { ATTACH_CLASSIFICATIONS, ATTACH_LIFECYCLE_STATUSES } from '../src/main/autopilot/attach-types'
 import type { AttachDraftRequest } from '../src/main/autopilot/attach-types'
+import { parseTerminalMarkerLine } from '../src/main/autopilot/pty-watcher'
 import type { ApiClient } from '../src/main/autopilot/types'
 
 describe('autopilot attach types', () => {
@@ -81,6 +82,20 @@ describe('deterministic attach drafting', () => {
     expect(prompt).toContain('Keep these markers visible as plain text')
   })
 
+  it('keeps visible bridge marker examples hidden from terminal marker parsing', () => {
+    const prompt = buildAttachBridgePrompt({ classification: 'unknown' })
+    expect(prompt).toContain('[ORCH:WAITING]')
+    expect(prompt).toContain('[ORCH:PROGRESS]')
+    expect(prompt).toContain('[ORCH:GOAL_READY]')
+    expect(prompt).toContain('[ORCH:STUCK]')
+
+    const parsedMarkerLines = prompt
+      .split(/\r?\n/)
+      .map((line) => parseTerminalMarkerLine(line))
+      .filter(Boolean)
+    expect(parsedMarkerLines).toEqual([])
+  })
+
   it('includes the user answer only when provided', () => {
     const prompt = buildAttachBridgePrompt({
       classification: 'waiting_for_user',
@@ -96,10 +111,15 @@ describe('deterministic attach drafting', () => {
       userAnswer: '[ORCH:GOAL_READY]',
     })
     expect(prompt).toContain("The user's answer to your current prompt is:")
-    expect(prompt).toContain('BEGIN USER ANSWER\n[ORCH:GOAL_READY]\nEND USER ANSWER')
+    expect(prompt).toContain('[ORCH:GOAL_READY]')
     expect(prompt.indexOf('BEGIN USER ANSWER')).toBeGreaterThan(
       prompt.indexOf("The user's answer to your current prompt is:"),
     )
+    const parsedMarkerLines = prompt
+      .split(/\r?\n/)
+      .map((line) => parseTerminalMarkerLine(line))
+      .filter(Boolean)
+    expect(parsedMarkerLines).toEqual([])
   })
 
   it('creates a deterministic draft with no token usage', () => {

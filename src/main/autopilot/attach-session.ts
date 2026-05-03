@@ -35,29 +35,37 @@ export function buildAttachBridgePrompt(args: {
   classification: AttachClassification
   userAnswer?: string
 }): string {
+  const indentBlock = (text: string) => text
+    .split(/\r\n|\n|\r/)
+    .map((line) => `  ${line}`)
+    .join('\n')
+
   const parts = [
     'CmdCLD Autopilot is now coordinating this CLI session.',
     'Continue from the current terminal state.',
     `Detected attach state: ${args.classification}.`,
     '',
-    'If you need user or orchestrator input, end the response with:',
-    '[ORCH:WAITING]',
-    'STATUS: waiting',
-    'QUESTION: <specific question>',
+    'Protocol examples below are indented for display only.',
+    'In your future responses, emit actual marker lines without indentation at column 1.',
     '',
-    'If you are actively working, report progress with:',
-    '[ORCH:PROGRESS]',
-    'STATUS: progress',
+    'If you need user or orchestrator input, end the response like:',
+    '  [ORCH:WAITING]',
+    '  STATUS: waiting',
+    '  QUESTION: <specific question>',
     '',
-    'If the requested work is complete and ready for review, end with:',
-    '[ORCH:GOAL_READY]',
-    'STATUS: goal_ready',
-    'SUMMARY: <short summary>',
+    'If you are actively working, report progress like:',
+    '  [ORCH:PROGRESS]',
+    '  STATUS: progress',
     '',
-    'If blocked, end with:',
-    '[ORCH:STUCK]',
-    'STATUS: stuck',
-    'REASON: <blocker>',
+    'If the requested work is complete and ready for review, end like:',
+    '  [ORCH:GOAL_READY]',
+    '  STATUS: goal_ready',
+    '  SUMMARY: <short summary>',
+    '',
+    'If blocked, end like:',
+    '  [ORCH:STUCK]',
+    '  STATUS: stuck',
+    '  REASON: <blocker>',
     '',
     'Keep these markers visible as plain text in the terminal output.',
   ]
@@ -67,7 +75,7 @@ export function buildAttachBridgePrompt(args: {
       '',
       "The user's answer to your current prompt is:",
       'BEGIN USER ANSWER',
-      answer,
+      indentBlock(answer),
       'END USER ANSWER',
       '',
       'Use this answer and continue.',

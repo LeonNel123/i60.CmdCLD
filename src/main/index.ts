@@ -684,7 +684,8 @@ ipcMain.handle('autopilot:attachConfirm', async (_event, args: { terminalId: str
   if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId)) {
     return { ok: false, error: 'Autopilot is already running for this terminal.' }
   }
-  if (!args.bridgePrompt.trim()) return { ok: false, error: 'Bridge prompt is empty.' }
+  const bridgePrompt = args.bridgePrompt.trimEnd()
+  if (!bridgePrompt.trim()) return { ok: false, error: 'Bridge prompt is empty.' }
   const current = attachSessions.get(args.terminalId)
   if (hasActiveAttachSession(args.terminalId)) {
     return current
@@ -706,7 +707,7 @@ ipcMain.handle('autopilot:attachConfirm', async (_event, args: { terminalId: str
   attachSessions.set(args.terminalId, status)
   attachWriteInFlightTerminals.add(args.terminalId)
   try {
-    await autopilotPtyWriter.write(args.terminalId, args.bridgePrompt)
+    await autopilotPtyWriter.write(args.terminalId, `${bridgePrompt}\r`)
     const latest = attachSessions.get(args.terminalId)
     if (cancelledAttachSessionIds.has(id) || latest?.id !== id || status.status === 'cancelled') {
       cancelledAttachSessionIds.delete(id)
