@@ -72,13 +72,22 @@ describe('Autopilot PTY input queue', () => {
         { submitDelayMs: 50, chunkDelayMs: 1 },
       )
 
-      const promise = writer.write('term-1', 'line one\nline two\r')
-      expect(promise).toBeInstanceOf(Promise)
+      let settled = false
+      const promise = writer.write('term-1', 'line one\nline two\r').then(() => {
+        settled = true
+      })
       expect(writes[writes.length - 1]).not.toBe('\r')
 
-      await vi.advanceTimersByTimeAsync(50)
+      await vi.advanceTimersByTimeAsync(49)
+      await Promise.resolve()
+
+      expect(settled).toBe(false)
+      expect(writes[writes.length - 1]).not.toBe('\r')
+
+      await vi.advanceTimersByTimeAsync(1)
       await promise
 
+      expect(settled).toBe(true)
       expect(writes[writes.length - 1]).toBe('\r')
     } finally {
       vi.useRealTimers()
