@@ -126,6 +126,7 @@ export interface ElectronAPI {
   autopilotPermissionAllow: (terminalId: string) => Promise<void>
   autopilotPermissionDeny: (terminalId: string) => Promise<void>
   autopilotGetStatus: (terminalId: string) => Promise<unknown>
+  autopilotInspectOutput: (terminalId: string) => Promise<unknown>
   autopilotProbeArtifacts: (projectPath: string) => Promise<{ hasClassic: boolean; hasPro: boolean }>
   onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void) => () => void
 }

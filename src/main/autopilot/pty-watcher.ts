@@ -13,7 +13,7 @@ interface Options {
 }
 
 const ANSI_RE = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\x1b[PX^_].*?\x1b\\|\x1b\][^\x1b]*\x1b\\/g
-const MARKER_LINE_RE = /^[\s>|│┃║╎╏┆┇┊┋▌▍▎▏›❯]*\[ORCH:(WAITING|PROGRESS|GOAL_READY|STUCK)\](?:\s+(.*))?$/
+const MARKER_LINE_RE = /^(?:(?:[>|│┃║╎╏┆┇┊┋▌▍▎▏›❯•◦●○]+)\s*)?\[ORCH:(WAITING|PROGRESS|GOAL_READY|STUCK)\](?:\s+(.*))?$/
 
 export function stripTerminalAnsi(s: string): string {
   return s.replace(ANSI_RE, '')
@@ -47,20 +47,51 @@ interface StructuredFields {
   progressStatusStructured?: 'done' | 'partial' | 'blocked'
 }
 
+function parseStructuredSegments(line: string): Array<{ key: string; val: string }> {
+  const matches = Array.from(line.matchAll(/([A-Z_]+):\s*/g))
+  return matches.map((match, idx) => {
+    const key = match[1]
+    const valueStart = (match.index ?? 0) + match[0].length
+    const valueEnd = idx + 1 < matches.length ? matches[idx + 1].index ?? line.length : line.length
+    return { key, val: line.slice(valueStart, valueEnd).trim() }
+  })
+}
+
 function parseStructuredBlock(lines: string[]): StructuredFields {
   const out: StructuredFields = {}
   let i = 0
   while (i < lines.length) {
     const line = lines[i]
-    const km = line.match(/^([A-Z_]+):\s*(.*)$/)
-    if (!km || !STRUCTURED_KEYS.has(km[1])) { i++; continue }
-    const key = km[1]
-    const val = km[2].trim()
-    if (key === 'FILES_CHANGED') {
+    const segments = parseStructuredSegments(line).filter((segment) => STRUCTURED_KEYS.has(segment.key))
+    if (segments.length === 0) { i++; continue }
+
+    const filesSegment = segments.find((segment) => segment.key === 'FILES_CHANGED')
+    for (const { key, val } of segments) {
+      if (key === 'FILES_CHANGED') continue
+      switch (key) {
+        case 'TESTS': out.tests = val; break
+        case 'RED_PHASE':
+          if (val === 'yes' || val === 'no' || val === 'na') out.redPhase = val
+          break
+        case 'BOUNDARY_OK': out.boundaryOk = (val.toLowerCase() === 'yes' || val.toLowerCase() === 'true'); break
+        case 'EVIDENCE': out.evidence = val; break
+        case 'BLOCKER': out.blocker = val; break
+        case 'QUESTION': out.question = val; break
+        case 'SUBGOAL': out.subgoalIdStructured = val; break
+        case 'PROGRESS_STATUS':
+          if (val === 'done' || val === 'partial' || val === 'blocked') {
+            out.progressStatusStructured = val
+          }
+          break
+        // STATUS is not stored — kind is already extracted from the marker line
+      }
+    }
+
+    if (filesSegment) {
       const files: string[] = []
       // inline form: "FILES_CHANGED: a, b, c"
-      if (val.length > 0) {
-        for (const p of val.split(',').map((x) => x.trim()).filter(Boolean)) files.push(p)
+      if (filesSegment.val.length > 0) {
+        for (const p of filesSegment.val.split(',').map((x) => x.trim()).filter(Boolean)) files.push(p)
       }
       // multi-line form: indented "  - file" continuation
       let j = i + 1
@@ -71,23 +102,6 @@ function parseStructuredBlock(lines: string[]): StructuredFields {
       out.filesChanged = files
       i = j
       continue
-    }
-    switch (key) {
-      case 'TESTS': out.tests = val; break
-      case 'RED_PHASE':
-        if (val === 'yes' || val === 'no' || val === 'na') out.redPhase = val
-        break
-      case 'BOUNDARY_OK': out.boundaryOk = (val.toLowerCase() === 'yes' || val.toLowerCase() === 'true'); break
-      case 'EVIDENCE': out.evidence = val; break
-      case 'BLOCKER': out.blocker = val; break
-      case 'QUESTION': out.question = val; break
-      case 'SUBGOAL': out.subgoalIdStructured = val; break
-      case 'PROGRESS_STATUS':
-        if (val === 'done' || val === 'partial' || val === 'blocked') {
-          out.progressStatusStructured = val
-        }
-        break
-      // STATUS is not stored — kind is already extracted from the marker line
     }
     i++
   }
@@ -112,7 +126,7 @@ export function findLastMarker(text: string): { marker: DoerMarker; before: stri
       }
     }
     // Look at the lines AFTER the marker for a structured block
-    const after = lines.slice(i + 1)
+    const after = tail.includes(':') ? [tail, ...lines.slice(i + 1)] : lines.slice(i + 1)
     const struct = parseStructuredBlock(after)
     // Cross-check: if marker was bare PROGRESS but structured block has SUBGOAL / PROGRESS_STATUS, use those
     if (kind === 'PROGRESS' && !subgoalId && struct.subgoalIdStructured) {
@@ -121,10 +135,11 @@ export function findLastMarker(text: string): { marker: DoerMarker; before: stri
     if (kind === 'PROGRESS' && !status && struct.progressStatusStructured) {
       status = struct.progressStatusStructured
     }
+    const markerText = tail.includes(':') ? (struct.question || '') : (tail || struct.question || '')
     const before = lines.slice(0, i).join('\n')
     const marker: DoerMarker = {
       kind,
-      text: tail || struct.question || '',
+      text: markerText,
       raw: line,
       subgoalId,
       status,

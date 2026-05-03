@@ -42,12 +42,23 @@ const DEFAULT_MAX_SILENCE_MS = 30 * 60 * 1000
 // adds shape/options/artifactPath/assumption/delta/subagentEtaMin parsed from
 // the same structured block. We re-scan the buffer text for these fields.
 
+function parseProStructuredSegments(line: string): Array<{ key: string; val: string }> {
+  const matches = Array.from(line.matchAll(/([A-Z_]+):\s*/g))
+  return matches.map((match, idx) => {
+    const key = match[1]
+    const valueStart = (match.index ?? 0) + match[0].length
+    const valueEnd = idx + 1 < matches.length ? matches[idx + 1].index ?? line.length : line.length
+    return { key, val: line.slice(valueStart, valueEnd).trim() }
+  })
+}
+
 function enrichProMarker(rawText: string, base: ProMarker): ProMarker {
   // Find the structured block lines AFTER the marker line.
   const lines = splitTerminalLines(stripTerminalAnsi(rawText))
   const idx = lines.findIndex((l) => parseTerminalMarkerLine(l) !== null)
   if (idx < 0) return base
-  const after = lines.slice(idx + 1)
+  const markerTail = parseTerminalMarkerLine(lines[idx])?.tail ?? ''
+  const after = markerTail.includes(':') ? [markerTail, ...lines.slice(idx + 1)] : lines.slice(idx + 1)
 
   const m: ProMarker = { ...base }
   let i = 0
@@ -133,10 +144,9 @@ function enrichProMarker(rawText: string, base: ProMarker): ProMarker {
       if (currentOption) { optionsRationale.push(currentOption); currentOption = null }
       captureOptionsRationale = false
     }
-    const km = line.match(/^([A-Z_]+):\s*(.*)$/)
-    if (km) {
-      const key = km[1]
-      const val = km[2].trim()
+    const segments = parseProStructuredSegments(line)
+    if (segments.length > 0) {
+      for (const { key, val } of segments) {
       if (key === 'DECISION_SHAPE' && /^(reply|choose|approve|route|validate|transition|decide-with-rationale|research)$/.test(val)) {
         m.shape = val as ProMarker['shape']
       } else if (key === 'ARTIFACT') {
@@ -161,6 +171,7 @@ function enrichProMarker(rawText: string, base: ProMarker): ProMarker {
       } else if (key === 'SUBAGENT_ETA_MIN') {
         const n = Number(val)
         if (Number.isFinite(n)) m.subagentEtaMin = n
+      }
       }
     }
     i++

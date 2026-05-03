@@ -20,7 +20,8 @@ import { createAutopilot, type AutopilotHandle, type AutopilotState } from './au
 import { createAutopilotPro, type AutopilotProHandle, type AutopilotProOptions } from './autopilot-pro'
 import type { ProState } from './autopilot-pro/types'
 import type { AutopilotOptions } from './autopilot/types'
-import { formatPtyWrite } from './autopilot/pty-write'
+import { QueuedPtyWriter } from './autopilot/pty-input-queue'
+import { inspectAutopilotOutput } from './autopilot/output-inspector'
 import { probeArtifacts } from './autopilot/probe-artifacts'
 import { loadBudget, getSnapshot as getBudgetSnapshot, setProjectCap, setGlobalCap, resetTodaySpend } from './autopilot/budget-tracker'
 import { detectAgentCliAvailability } from './agent-cli-detect'
@@ -109,6 +110,7 @@ if (!gotLock) {
 log('Single instance lock acquired')
 
 let ptyManager: PtyManager
+let autopilotPtyWriter: QueuedPtyWriter
 let store: Store
 let recentDB: RecentDB
 let settings: Settings
@@ -139,6 +141,9 @@ function broadcastAutopilotProUpdate(terminalId: string, state: ProState): void 
 
 try {
   ptyManager = new PtyManager()
+  autopilotPtyWriter = new QueuedPtyWriter((terminalId, data) => {
+    ptyManager.write(terminalId, data)
+  })
   store = new Store(join(app.getPath('userData'), 'sessions.json'))
   recentDB = new RecentDB(join(app.getPath('userData'), 'recent.db'))
   settings = new Settings(join(app.getPath('userData'), 'settings.json'))
@@ -524,7 +529,7 @@ ipcMain.handle('autopilot:start', async (_event, args: { terminalId: string; pro
     apiProvider: provider,
     apiKey,
     plannerModel: settings.get('autopilotPlannerModel'),
-    writeToPty: (terminalId, data) => { ptyManager.write(terminalId, formatPtyWrite(data)) },
+    writeToPty: (terminalId, data) => { autopilotPtyWriter.write(terminalId, data) },
     onPtyData: (terminalId, listener) => ptyManager.subscribeOutput(terminalId, listener),
     onUpdate: (state) => broadcastAutopilotUpdate(args.terminalId, state),
   }
@@ -569,6 +574,9 @@ ipcMain.handle('autopilot:getStatus', (_event, terminalId: string) => {
   const pro = autopilotPros.get(terminalId)
   if (pro) return pro.getState()
   return autopilots.get(terminalId)?.state ?? null
+})
+ipcMain.handle('autopilot:inspectOutput', (_event, terminalId: string) => {
+  return inspectAutopilotOutput(ptyManager.getScrollback(terminalId))
 })
 ipcMain.handle('autopilot:probeArtifacts', (_event, projectPath: string) => {
   return probeArtifacts(projectPath)
@@ -617,7 +625,7 @@ ipcMain.handle('autopilot-pro:start', async (_event, args: { terminalId: string;
     apiProvider: provider,
     apiKey,
     plannerModel: settings.get('autopilotPlannerModel'),
-    writeToPty: (terminalId, data) => { ptyManager.write(terminalId, formatPtyWrite(data)) },
+    writeToPty: (terminalId, data) => { autopilotPtyWriter.write(terminalId, data) },
     onPtyData: (terminalId, listener) => ptyManager.subscribeOutput(terminalId, listener),
     onUpdate: (state) => broadcastAutopilotProUpdate(args.terminalId, state),
   }

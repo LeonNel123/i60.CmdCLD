@@ -1,11 +1,29 @@
 import { describe, it, expect, vi } from 'vitest'
-import { PtyWatcher } from '../src/main/autopilot/pty-watcher'
+import { parseTerminalMarkerLine, PtyWatcher } from '../src/main/autopilot/pty-watcher'
 import type { SettledSnapshot } from '../src/main/autopilot/types'
 
 const IDLE_MS = 50  // smaller than default for fast tests
 const NUDGE_MS = 200
 
 describe('PtyWatcher', () => {
+  it('does not parse indented marker examples from the injected protocol prompt', () => {
+    expect(parseTerminalMarkerLine('  [ORCH:WAITING] <question> — you need a decision')).toBeNull()
+  })
+
+  it('still accepts prompt-prefixed marker lines from terminal chrome', () => {
+    expect(parseTerminalMarkerLine('> [ORCH:WAITING] ready?')).toEqual({
+      kind: 'WAITING',
+      tail: 'ready?',
+    })
+  })
+
+  it('accepts Codex assistant bullet prefixes on marker lines', () => {
+    expect(parseTerminalMarkerLine('• [ORCH:WAITING]')).toEqual({
+      kind: 'WAITING',
+      tail: '',
+    })
+  })
+
   it('emits a settled event after idle with [ORCH:WAITING]', async () => {
     vi.useFakeTimers()
     const events: SettledSnapshot[] = []
@@ -186,6 +204,39 @@ describe('PtyWatcher', () => {
     ].join(''))
     await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
     expect(events[0].marker.boundaryOk).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('parses indented structured fields emitted by Codex', async () => {
+    vi.useFakeTimers()
+    const events: SettledSnapshot[] = []
+    const w = new PtyWatcher({ idleMs: IDLE_MS, nudgeMs: NUDGE_MS, onSettle: (s) => events.push(s) })
+    w.feed([
+      '• [ORCH:WAITING]\n',
+      '  STATUS: waiting\n',
+      '  DECISION_SHAPE: reply\n',
+      '  QUESTION: live codex marker test complete\n',
+    ].join(''))
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(events).toHaveLength(1)
+    expect(events[0].marker.kind).toBe('WAITING')
+    expect(events[0].marker.question).toBe('live codex marker test complete')
+    vi.useRealTimers()
+  })
+
+  it('parses Claude-compressed structured fields on marker and continuation lines', async () => {
+    vi.useFakeTimers()
+    const events: SettledSnapshot[] = []
+    const w = new PtyWatcher({ idleMs: IDLE_MS, nudgeMs: NUDGE_MS, onSettle: (s) => events.push(s) })
+    w.feed([
+      '●[ORCH:WAITING]  STATUS:waiting\n',
+      '  DECISION_SHAPE: reply  QUESTION: live claude pty marker test complete\n',
+    ].join(''))
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(events).toHaveLength(1)
+    expect(events[0].marker.kind).toBe('WAITING')
+    expect(events[0].marker.text).toBe('live claude pty marker test complete')
+    expect(events[0].marker.question).toBe('live claude pty marker test complete')
     vi.useRealTimers()
   })
 })

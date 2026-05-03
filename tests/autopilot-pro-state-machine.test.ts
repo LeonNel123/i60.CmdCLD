@@ -698,6 +698,16 @@ describe('enrichProMarker', () => {
     expect(m.shape).toBe('approve')
     expect(m.artifactPath).toBe('.autopilot-pro/spec.md')
   })
+
+  it('parses Claude-compressed PRO fields on the marker line and continuation line', () => {
+    const text = [
+      '●[ORCH:WAITING] STATUS:waiting\r',
+      '  DECISION_SHAPE: approve  ARTIFACT: .autopilot-pro/spec.md\r',
+    ].join('')
+    const m = enrichProMarker(text, { kind: 'WAITING', text: '', raw: '●[ORCH:WAITING] STATUS:waiting' })
+    expect(m.shape).toBe('approve')
+    expect(m.artifactPath).toBe('.autopilot-pro/spec.md')
+  })
 })
 
 describe('enrichProMarker — research (Wave 1.6)', () => {

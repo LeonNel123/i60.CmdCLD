@@ -34,6 +34,15 @@ interface AutopilotState {
   lastMarker: { kind: string; subgoalId?: string; status?: string; receivedAt: number } | null
   permissionRequest: { text: string; detectedAt: number } | null
 }
+interface OutputInspection {
+  rawChars: number
+  cleanChars: number
+  cleanTail: string
+  marker: { kind: string; text?: string; question?: string; raw?: string } | null
+  markerLine: string | null
+  structuredFields: Record<string, string>
+  summary: string
+}
 
 interface Props {
   terminalId: string
@@ -62,6 +71,9 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
   const [state, setState] = useState<AutopilotState | null>(null)
   const [manualReply, setManualReply] = useState('')
   const [actionExpanded, setActionExpanded] = useState(false)
+  const [checkingOutput, setCheckingOutput] = useState(false)
+  const [inspection, setInspection] = useState<OutputInspection | null>(null)
+  const [inspectionError, setInspectionError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -85,6 +97,18 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
   const statusKind = state.phase ? 'Phase' : 'Stage'
   const { isPaused, isAwaitingReview, isEscalated, canPause, canResume } = getAutopilotPanelControlFlags(state)
   const milestones = state.milestones ?? []
+  const checkLatestOutput = async () => {
+    setCheckingOutput(true)
+    setInspectionError(null)
+    try {
+      const result = await window.api.autopilotInspectOutput(terminalId)
+      setInspection(result as OutputInspection)
+    } catch (e: any) {
+      setInspectionError(e?.message ?? 'Failed to inspect output')
+    } finally {
+      setCheckingOutput(false)
+    }
+  }
 
   return (
     <div style={{
@@ -245,6 +269,55 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
             {e.kind}: {e.summary.slice(0, 60)}
           </div>
         ))}
+      </div>
+
+      <div>
+        <button
+          onClick={checkLatestOutput}
+          disabled={checkingOutput}
+          style={{ ...smallBtn, width: '100%' }}
+        >
+          {checkingOutput ? 'Checking...' : 'Check latest output'}
+        </button>
+        {inspectionError && (
+          <div style={{ marginTop: 6, color: '#f87171', fontSize: 11 }}>{inspectionError}</div>
+        )}
+        {inspection && (
+          <div style={{
+            marginTop: 8,
+            background: '#0d1117',
+            border: '1px solid #2d2d2d',
+            borderRadius: 4,
+            padding: 8,
+            fontFamily: 'monospace',
+            fontSize: 10,
+            color: '#aaa',
+          }}>
+            <div style={{ color: inspection.marker ? '#86efac' : '#fbbf24', marginBottom: 6 }}>
+              {inspection.summary}
+            </div>
+            <div style={{ color: '#666', marginBottom: 6 }}>
+              {inspection.cleanChars} clean chars / {inspection.rawChars} raw chars
+            </div>
+            {Object.keys(inspection.structuredFields).length > 0 && (
+              <div style={{ marginBottom: 6 }}>
+                {Object.entries(inspection.structuredFields).slice(0, 8).map(([key, value]) => (
+                  <div key={key}>
+                    <span style={{ color: '#888' }}>{key}:</span> {value || '(empty)'}
+                  </div>
+                ))}
+              </div>
+            )}
+            <pre style={{
+              margin: 0,
+              maxHeight: 180,
+              overflow: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              color: '#777',
+            }}>{inspection.cleanTail || '(empty scrollback)'}</pre>
+          </div>
+        )}
       </div>
 
       {isAwaitingReview && (
