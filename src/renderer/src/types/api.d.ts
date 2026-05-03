@@ -128,6 +128,25 @@ export interface ElectronAPI {
   autopilotGetStatus: (terminalId: string) => Promise<unknown>
   autopilotInspectOutput: (terminalId: string) => Promise<unknown>
   autopilotProbeArtifacts: (projectPath: string) => Promise<{ hasClassic: boolean; hasPro: boolean }>
+  autopilotAttachDraft: (args: {
+    terminalId: string
+    userAnswer?: string
+    useLlm: boolean
+  }) => Promise<{
+    ok: boolean
+    draft?: unknown
+    error?: string
+  }>
+  autopilotAttachConfirm: (args: {
+    terminalId: string
+    bridgePrompt: string
+  }) => Promise<{
+    ok: boolean
+    status?: unknown
+    error?: string
+  }>
+  autopilotAttachStatus: (terminalId: string) => Promise<unknown>
+  autopilotAttachCancel: (terminalId: string) => Promise<{ ok: boolean }>
   onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void) => () => void
 }
 

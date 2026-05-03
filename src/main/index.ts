@@ -23,6 +23,9 @@ import type { AutopilotOptions } from './autopilot/types'
 import { QueuedPtyWriter } from './autopilot/pty-input-queue'
 import { inspectAutopilotOutput } from './autopilot/output-inspector'
 import { probeArtifacts } from './autopilot/probe-artifacts'
+import { AnthropicClient, OpenRouterClient } from './autopilot/api-client'
+import { createDeterministicAttachDraft, createLlmAttachDraft } from './autopilot/attach-session'
+import type { AttachSessionStatus } from './autopilot/attach-types'
 import { loadBudget, getSnapshot as getBudgetSnapshot, setProjectCap, setGlobalCap, resetTodaySpend } from './autopilot/budget-tracker'
 import { detectAgentCliAvailability } from './agent-cli-detect'
 import { getArgsForAgent, getAutopilotRuntimeGuardrail, normalizeAgentCli, type AgentCli } from '../shared/agent-cli'
@@ -124,6 +127,13 @@ const confirmedClose = new WeakSet<BrowserWindow>()
 
 const autopilots = new Map<string, AutopilotHandle>()  // keyed by terminalId — Classic mode
 const autopilotPros = new Map<string, AutopilotProHandle>()  // keyed by terminalId — PRO mode
+const attachSessions = new Map<string, AttachSessionStatus>()
+
+function makeAutopilotApiClient(provider: 'anthropic' | 'openrouter', apiKey: string, model: string) {
+  return provider === 'anthropic'
+    ? new AnthropicClient(apiKey, model)
+    : new OpenRouterClient(apiKey, model)
+}
 
 function broadcastAutopilotUpdate(terminalId: string, state: AutopilotState): void {
   for (const wcId of registry.list().map((w) => w.id)) {
@@ -580,6 +590,75 @@ ipcMain.handle('autopilot:inspectOutput', (_event, terminalId: string) => {
 })
 ipcMain.handle('autopilot:probeArtifacts', (_event, projectPath: string) => {
   return probeArtifacts(projectPath)
+})
+
+ipcMain.handle('autopilot:attachDraft', async (_event, args: { terminalId: string; userAnswer?: string; useLlm: boolean }) => {
+  if (!ptyManager.has(args.terminalId)) return { ok: false, error: 'Terminal session not found.' }
+  if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId)) {
+    return { ok: false, error: 'Autopilot is already running for this terminal.' }
+  }
+  const provider = settings.get('autopilotApiProvider')
+  const model = settings.get('autopilotPlannerModel')
+  const apiKey = readAutopilotKey(provider)
+  const request = {
+    terminalId: args.terminalId,
+    scrollback: ptyManager.getScrollback(args.terminalId),
+    useLlm: args.useLlm,
+    userAnswer: args.userAnswer,
+    providerConfigured: Boolean(apiKey),
+    provider,
+    model,
+  }
+  if (!args.useLlm || !apiKey) {
+    return { ok: true, draft: createDeterministicAttachDraft(request) }
+  }
+  const client = makeAutopilotApiClient(provider, apiKey, model)
+  return { ok: true, draft: await createLlmAttachDraft({ client, request }) }
+})
+
+ipcMain.handle('autopilot:attachConfirm', async (_event, args: { terminalId: string; bridgePrompt: string }) => {
+  if (!ptyManager.has(args.terminalId)) return { ok: false, error: 'Terminal session not found.' }
+  if (!args.bridgePrompt.trim()) return { ok: false, error: 'Bridge prompt is empty.' }
+  const id = `${args.terminalId}:${Date.now()}`
+  const status: AttachSessionStatus = {
+    id,
+    terminalId: args.terminalId,
+    status: 'sending_bridge',
+    baselineOffset: ptyManager.getScrollbackOffset(args.terminalId),
+    bridgeSentAt: null,
+    lastMarker: null,
+    lastError: null,
+    message: 'Sending attach bridge prompt.',
+  }
+  attachSessions.set(args.terminalId, status)
+  try {
+    await autopilotPtyWriter.write(args.terminalId, args.bridgePrompt)
+    status.bridgeSentAt = Date.now()
+    status.baselineOffset = ptyManager.getScrollbackOffset(args.terminalId)
+    status.status = 'watching'
+    status.message = `Watching from output offset ${status.baselineOffset}.`
+    return { ok: true, status }
+  } catch (e: any) {
+    const error = e?.message ?? 'Failed to send attach bridge prompt.'
+    status.status = 'failed'
+    status.lastError = error
+    status.message = error
+    return { ok: false, error, status }
+  }
+})
+
+ipcMain.handle('autopilot:attachStatus', (_event, terminalId: string) => {
+  return attachSessions.get(terminalId) ?? null
+})
+
+ipcMain.handle('autopilot:attachCancel', (_event, terminalId: string) => {
+  const current = attachSessions.get(terminalId)
+  if (current) {
+    current.status = 'cancelled'
+    current.message = 'Attach cancelled.'
+  }
+  attachSessions.delete(terminalId)
+  return { ok: true }
 })
 
 // Budget settings — daily cost cap (per-project + global), spend tracker.

@@ -227,6 +227,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('autopilot:inspectOutput', terminalId),
   autopilotProbeArtifacts: (projectPath: string) =>
     ipcRenderer.invoke('autopilot:probeArtifacts', projectPath),
+  autopilotAttachDraft: (args: { terminalId: string; userAnswer?: string; useLlm: boolean }) =>
+    ipcRenderer.invoke('autopilot:attachDraft', args),
+  autopilotAttachConfirm: (args: { terminalId: string; bridgePrompt: string }) =>
+    ipcRenderer.invoke('autopilot:attachConfirm', args),
+  autopilotAttachStatus: (terminalId: string) =>
+    ipcRenderer.invoke('autopilot:attachStatus', terminalId),
+  autopilotAttachCancel: (terminalId: string) =>
+    ipcRenderer.invoke('autopilot:attachCancel', terminalId),
   onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, terminalId: string, state: unknown) => callback(terminalId, state)
     ipcRenderer.on('autopilot:update', listener)
