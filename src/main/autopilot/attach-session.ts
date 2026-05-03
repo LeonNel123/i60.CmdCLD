@@ -12,14 +12,14 @@ export function classifyAttachScrollback(scrollback: string): AttachClassificati
   if (trimmed.length === 0) {
     return 'idle'
   }
+  if (/blocked|failed|error|cannot continue|stuck/i.test(scrollback)) {
+    return 'blocked'
+  }
   if (/permission to|allow this|do you want to proceed|1\.\s*(yes|allow|approve)/i.test(scrollback)) {
     return 'permission_request'
   }
   if (/\?\s*$/.test(trimmed) || /what should|please confirm|confirm|choose|select|approve|deny/i.test(scrollback)) {
     return 'waiting_for_user'
-  }
-  if (/blocked|failed|error|cannot continue|stuck/i.test(scrollback)) {
-    return 'blocked'
   }
   if (/working|running|thinking|editing|reading|searching|executing/i.test(text)) {
     return 'working'
@@ -43,16 +43,16 @@ export function buildAttachBridgePrompt(args: {
     '',
     'If you are actively working, report progress with:',
     '[ORCH:PROGRESS]',
-    'STATUS: working',
+    'STATUS: progress',
     '',
     'If the requested work is complete and ready for review, end with:',
     '[ORCH:GOAL_READY]',
-    'STATUS: ready',
+    'STATUS: goal_ready',
     'SUMMARY: <short summary>',
     '',
     'If blocked, end with:',
     '[ORCH:STUCK]',
-    'STATUS: blocked',
+    'STATUS: stuck',
     'REASON: <blocker>',
     '',
     'Keep these markers visible as plain text in the terminal output.',
@@ -62,7 +62,9 @@ export function buildAttachBridgePrompt(args: {
     parts.push(
       '',
       "The user's answer to your current prompt is:",
+      'BEGIN USER ANSWER',
       answer,
+      'END USER ANSWER',
       '',
       'Use this answer and continue.',
     )
