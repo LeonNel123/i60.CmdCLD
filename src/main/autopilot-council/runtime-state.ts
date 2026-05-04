@@ -19,6 +19,10 @@ export function saveCouncilRuntime(
   state: CouncilState,
   internals: CouncilRuntimeInternals,
 ): void {
+  if (!isCouncilStateShape(state)) {
+    throw new Error('Invalid council runtime state')
+  }
+
   if (!isCouncilRuntimeInternalsShape(internals)) {
     throw new Error('Invalid council runtime internals')
   }
@@ -98,9 +102,9 @@ function isCouncilStateShape(value: unknown): value is CouncilState {
     AGENT_CLIS.has(value.reviewerCli) &&
     isCouncilIntensity(value.intensity) &&
     isHumanApprovalShape(value.humanApproval) &&
-    Number.isFinite(value.cycleCount) &&
-    Number.isFinite(value.costUsd) &&
-    Number.isFinite(value.costCapUsd) &&
+    isNonNegativeInteger(value.cycleCount) &&
+    isNonNegativeFiniteNumber(value.costUsd) &&
+    isNonNegativeFiniteNumber(value.costCapUsd) &&
     isValidationCommandsShape(value.validation) &&
     Array.isArray(value.recentLog) &&
     value.recentLog.every(isActivityEntryShape) &&
@@ -196,6 +200,10 @@ function isRepeatedBlockByGateShape(value: unknown): value is CouncilRuntimeInte
 
 function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value) && value >= 0
+}
+
+function isNonNegativeFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

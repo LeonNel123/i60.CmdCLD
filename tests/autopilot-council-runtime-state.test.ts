@@ -61,6 +61,13 @@ function expectInvalidInternalsNotSaved(root: string, internals: unknown): void 
   expect(existsSync(councilPath(root, 'runtime.json'))).toBe(false)
 }
 
+function expectInvalidStateNotSaved(root: string, runtimeState: unknown): void {
+  expect(() => saveCouncilRuntime(root, runtimeState as never, { packetSequence: 4, repeatedBlockByGate: {} })).toThrow(
+    /Invalid council runtime state/,
+  )
+  expect(existsSync(councilPath(root, 'runtime.json'))).toBe(false)
+}
+
 function expectRuntimeStateRejected(root: string, runtimeState: unknown): void {
   writeRuntime(root, {
     state: runtimeState,
@@ -83,6 +90,11 @@ describe('council runtime state', () => {
     const root = project()
     saveCouncilRuntime(root, { ...state(), reviewerTerminalId: null }, { packetSequence: 4, repeatedBlockByGate: {} })
     expect(loadCouncilRuntime(root)?.state.reviewerTerminalId).toBeNull()
+  })
+
+  it('throws without writing for invalid runtime state', () => {
+    const root = project()
+    expectInvalidStateNotSaved(root, { ...state(), stage: 'invalid' })
   })
 
   it('returns null for missing runtime file', () => {
@@ -144,6 +156,19 @@ describe('council runtime state', () => {
       lastCouncilDecision: { action: 'continue', gate: 'bogus' },
       permissionRequest: { text: 'Approve?', detectedAt: 'now' },
     })
+  })
+
+  it.each([-1, 1.5])('returns null for invalid cycle count %s', (cycleCount) => {
+    const root = project()
+    expectRuntimeStateRejected(root, { ...state(), cycleCount })
+  })
+
+  it.each([
+    ['costUsd', -0.01],
+    ['costCapUsd', -1],
+  ] satisfies Array<[keyof CouncilState, number]>)('returns null for negative runtime cost %s', (field, value) => {
+    const root = project()
+    expectRuntimeStateRejected(root, { ...state(), [field]: value })
   })
 
   it('returns null for non-object repeated block counts', () => {
