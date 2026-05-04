@@ -9,8 +9,14 @@ interface Options {
   onForceSettleArmed?: (firesAt: number) => void   // unix ms when force-settle will fire
   onForceSettleCanceled?: () => void
   onPermissionPrompt?: (text: string) => void
-  onMissingMarker?: () => void
+  onMissingMarker?: (diagnostics: MissingMarkerDiagnostics) => void
   markerFallbackMs?: number
+}
+
+export interface MissingMarkerDiagnostics {
+  rawChars: number
+  cleanChars: number
+  cleanTail: string
 }
 
 const ANSI_RE = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\x1b[PX^_].*?\x1b\\|\x1b\][^\x1b]*\x1b\\/g
@@ -235,7 +241,7 @@ export class PtyWatcher {
     if (!found) {
       // No marker yet. Arm marker-fallback if buffer has substantive output.
       if (this.markerFallbackMs > 0 && !this.markerFallbackTimer && cleaned.length > 100) {
-        this.markerFallbackTimer = setTimeout(() => this.fireMissingMarker(), this.markerFallbackMs)
+        this.markerFallbackTimer = setTimeout(() => this.fireMissingMarker(cleaned, active), this.markerFallbackMs)
       }
       return
     }
@@ -279,9 +285,13 @@ export class PtyWatcher {
     return null
   }
 
-  private fireMissingMarker(): void {
+  private fireMissingMarker(cleaned?: string, raw?: string): void {
     this.markerFallbackTimer = null
-    this.opts.onMissingMarker?.()
+    this.opts.onMissingMarker?.({
+      rawChars: raw?.length ?? this.activeBuffer().length,
+      cleanChars: cleaned?.length ?? stripTerminalAnsi(this.activeBuffer()).length,
+      cleanTail: (cleaned ?? stripTerminalAnsi(this.activeBuffer())).slice(-240),
+    })
   }
 
   private forceSettle(): void {

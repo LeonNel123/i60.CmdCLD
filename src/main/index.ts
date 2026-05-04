@@ -618,7 +618,7 @@ ipcMain.handle('autopilot:start', async (_event, args: { terminalId: string; pro
     apiProvider: provider,
     apiKey,
     plannerModel: settings.get('autopilotPlannerModel'),
-    writeToPty: (terminalId, data) => { autopilotPtyWriter.write(terminalId, data) },
+    writeToPty: (terminalId, data) => autopilotPtyWriter.write(terminalId, data),
     onPtyData: (terminalId, listener) => ptyManager.subscribeOutput(terminalId, listener),
     onUpdate: (state) => broadcastAutopilotUpdate(args.terminalId, state),
   }
@@ -831,7 +831,7 @@ ipcMain.handle('autopilot-pro:start', async (_event, args: { terminalId: string;
     apiProvider: provider,
     apiKey,
     plannerModel: settings.get('autopilotPlannerModel'),
-    writeToPty: (terminalId, data) => { autopilotPtyWriter.write(terminalId, data) },
+    writeToPty: (terminalId, data) => autopilotPtyWriter.write(terminalId, data),
     onPtyData: (terminalId, listener) => ptyManager.subscribeOutput(terminalId, listener),
     onUpdate: (state) => broadcastAutopilotProUpdate(args.terminalId, state),
   }
@@ -910,7 +910,7 @@ ipcMain.handle('autopilot-council:start', async (event, args: {
     apiProvider: provider,
     apiKey,
     plannerModel: settings.get('autopilotPlannerModel'),
-    writeToPty: (terminalId, data) => { autopilotPtyWriter.write(terminalId, data) },
+    writeToPty: (terminalId, data) => autopilotPtyWriter.write(terminalId, data),
     onPtyData: (terminalId, listener) => ptyManager.subscribeOutput(terminalId, listener),
     onUpdate: (state) => broadcastAutopilotCouncilUpdate(args.terminalId, state),
     startReviewer,

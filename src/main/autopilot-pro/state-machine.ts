@@ -14,7 +14,7 @@ import type {
   ProDecideResult, ArtifactKind,
 } from './types'
 import { PRO_DIR } from './types'
-import { PtyWatcher, findLastMarker, parseTerminalMarkerLine, splitTerminalLines, stripTerminalAnsi } from '../autopilot/pty-watcher'
+import { PtyWatcher, findLastMarker, parseTerminalMarkerLine, splitTerminalLines, stripTerminalAnsi, type MissingMarkerDiagnostics } from '../autopilot/pty-watcher'
 import { CostTracker } from '../autopilot/cost-tracker'
 import { discoverValidation } from '../autopilot/validation'
 import { makeApiClient } from '../autopilot/api-client'
@@ -294,8 +294,8 @@ export class AutopilotProStateMachine {
         this.appendActivity('escalation', 'permission requested')
         this.notify()
       },
-      onMissingMarker: () => {
-        this.handleMissingMarker()
+      onMissingMarker: (diagnostics) => {
+        this.handleMissingMarker(diagnostics)
       },
     })
   }
@@ -1063,7 +1063,7 @@ export class AutopilotProStateMachine {
     appendTranscript(this.opts.projectPath, lines.join('\n'))
   }
 
-  private handleMissingMarker(): void {
+  private handleMissingMarker(diagnostics?: MissingMarkerDiagnostics): void {
     if (this.markerFallbackPromptCount >= 2) {
       this.state.escalationReason = 'doer not emitting markers — manual intervention needed'
       this.appendActivity('escalation', this.state.escalationReason)
@@ -1072,7 +1072,25 @@ export class AutopilotProStateMachine {
     }
     this.markerFallbackPromptCount++
     const nudge = `I see output but no marker. Please emit [ORCH:WAITING] (with your question), [ORCH:PROGRESS] <id> done|partial|blocked, [ORCH:GOAL_READY], or [ORCH:STUCK] (with the blocker) so the orchestrator knows where you are.`
-    this.opts.writeToPty(this.opts.terminalId, nudge + '\r')
+    const beforeOutput = this.outputVolumeSinceReset
+    const startedAt = Date.now()
+    this.appendActivity('orchestrator-reply', `diagnostic marker-missing count=${this.markerFallbackPromptCount}/2 cleanChars=${diagnostics?.cleanChars ?? 'unknown'} rawChars=${diagnostics?.rawChars ?? 'unknown'} tail="${compactLogText(diagnostics?.cleanTail ?? '')}"`)
+    const writeResult = this.opts.writeToPty(this.opts.terminalId, nudge + '\r')
+    void Promise.resolve(writeResult).then(() => {
+      this.appendActivity('orchestrator-reply', `diagnostic marker-nudge-write-complete count=${this.markerFallbackPromptCount}/2 ms=${Date.now() - startedAt} outputDelta=${this.outputVolumeSinceReset - beforeOutput}`)
+      this.notify()
+      const observeTimer = setTimeout(() => {
+        if (!this.canProcessPty()) return
+        this.appendActivity('orchestrator-reply', `diagnostic marker-nudge-observe count=${this.markerFallbackPromptCount}/2 afterMs=5000 outputDelta=${this.outputVolumeSinceReset - beforeOutput}`)
+        this.notify()
+      }, 5000)
+      if (typeof (observeTimer as any)?.unref === 'function') {
+        (observeTimer as any).unref()
+      }
+    }).catch((error) => {
+      this.appendActivity('escalation', `diagnostic marker-nudge-write-failed: ${error?.message ?? 'unknown'}`)
+      this.notify()
+    })
     this.appendActivity('orchestrator-reply', `marker fallback nudge (${this.markerFallbackPromptCount}/2)`)
     this.notify()
   }
@@ -1206,6 +1224,10 @@ export function createAutopilotPro(
   maxSilenceMs?: number,
 ): AutopilotProStateMachine {
   return new AutopilotProStateMachine(opts, apiOverride, ptyIdleMs, maxSilenceMs)
+}
+
+function compactLogText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().slice(0, 180).replace(/"/g, "'")
 }
 
 // Re-export findLastMarker for tests that want to compose enrichment manually.

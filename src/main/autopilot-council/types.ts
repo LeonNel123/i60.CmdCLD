@@ -164,7 +164,7 @@ export interface AutopilotCouncilOptions {
   apiProvider: 'anthropic' | 'openrouter'
   apiKey: string
   plannerModel: string
-  writeToPty: (terminalId: string, data: string) => void
+  writeToPty: (terminalId: string, data: string) => void | Promise<void>
   onPtyData: (terminalId: string, listener: (data: string) => void) => () => void
   onUpdate: (state: CouncilState) => void
   startReviewer: () => Promise<void>

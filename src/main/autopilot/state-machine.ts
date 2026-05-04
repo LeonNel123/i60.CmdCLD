@@ -2,7 +2,7 @@ import type {
   ApiClient, ActivityEntry, AutopilotOptions, AutopilotState, DecideResult,
   Goal, Milestone, SettledSnapshot, AutopilotPhase,
 } from './types'
-import { PtyWatcher } from './pty-watcher'
+import { PtyWatcher, type MissingMarkerDiagnostics } from './pty-watcher'
 import { CostTracker } from './cost-tracker'
 import { readGoal, readMilestones, writeMilestone, appendLog, appendTranscript, autopilotDirExists, readLearnings, readSteering } from './state-files'
 import { discoverValidation } from './validation'
@@ -82,8 +82,8 @@ export class AutopilotStateMachine {
         this.appendActivity('escalation', 'permission requested')
         this.notify()
       },
-      onMissingMarker: () => {
-        this.handleMissingMarker()
+      onMissingMarker: (diagnostics) => {
+        this.handleMissingMarker(diagnostics)
       },
     })
   }
@@ -465,7 +465,7 @@ export class AutopilotStateMachine {
     this.notify()
   }
 
-  private handleMissingMarker(): void {
+  private handleMissingMarker(diagnostics?: MissingMarkerDiagnostics): void {
     if (this.markerFallbackPromptCount >= 2) {
       this.state.escalationReason = 'doer not emitting markers — manual intervention needed'
       this.transition('escalated', this.state.escalationReason)
@@ -473,7 +473,25 @@ export class AutopilotStateMachine {
     }
     this.markerFallbackPromptCount++
     const nudge = `I see output but no marker. Please emit [ORCH:WAITING] (with your question), [ORCH:PROGRESS] <id> done|partial|blocked, [ORCH:GOAL_READY], or [ORCH:STUCK] (with the blocker) so the orchestrator knows where you are.`
-    this.opts.writeToPty(this.opts.terminalId, nudge + '\r')
+    const beforeOutput = this.outputVolumeSinceReset
+    const startedAt = Date.now()
+    this.appendActivity('orchestrator-reply', `diagnostic marker-missing count=${this.markerFallbackPromptCount}/2 cleanChars=${diagnostics?.cleanChars ?? 'unknown'} rawChars=${diagnostics?.rawChars ?? 'unknown'} tail="${compactLogText(diagnostics?.cleanTail ?? '')}"`)
+    const writeResult = this.opts.writeToPty(this.opts.terminalId, nudge + '\r')
+    void Promise.resolve(writeResult).then(() => {
+      this.appendActivity('orchestrator-reply', `diagnostic marker-nudge-write-complete count=${this.markerFallbackPromptCount}/2 ms=${Date.now() - startedAt} outputDelta=${this.outputVolumeSinceReset - beforeOutput}`)
+      this.notify()
+      const observeTimer = setTimeout(() => {
+        if (!this.canProcessPty()) return
+        this.appendActivity('orchestrator-reply', `diagnostic marker-nudge-observe count=${this.markerFallbackPromptCount}/2 afterMs=5000 outputDelta=${this.outputVolumeSinceReset - beforeOutput}`)
+        this.notify()
+      }, 5000)
+      if (typeof (observeTimer as any)?.unref === 'function') {
+        (observeTimer as any).unref()
+      }
+    }).catch((error) => {
+      this.appendActivity('escalation', `diagnostic marker-nudge-write-failed: ${error?.message ?? 'unknown'}`)
+      this.notify()
+    })
     this.appendActivity('orchestrator-reply', `marker fallback nudge (${this.markerFallbackPromptCount}/2)`)
     this.notify()
   }
@@ -547,4 +565,8 @@ export class AutopilotStateMachine {
     this.armSilenceTimer()
     this.watcher.feed(data)
   }
+}
+
+function compactLogText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().slice(0, 180).replace(/"/g, "'")
 }

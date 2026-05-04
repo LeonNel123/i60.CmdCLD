@@ -12,7 +12,7 @@ export type ReviewerSessionResult =
 export interface CouncilReviewerSessionOptions {
   terminalId: string
   reviewerCli: AgentCli
-  writeToPty: (terminalId: string, data: string) => void
+  writeToPty: (terminalId: string, data: string) => void | Promise<void>
   onPtyData: (terminalId: string, listener: (data: string) => void) => () => void
   timeoutMs?: number
 }
