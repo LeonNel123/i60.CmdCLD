@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { dirname } from 'path'
 import { councilPath } from './state-files'
-import { isCouncilIntensity } from './types'
+import { isCouncilGate, isCouncilIntensity } from './types'
 import type { CouncilControl, CouncilGate, CouncilState } from './types'
 
 export interface CouncilRuntimeInternals {
@@ -76,7 +76,17 @@ function isCouncilStateShape(value: unknown): value is CouncilState {
 function isCouncilRuntimeInternalsShape(value: unknown): value is CouncilRuntimeInternals {
   if (!isRecord(value)) return false
 
-  return Number.isFinite(value.packetSequence) && isRecord(value.repeatedBlockByGate)
+  return isNonNegativeInteger(value.packetSequence) && isRepeatedBlockByGateShape(value.repeatedBlockByGate)
+}
+
+function isRepeatedBlockByGateShape(value: unknown): value is CouncilRuntimeInternals['repeatedBlockByGate'] {
+  if (!isRecord(value)) return false
+
+  return Object.entries(value).every(([gate, count]) => isCouncilGate(gate) && isNonNegativeInteger(count))
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value) && value >= 0
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

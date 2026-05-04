@@ -114,4 +114,31 @@ describe('council runtime state', () => {
     })
     expect(loadCouncilRuntime(root)).toBeNull()
   })
+
+  it('returns null for repeated block counters with malformed values', () => {
+    const root = project()
+    writeRuntime(root, {
+      state: state(),
+      internals: { packetSequence: 4, repeatedBlockByGate: { plan: '2', final: null, spec: {} } },
+    })
+    expect(loadCouncilRuntime(root)).toBeNull()
+  })
+
+  it('returns null for repeated block counters with unknown gate keys', () => {
+    const root = project()
+    writeRuntime(root, {
+      state: state(),
+      internals: { packetSequence: 4, repeatedBlockByGate: { bogus: 1 } },
+    })
+    expect(loadCouncilRuntime(root)).toBeNull()
+  })
+
+  it('returns null for negative or non-finite repeated block counters', () => {
+    const root = project()
+    writeRuntime(root, {
+      state: state(),
+      internals: { packetSequence: 4, repeatedBlockByGate: { plan: -1, final: Infinity } },
+    })
+    expect(loadCouncilRuntime(root)).toBeNull()
+  })
 })
