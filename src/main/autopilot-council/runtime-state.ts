@@ -19,6 +19,10 @@ export function saveCouncilRuntime(
   state: CouncilState,
   internals: CouncilRuntimeInternals,
 ): void {
+  if (!isCouncilRuntimeInternalsShape(internals)) {
+    throw new Error('Invalid council runtime internals')
+  }
+
   const path = councilPath(projectPath, 'runtime.json')
   const tmpPath = `${path}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
   mkdirSync(dirname(path), { recursive: true })

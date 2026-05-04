@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -54,6 +54,11 @@ function state(): CouncilState {
 function writeRuntime(root: string, snapshot: unknown): void {
   mkdirSync(councilPath(root, '.'), { recursive: true })
   writeFileSync(councilPath(root, 'runtime.json'), JSON.stringify(snapshot))
+}
+
+function expectInvalidInternalsNotSaved(root: string, internals: unknown): void {
+  expect(() => saveCouncilRuntime(root, state(), internals as never)).toThrow(/Invalid council runtime internals/)
+  expect(existsSync(councilPath(root, 'runtime.json'))).toBe(false)
 }
 
 describe('council runtime state', () => {
@@ -140,5 +145,20 @@ describe('council runtime state', () => {
       internals: { packetSequence: 4, repeatedBlockByGate: { plan: -1, final: Infinity } },
     })
     expect(loadCouncilRuntime(root)).toBeNull()
+  })
+
+  it.each([Number.NaN, -1, 1.5])('throws without writing for invalid packet sequence %s', (packetSequence) => {
+    const root = project()
+    expectInvalidInternalsNotSaved(root, { packetSequence, repeatedBlockByGate: {} })
+  })
+
+  it('throws without writing for unknown repeated block gate keys', () => {
+    const root = project()
+    expectInvalidInternalsNotSaved(root, { packetSequence: 4, repeatedBlockByGate: { bogus: 1 } })
+  })
+
+  it.each([Number.POSITIVE_INFINITY, -1])('throws without writing for invalid repeated block counter %s', (plan) => {
+    const root = project()
+    expectInvalidInternalsNotSaved(root, { packetSequence: 4, repeatedBlockByGate: { plan } })
   })
 })
