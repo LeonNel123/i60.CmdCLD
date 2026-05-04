@@ -194,7 +194,7 @@ describe('readGoal — accepted formats (Wave 3.4 relaxed parser)', () => {
     expect(g).not.toBeNull()
     expect(g!.constraints.maxIterations).toBe(40)
     expect(g!.constraints.maxApiCostUsd).toBe(1.0)
-    expect(g!.constraints.maxDoerOutputPerReset).toBe(60000)
+    expect(g!.constraints.maxDoerOutputPerReset).toBe(180000)
   })
 
   it('returns null only when the file is missing', () => {

@@ -238,7 +238,7 @@ export interface AutopilotProOptions {
   apiProvider: 'anthropic' | 'openrouter'
   apiKey: string
   plannerModel: string
-  maxDoerOutputPerReset?: number   // default 60000
+  maxDoerOutputPerReset?: number   // default 180000
   runtimeJson?: boolean            // default true; pass false in tests to disable runtime.json save/load
   budgetTracker?: boolean          // default true; pass false in tests to disable cross-run budget tracking
   researchEnabled?: boolean

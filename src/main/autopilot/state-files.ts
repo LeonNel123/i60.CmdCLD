@@ -111,7 +111,7 @@ function parseGoal(text: string): Goal | null {
   }
   const maxIterations = Number(findKv('max_iterations') ?? '40')
   const maxApiCostUsd = Number(findKv('max_api_cost_usd') ?? '1.0')
-  const maxDoerOutputPerReset = Number(findKv('max_doer_output_per_reset') ?? '60000')
+  const maxDoerOutputPerReset = Number(findKv('max_doer_output_per_reset') ?? '180000')
 
   if (!Number.isFinite(maxIterations) || !Number.isFinite(maxApiCostUsd) || !Number.isFinite(maxDoerOutputPerReset)) return null
 

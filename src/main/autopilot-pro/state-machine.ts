@@ -239,7 +239,7 @@ export class AutopilotProStateMachine {
     })
     this.maxSilenceMs = maxSilenceMs
     this.baseMaxSilenceMs = maxSilenceMs
-    this.maxDoerOutputPerReset = opts.maxDoerOutputPerReset ?? 60000
+    this.maxDoerOutputPerReset = opts.maxDoerOutputPerReset ?? 180000
     this.runtimeJsonEnabled = opts.runtimeJson !== false
     this.budgetTrackerEnabled = opts.budgetTracker !== false
     this.researchEnabled = opts.researchEnabled !== false
@@ -472,9 +472,11 @@ export class AutopilotProStateMachine {
     // Drain any pending waitForSettle promises (used by reset())
     while (this.settleResolvers.length) this.settleResolvers.shift()?.()
 
-    // Output threshold check — trigger reset before doing more work this cycle
-    if (this.outputVolumeSinceReset >= this.maxDoerOutputPerReset) {
-      await this.reset('output volume threshold reached')
+    // Output threshold reset only at a stable implementation checkpoint.
+    // Discovery/planning/review stages often produce large artifacts; clearing
+    // there loses exactly the context needed to finish the handoff.
+    if (this.shouldResetAtWaitingCheckpoint(m)) {
+      await this.reset('output volume checkpoint reached')
       return  // cycleCount not incremented — reset is the only work this cycle
     }
 
@@ -979,6 +981,12 @@ export class AutopilotProStateMachine {
     this.outputVolumeSinceReset = 0
     this.appendActivity('orchestrator-resume', 'reset complete')
     this.notify()
+  }
+
+  private shouldResetAtWaitingCheckpoint(marker: ProSettledSnapshot['marker']): boolean {
+    if (this.state.stage !== 'implementation') return false
+    if (marker.kind !== 'WAITING') return false
+    return this.outputVolumeSinceReset >= this.maxDoerOutputPerReset
   }
 
   private transition(_phase: ProStage, reason: string): void {

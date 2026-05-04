@@ -120,6 +120,42 @@ describe('AutopilotStateMachine', () => {
     expect(sm.state.phase).toBe('wizard')
   })
 
+  it('does not reset for output volume on PROGRESS markers during execution', async () => {
+    const goal = makeGoal()
+    goal.constraints.maxDoerOutputPerReset = 50
+    writeGoal(TMP, goal); writeMilestone(TMP, makeMilestone())
+    const writes: string[] = []
+    const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })), writes)
+    await sm.start()
+    sm.approveGoal()
+    writes.length = 0
+
+    ;(sm as any).outputVolumeSinceReset = 100
+    sm.feedPty('[ORCH:PROGRESS] m1/s1 partial\n')
+    await waitForFlush()
+
+    expect(writes.some((w) => w.includes('Before we /clear context'))).toBe(false)
+    expect(sm.state.phase).toBe('executing')
+  })
+
+  it('resets only at an executing WAITING checkpoint after output threshold', async () => {
+    const goal = makeGoal()
+    goal.constraints.maxDoerOutputPerReset = 50
+    writeGoal(TMP, goal); writeMilestone(TMP, makeMilestone())
+    const writes: string[] = []
+    const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })), writes)
+    await sm.start()
+    sm.approveGoal()
+    writes.length = 0
+
+    ;(sm as any).outputVolumeSinceReset = 100
+    sm.feedPty('[ORCH:WAITING] checkpoint\n')
+    await waitForFlush(200)
+
+    expect(writes.some((w) => w.includes('Before we /clear context'))).toBe(true)
+    expect(writes.some((w) => w === 'next\r')).toBe(false)
+  })
+
   it('escalates after repeated unparsable GOAL_READY repair attempts', async () => {
     writeMalformedWizardFiles()
     const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })))
@@ -201,7 +237,7 @@ function makeSm(idea: string, api: ApiClient, writes?: string[], maxSilenceMs?: 
 function makeGoal(): Goal {
   return {
     goal: 'X', nonGoals: [], acceptance: [],
-    constraints: { maxIterations: 40, maxApiCostUsd: 1.0, maxDoerOutputPerReset: 60000 },
+    constraints: { maxIterations: 40, maxApiCostUsd: 1.0, maxDoerOutputPerReset: 180000 },
   }
 }
 
@@ -243,8 +279,8 @@ async function waitForPhase(sm: AutopilotStateMachine, phase: string, timeoutMs 
   }
 }
 
-async function waitForFlush(): Promise<void> {
-  await new Promise((r) => setTimeout(r, 50))
+async function waitForFlush(ms = 50): Promise<void> {
+  await new Promise((r) => setTimeout(r, ms))
 }
 
 it('discovers validation commands on start and exposes them on state', async () => {

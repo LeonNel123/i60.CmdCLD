@@ -217,12 +217,11 @@ export class AutopilotStateMachine {
       return
     }
 
-    if (this.state.phase === 'executing' && this.outputVolumeSinceReset >= (this.state.goal?.constraints.maxDoerOutputPerReset ?? 60000)) {
-      await this.reset('output volume threshold reached')
-      return
-    }
-
     if (snap.marker.kind === 'WAITING') {
+      if (this.shouldResetAtWaitingCheckpoint()) {
+        await this.reset('output volume checkpoint reached')
+        return
+      }
       await this.cycleDecide(snap)
     }
   }
@@ -467,6 +466,12 @@ export class AutopilotStateMachine {
       doerSystemPrompt: buildDoerSystemPrompt(this.runtime.agentCli),
     })
     this.outputVolumeSinceReset = 0
+  }
+
+  private shouldResetAtWaitingCheckpoint(): boolean {
+    if (this.state.phase !== 'executing') return false
+    const threshold = this.state.goal?.constraints.maxDoerOutputPerReset ?? 180000
+    return this.outputVolumeSinceReset >= threshold
   }
 
   private applyProgress(subgoalIdRaw: string, status: 'done' | 'partial' | 'blocked'): void {
@@ -719,7 +724,7 @@ function buildGoalFileRepairPrompt(attempt: number, maxAttempts: number): string
     '## Constraints',
     '- max_iterations: 40',
     '- max_api_cost_usd: 1.0',
-    '- max_doer_output_per_reset: 60000',
+    '- max_doer_output_per_reset: 180000',
     '',
     'Required .autopilot/milestones/m1.md:',
     '# Milestone m1 — <name>',

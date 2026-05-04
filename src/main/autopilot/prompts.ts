@@ -18,7 +18,7 @@ const STRICT_CLASSIC_GOAL_TEMPLATE = `# Goal
 ## Constraints
 - max_iterations: 40
 - max_api_cost_usd: 1.0
-- max_doer_output_per_reset: 60000
+- max_doer_output_per_reset: 180000
 
 ## Repository impact
 - <path>: <one-line impact>`
@@ -249,7 +249,7 @@ Please:
 1. Ask clarifying questions if the idea is ambiguous (use [ORCH:WAITING] for each).
 2. Once you have enough, write .autopilot/goal.md with goal, non-goals, acceptance criteria,
    constraints (defaults: max_iterations 40, max_api_cost_usd 1.0,
-   max_doer_output_per_reset 60000), AND a "## Repository impact" section listing the real
+   max_doer_output_per_reset 180000), AND a "## Repository impact" section listing the real
    files/modules this work will touch.
    For each acceptance criterion, prefer EARS form: "WHEN <trigger>, THE SYSTEM SHALL
    <observable behaviour>". Free-form is fine for criteria that don't fit EARS (e.g.

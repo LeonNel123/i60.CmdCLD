@@ -1089,6 +1089,24 @@ describe('PRO context-reset path (Wave 4.0)', () => {
     expect(writes.some((w) => w.includes('state.md'))).toBe(true)
   })
 
+  it('threshold does not reset during planning artifact work', async () => {
+    writeArtifact(TMP, 'spec', '# spec'); markApproved(TMP, 'spec')
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'continue planning' })), writes, {
+      maxDoerOutputPerReset: 50,
+    })
+    await sm.start()
+    writes.length = 0
+
+    sm.feedPty('x'.repeat(60) + '\n')
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+
+    expect(sm.state.stage).toBe('planning')
+    expect(writes.some((w) => w.includes('state.md'))).toBe(false)
+    expect(writes.some((w) => w.includes('continue planning'))).toBe(true)
+  })
+
   it('outputVolumeSinceReset is at 0 immediately after construction', () => {
     const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'x' })))
     expect((sm as any).outputVolumeSinceReset).toBe(0)
