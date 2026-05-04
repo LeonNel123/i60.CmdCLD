@@ -618,6 +618,96 @@ describe('AutopilotCouncilStateMachine', () => {
     expect(onUpdate).toHaveBeenCalled()
   })
 
+  it('partial startup failure cleans up reviewer session and launched reviewer process', async () => {
+    const error = new Error('reviewer session prompt failed')
+    const stopReviewer = vi.fn()
+    const r: CouncilReviewer = {
+      review: vi.fn(async () => decision({
+        verdict: 'approve',
+        risk: 'low',
+        findings: [],
+        recommended_instruction: '',
+        rationale: 'ok',
+      })),
+      start: vi.fn(async () => {
+        throw error
+      }),
+      stop: vi.fn(),
+    }
+    const sm = new AutopilotCouncilStateMachine(opts({
+      startReviewer: vi.fn(async () => {}),
+      stopReviewer,
+    }), r)
+
+    await expect(sm.start()).rejects.toThrow('reviewer session prompt failed')
+
+    expect(r.stop).toHaveBeenCalledOnce()
+    expect(stopReviewer).toHaveBeenCalledOnce()
+    expect(sm.getState()).toMatchObject({
+      control: 'blocked',
+      reviewerStatus: 'failed',
+      reviewerWarning: 'reviewer session prompt failed',
+    })
+  })
+
+  it('resume from blocked uses full reviewer startup path before running', async () => {
+    const firstError = new Error('initial launch failed')
+    const startReviewer = vi.fn()
+      .mockImplementationOnce(async () => {
+        throw firstError
+      })
+      .mockImplementationOnce(async () => {})
+    const r = reviewer(decision({
+      verdict: 'approve',
+      risk: 'low',
+      findings: [],
+      recommended_instruction: '',
+      rationale: 'ok',
+    }))
+    const sm = new AutopilotCouncilStateMachine(opts({ startReviewer }), r)
+
+    await expect(sm.start()).rejects.toThrow('initial launch failed')
+    await sm.resume()
+
+    expect(startReviewer).toHaveBeenCalledTimes(2)
+    expect(r.start).toHaveBeenCalledOnce()
+    expect(sm.getState()).toMatchObject({
+      control: 'running',
+      reviewerStatus: 'idle',
+      reviewerWarning: null,
+      escalationReason: null,
+    })
+  })
+
+  it('resume from blocked stays failed when reviewer restart fails', async () => {
+    const startReviewer = vi.fn()
+      .mockImplementationOnce(async () => {
+        throw new Error('initial launch failed')
+      })
+      .mockImplementationOnce(async () => {
+        throw new Error('restart failed')
+      })
+    const r = reviewer(decision({
+      verdict: 'approve',
+      risk: 'low',
+      findings: [],
+      recommended_instruction: '',
+      rationale: 'ok',
+    }))
+    const sm = new AutopilotCouncilStateMachine(opts({ startReviewer }), r)
+
+    await expect(sm.start()).rejects.toThrow('initial launch failed')
+    await expect(sm.resume()).rejects.toThrow('restart failed')
+
+    expect(startReviewer).toHaveBeenCalledTimes(2)
+    expect(sm.getState()).toMatchObject({
+      control: 'blocked',
+      reviewerStatus: 'failed',
+      reviewerWarning: 'restart failed',
+      escalationReason: 'Reviewer startup failed: restart failed',
+    })
+  })
+
   it('runtime resume restores state/packet counters enough to continue next packet sequence', async () => {
     const root = project()
     const base = opts({ projectPath: root })

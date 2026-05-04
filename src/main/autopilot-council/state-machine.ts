@@ -104,6 +104,7 @@ export class AutopilotCouncilStateMachine {
 
   private async performStart(): Promise<void> {
     const generation = ++this.lifecycleGeneration
+    let reviewerProcessStarted = false
     this.stopped = false
     this.state.control = 'running'
     this.state.reviewerStatus = 'starting'
@@ -111,6 +112,7 @@ export class AutopilotCouncilStateMachine {
 
     try {
       await this.opts.startReviewer()
+      reviewerProcessStarted = true
       if (!this.isGenerationActive(generation)) return
 
       await this.reviewer.start()
@@ -135,6 +137,8 @@ export class AutopilotCouncilStateMachine {
       if (this.isGenerationActive(generation)) this.notify()
     } catch (error) {
       if (this.lifecycleGeneration === generation && this.state.control !== 'stopped') {
+        this.reviewer.stop()
+        if (reviewerProcessStarted) this.opts.stopReviewer()
         const message = errorMessage(error)
         this.state.control = 'blocked'
         this.state.reviewerStatus = 'failed'
@@ -158,14 +162,12 @@ export class AutopilotCouncilStateMachine {
     this.notify()
   }
 
-  resume(): void {
+  async resume(): Promise<void> {
     if (this.state.control !== 'paused' && this.state.control !== 'blocked') return
-    this.lifecycleGeneration += 1
-    this.state.control = 'running'
+    const wasBlocked = this.state.control === 'blocked'
     this.state.escalationReason = null
-    this.state.liveStatus = 'running'
-    void this.reviewer.start()
-    this.notify()
+    this.state.reviewerWarning = wasBlocked ? null : this.state.reviewerWarning
+    await this.start()
   }
 
   stop(): void {
