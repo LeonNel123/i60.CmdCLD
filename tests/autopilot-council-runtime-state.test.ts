@@ -61,6 +61,14 @@ function expectInvalidInternalsNotSaved(root: string, internals: unknown): void 
   expect(existsSync(councilPath(root, 'runtime.json'))).toBe(false)
 }
 
+function expectRuntimeStateRejected(root: string, runtimeState: unknown): void {
+  writeRuntime(root, {
+    state: runtimeState,
+    internals: { packetSequence: 4, repeatedBlockByGate: {} },
+  })
+  expect(loadCouncilRuntime(root)).toBeNull()
+}
+
 describe('council runtime state', () => {
   it('saves and loads council runtime state', () => {
     const root = project()
@@ -101,11 +109,41 @@ describe('council runtime state', () => {
     const root = project()
     const runtimeState = state() as Partial<CouncilState>
     delete runtimeState.recentLog
-    writeRuntime(root, {
-      state: runtimeState,
-      internals: { packetSequence: 4, repeatedBlockByGate: {} },
+    expectRuntimeStateRejected(root, runtimeState)
+  })
+
+  it.each([
+    'humanApproval',
+    'validation',
+    'liveStatus',
+    'lastCouncilDecision',
+    'permissionRequest',
+  ] satisfies Array<keyof CouncilState>)('returns null for runtime state missing required field %s', (field) => {
+    const root = project()
+    const runtimeState = state() as Partial<CouncilState>
+    delete runtimeState[field]
+    expectRuntimeStateRejected(root, runtimeState)
+  })
+
+  it('returns null for runtime state with invalid stage', () => {
+    const root = project()
+    expectRuntimeStateRejected(root, { ...state(), stage: 'invalid' })
+  })
+
+  it('returns null for runtime state with invalid CLI values', () => {
+    const root = project()
+    expectRuntimeStateRejected(root, { ...state(), implementerCli: 'bad-cli' })
+  })
+
+  it('returns null for runtime state with malformed nested fields', () => {
+    const root = project()
+    expectRuntimeStateRejected(root, {
+      ...state(),
+      humanApproval: { highRiskDisagreement: true },
+      validation: { test: 4 },
+      lastCouncilDecision: { action: 'continue', gate: 'bogus' },
+      permissionRequest: { text: 'Approve?', detectedAt: 'now' },
     })
-    expect(loadCouncilRuntime(root)).toBeNull()
   })
 
   it('returns null for non-object repeated block counts', () => {
