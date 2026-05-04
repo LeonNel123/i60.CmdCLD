@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'fs'
-import { join, normalize } from 'path'
+import { isAbsolute, join, normalize, relative, resolve } from 'path'
 import { discoverValidation } from '../autopilot/validation'
 import { PtyWatcher } from '../autopilot/pty-watcher'
 import { enrichProMarker } from '../autopilot-pro/state-machine'
@@ -22,6 +22,7 @@ import {
 const IMPLEMENTER_INSTRUCTION_LIMIT = 2400
 const MANUAL_REPLY_LIMIT = 4000
 const INVALID_REVIEWER_RAW_LIMIT = 1200
+const EMPTY_REFINE_REPAIR_RAW = '{"verdict":"refine","recommended_instruction":""}'
 const PERMISSION_RESPONSE: Record<'allow' | 'deny', string> = {
   allow: 'y\r',
   deny: 'n\r',
@@ -43,6 +44,7 @@ export class AutopilotCouncilStateMachine {
   private repeatedBlockByGate: Partial<Record<CouncilGate, number>> = {}
   private kickoffSent = false
   private stopped = false
+  private lifecycleGeneration = 0
   private state: CouncilState
 
   constructor(opts: AutopilotCouncilOptions, reviewerOverride?: CouncilReviewer) {
@@ -59,7 +61,7 @@ export class AutopilotCouncilStateMachine {
     if (restored) {
       this.packetSequence = restored.internals.packetSequence
       this.repeatedBlockByGate = { ...restored.internals.repeatedBlockByGate }
-      this.kickoffSent = this.state.control !== 'idle'
+      this.kickoffSent = restoredRuntimeShowsKickoffSent(this.state)
       this.stopped = this.state.control === 'stopped'
     }
 
@@ -84,20 +86,24 @@ export class AutopilotCouncilStateMachine {
   }
 
   getState(): CouncilState {
-    return this.state
+    return cloneCouncilState(this.state)
   }
 
   async start(): Promise<void> {
-    if (this.state.control === 'running') return
+    if (this.state.control === 'running' && this.kickoffSent) return
 
+    const generation = ++this.lifecycleGeneration
     this.stopped = false
     this.state.control = 'running'
     this.state.reviewerStatus = 'starting'
     this.state.validation = discoverValidation(this.opts.projectPath)
-    this.notify()
 
     await this.opts.startReviewer()
+    if (!this.isGenerationActive(generation)) return
+
     await this.reviewer.start()
+    if (!this.isGenerationActive(generation)) return
+
     this.state.reviewerStatus = 'idle'
 
     if (this.detachPty === null) {
@@ -114,11 +120,12 @@ export class AutopilotCouncilStateMachine {
       this.kickoffSent = true
     }
 
-    this.notify()
+    if (this.isGenerationActive(generation)) this.notify()
   }
 
   pause(): void {
     if (this.state.control !== 'running') return
+    this.lifecycleGeneration += 1
     this.state.control = 'paused'
     this.state.liveStatus = 'paused'
     this.notify()
@@ -126,6 +133,7 @@ export class AutopilotCouncilStateMachine {
 
   resume(): void {
     if (this.state.control !== 'paused' && this.state.control !== 'blocked') return
+    this.lifecycleGeneration += 1
     this.state.control = 'running'
     this.state.escalationReason = null
     this.state.liveStatus = 'running'
@@ -135,6 +143,7 @@ export class AutopilotCouncilStateMachine {
   stop(): void {
     if (this.stopped && this.state.control === 'stopped') return
 
+    this.lifecycleGeneration += 1
     this.state.control = 'stopped'
     this.state.liveStatus = 'stopped'
     this.detachPty?.()
@@ -236,7 +245,9 @@ export class AutopilotCouncilStateMachine {
   }
 
   private async runReviewGate(gate: CouncilGate, marker: ProMarker, terminalTail: string): Promise<void> {
-    this.packetSequence += 1
+    const generation = this.lifecycleGeneration
+    const controlAtStart = this.state.control
+    const sequence = this.packetSequence + 1
     this.state.reviewerStatus = 'reviewing'
     this.state.reviewerWarning = null
     this.state.liveStatus = `reviewing ${gate}`
@@ -244,7 +255,7 @@ export class AutopilotCouncilStateMachine {
 
     const artifactContent = marker.artifactPath ? this.readArtifactForMarker(marker.artifactPath) : null
     const packet = buildReviewPacket({
-      sequence: this.packetSequence,
+      sequence,
       gate,
       stage: this.state.stage,
       projectPath: this.opts.projectPath,
@@ -261,7 +272,10 @@ export class AutopilotCouncilStateMachine {
       terminalTail,
     })
     const packetMarkdown = formatReviewPacketForReviewer(packet)
-    const reviewResult = await this.reviewWithInvalidRepair(packetMarkdown)
+    const reviewResult = await this.reviewWithProtocolRepairs(packetMarkdown, gate, generation, controlAtStart)
+    if (!this.isReviewGenerationActive(generation, controlAtStart)) return
+
+    this.packetSequence = sequence
     this.state.lastReviewPacketId = packet.id
 
     if (reviewResult.kind !== 'decision') {
@@ -273,6 +287,13 @@ export class AutopilotCouncilStateMachine {
 
     const repeated = this.repeatedBlockByGate[gate] ?? 0
     const arbitration = arbitrateCouncilReview({ gate, review: reviewResult.decision, repeatedBlockCount: repeated })
+
+    if (arbitration.action === 'retry-reviewer') {
+      this.repeatedBlockByGate[gate] = repeated + 1
+      this.handleReviewerProtocolFallback(gate, packet.id, packetMarkdown, EMPTY_REFINE_REPAIR_RAW, 'empty-refine-instruction')
+      return
+    }
+
     this.state.lastCouncilDecision = arbitration
     this.state.reviewerStatus = 'idle'
     this.state.reviewerWarning = null
@@ -282,9 +303,6 @@ export class AutopilotCouncilStateMachine {
     if (arbitration.action === 'instruct-implementer') {
       this.repeatedBlockByGate[gate] = repeated + 1
       this.writeImplementer(`Council Reviewer refinement: ${trimInstruction(arbitration.instruction)}`)
-    } else if (arbitration.action === 'retry-reviewer') {
-      this.repeatedBlockByGate[gate] = repeated + 1
-      this.opts.writeToPty(this.opts.reviewerTerminalId, 'Your prior response was not concrete. Return valid JSON with a specific recommended_instruction.\r')
     } else if (arbitration.action === 'ask-user') {
       this.block(describeEscalation(arbitration.reason, reviewResult.decision.rationale))
     } else {
@@ -295,14 +313,41 @@ export class AutopilotCouncilStateMachine {
     this.notify()
   }
 
-  private async reviewWithInvalidRepair(packetMarkdown: string): Promise<ReviewerSessionResult> {
+  private async reviewWithProtocolRepairs(
+    packetMarkdown: string,
+    gate: CouncilGate,
+    generation: number,
+    controlAtStart: CouncilState['control'],
+  ): Promise<ReviewerSessionResult> {
+    const firstResult = await this.reviewWithInvalidRepair(packetMarkdown, generation, controlAtStart)
+    if (!this.isReviewGenerationActive(generation, controlAtStart) || firstResult.kind !== 'decision') return firstResult
+
+    const repeated = this.repeatedBlockByGate[gate] ?? 0
+    const arbitration = arbitrateCouncilReview({ gate, review: firstResult.decision, repeatedBlockCount: repeated })
+    if (arbitration.action !== 'retry-reviewer') return firstResult
+
+    this.state.reviewerStatus = 'reviewing'
+    this.state.reviewerWarning = arbitration.reason
+    this.state.liveStatus = 'reviewer refine instruction empty; retrying once'
+    this.notify()
+    if (!this.isReviewGenerationActive(generation, controlAtStart)) return firstResult
+
+    return this.reviewer.review(buildEmptyRefineRepairPacket(packetMarkdown, arbitration.reason))
+  }
+
+  private async reviewWithInvalidRepair(
+    packetMarkdown: string,
+    generation: number,
+    controlAtStart: CouncilState['control'],
+  ): Promise<ReviewerSessionResult> {
     const firstResult = await this.reviewer.review(packetMarkdown)
-    if (firstResult.kind !== 'invalid') return firstResult
+    if (!this.isReviewGenerationActive(generation, controlAtStart) || firstResult.kind !== 'invalid') return firstResult
 
     this.state.reviewerStatus = 'protocol-violation'
     this.state.reviewerWarning = firstResult.error
     this.state.liveStatus = 'reviewer response invalid; retrying once'
     this.notify()
+    if (!this.isReviewGenerationActive(generation, controlAtStart)) return firstResult
 
     return this.reviewer.review(buildInvalidReviewerRepairPacket(packetMarkdown, firstResult))
   }
@@ -313,18 +358,48 @@ export class AutopilotCouncilStateMachine {
     packetMarkdown: string,
     reviewResult: Exclude<ReviewerSessionResult, { kind: 'decision' }>,
   ): void {
-    writeReviewPacketFiles(this.opts.projectPath, packetId, packetMarkdown, reviewResult.raw)
-
     const reviewerVerdict = reviewResult.kind === 'timeout' ? 'timeout' : 'invalid'
-    const action = gate === 'spec' || gate === 'plan' || gate === 'final' ? 'ask-user' : 'ignore-reviewer'
     this.state.reviewerStatus = reviewResult.kind === 'timeout' ? 'timed-out' : 'protocol-violation'
     this.state.reviewerWarning = reviewResult.kind === 'invalid' ? reviewResult.error : reviewResult.kind
+    this.applyReviewerFailure(
+      gate,
+      packetId,
+      packetMarkdown,
+      reviewResult.raw,
+      reviewerVerdict,
+      reviewResult.kind === 'invalid' ? reviewResult.error : reviewResult.kind,
+    )
+  }
+
+  private handleReviewerProtocolFallback(
+    gate: CouncilGate,
+    packetId: string,
+    packetMarkdown: string,
+    raw: string,
+    reason: string,
+  ): void {
+    this.state.reviewerStatus = 'protocol-violation'
+    this.state.reviewerWarning = reason
+    this.applyReviewerFailure(gate, packetId, packetMarkdown, raw, 'invalid', reason)
+  }
+
+  private applyReviewerFailure(
+    gate: CouncilGate,
+    packetId: string,
+    packetMarkdown: string,
+    responseRaw: string,
+    reviewerVerdict: 'timeout' | 'invalid',
+    reason: string,
+  ): void {
+    writeReviewPacketFiles(this.opts.projectPath, packetId, packetMarkdown, responseRaw)
+
+    const action = gate === 'spec' || gate === 'plan' || gate === 'final' ? 'ask-user' : 'ignore-reviewer'
     this.state.lastCouncilDecision = {
       action,
       gate,
       risk: 'medium',
       instruction: '',
-      reason: reviewResult.kind === 'invalid' ? reviewResult.error : reviewResult.kind,
+      reason,
       reviewerVerdict,
     }
     appendCouncilDecision(this.opts.projectPath, `${gate}: ${action} (${reviewerVerdict})`)
@@ -339,13 +414,27 @@ export class AutopilotCouncilStateMachine {
   }
 
   private readArtifactForMarker(path: string): string | null {
+    if (!isSafeRelativeArtifactPath(path)) return null
+
     const candidates = [
-      join(this.opts.projectPath, path),
-      join(this.opts.projectPath, '.autopilot-pro', path),
-      join(this.opts.projectPath, '.autopilot-council', path),
-    ]
+      resolveContained(this.opts.projectPath, path),
+      resolveContained(join(this.opts.projectPath, '.autopilot-pro'), path),
+      resolveContained(join(this.opts.projectPath, '.autopilot-council'), path),
+    ].filter((candidate): candidate is string => candidate !== null)
     const hit = candidates.find((candidate) => existsSync(candidate))
     return hit ? readFileSync(hit, 'utf-8') : null
+  }
+
+  private isGenerationActive(generation: number): boolean {
+    return this.lifecycleGeneration === generation && this.state.control !== 'stopped' && this.state.control !== 'paused'
+  }
+
+  private isReviewGenerationActive(generation: number, controlAtStart: CouncilState['control']): boolean {
+    return (
+      this.lifecycleGeneration === generation &&
+      this.state.control !== 'stopped' &&
+      (this.state.control !== 'paused' || controlAtStart === 'paused')
+    )
   }
 
   private block(reason: string): void {
@@ -363,7 +452,7 @@ export class AutopilotCouncilStateMachine {
       packetSequence: this.packetSequence,
       repeatedBlockByGate: this.repeatedBlockByGate,
     })
-    this.opts.onUpdate(this.state)
+    this.opts.onUpdate(cloneCouncilState(this.state))
   }
 }
 
@@ -382,6 +471,27 @@ function describeEscalation(reason: string, rationale: string): string {
   return trimmedRationale ? `${reason}: ${trimmedRationale}` : reason
 }
 
+function cloneCouncilState(state: CouncilState): CouncilState {
+  return JSON.parse(JSON.stringify(state)) as CouncilState
+}
+
+function restoredRuntimeShowsKickoffSent(state: CouncilState): boolean {
+  return state.lastMarker !== null || state.lastReviewPacketId !== null || state.recentLog.length > 0
+}
+
+function isSafeRelativeArtifactPath(path: string): boolean {
+  if (path.trim().length === 0 || isAbsolute(path)) return false
+  return !normalize(path).split(/[\\/]+/).includes('..')
+}
+
+function resolveContained(root: string, path: string): string | null {
+  const resolvedRoot = resolve(root)
+  const resolvedPath = resolve(resolvedRoot, path)
+  const relativePath = relative(resolvedRoot, resolvedPath)
+  if (relativePath.startsWith('..') || isAbsolute(relativePath)) return null
+  return resolvedPath
+}
+
 function buildInvalidReviewerRepairPacket(
   packetMarkdown: string,
   invalidResult: Extract<ReviewerSessionResult, { kind: 'invalid' }>,
@@ -395,6 +505,19 @@ function buildInvalidReviewerRepairPacket(
     '',
     'Prior invalid response excerpt:',
     invalidResult.raw.slice(0, INVALID_REVIEWER_RAW_LIMIT) || '(empty)',
+    '',
+    packetMarkdown,
+  ].join('\n')
+}
+
+function buildEmptyRefineRepairPacket(packetMarkdown: string, reason: string): string {
+  return [
+    'The prior Reviewer decision requested refine but did not include a concrete instruction.',
+    `Protocol issue: ${reason}`,
+    '',
+    'Review the same bounded packet again and return valid framed JSON.',
+    'If refinement is still needed, recommended_instruction must be specific and actionable.',
+    'If no concrete refinement is needed, return verdict "approve".',
     '',
     packetMarkdown,
   ].join('\n')

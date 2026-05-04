@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAutopilotCouncil } from '../src/main/autopilot-council'
 import { AutopilotCouncilStateMachine, type CouncilReviewer } from '../src/main/autopilot-council/state-machine'
@@ -38,6 +38,14 @@ function sequentialReviewer(results: Array<Awaited<ReturnType<CouncilReviewer['r
     start: vi.fn(async () => {}),
     stop: vi.fn(),
   }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
 }
 
 function decision(decision: ReviewerDecision): Awaited<ReturnType<CouncilReviewer['review']>> {
@@ -128,6 +136,32 @@ describe('AutopilotCouncilStateMachine', () => {
     expect(writes.join('\n')).toContain('STAGE 0')
   })
 
+  it('does not attach PTY or send kickoff if stopped while reviewer startup is pending', async () => {
+    const startup = deferred<void>()
+    const writes: string[] = []
+    const onPtyData = vi.fn(() => vi.fn())
+    const sm = new AutopilotCouncilStateMachine(opts({
+      startReviewer: vi.fn(async () => startup.promise),
+      onPtyData,
+      writeToPty: (_id, data) => { writes.push(data) },
+    }), reviewer(decision({
+      verdict: 'approve',
+      risk: 'low',
+      findings: [],
+      recommended_instruction: '',
+      rationale: 'ok',
+    })))
+
+    const starting = sm.start()
+    sm.stop()
+    startup.resolve()
+    await starting
+
+    expect(sm.getState().control).toBe('stopped')
+    expect(onPtyData).not.toHaveBeenCalled()
+    expect(writes).toHaveLength(0)
+  })
+
   it('approve review writes packet/decision state and continues', async () => {
     const root = project()
     writeFileSync(join(root, 'spec.md'), '# Spec')
@@ -149,6 +183,80 @@ describe('AutopilotCouncilStateMachine', () => {
     expect(readFileSync(join(root, '.autopilot-council', 'decisions.md'), 'utf-8')).toContain('spec: continue')
   })
 
+  it('does not write packet files or implementer instructions if stopped while review is pending', async () => {
+    const pending = deferred<Awaited<ReturnType<CouncilReviewer['review']>>>()
+    const writes: string[] = []
+    const root = project()
+    const r: CouncilReviewer = {
+      review: vi.fn(async () => pending.promise),
+      start: vi.fn(async () => {}),
+      stop: vi.fn(),
+    }
+    const sm = new AutopilotCouncilStateMachine(opts({
+      projectPath: root,
+      writeToPty: (_id, data) => { writes.push(data) },
+    }), r)
+    await sm.start()
+    writes.length = 0
+
+    const reviewing = sm.testReviewGate({
+      gate: 'spec',
+      marker: marker(),
+      terminalTail: 'ready',
+    })
+    sm.stop()
+    pending.resolve(decision({
+      verdict: 'approve',
+      risk: 'low',
+      findings: [],
+      recommended_instruction: '',
+      rationale: 'late',
+    }))
+    await reviewing
+
+    expect(sm.getState().control).toBe('stopped')
+    expect(sm.getState().lastCouncilDecision).toBeNull()
+    expect(writes).toHaveLength(0)
+    expect(existsSync(join(root, '.autopilot-council', 'packets', '001-spec-review.request.md'))).toBe(false)
+  })
+
+  it('does not write packet files or implementer instructions if paused while review is pending', async () => {
+    const pending = deferred<Awaited<ReturnType<CouncilReviewer['review']>>>()
+    const writes: string[] = []
+    const root = project()
+    const r: CouncilReviewer = {
+      review: vi.fn(async () => pending.promise),
+      start: vi.fn(async () => {}),
+      stop: vi.fn(),
+    }
+    const sm = new AutopilotCouncilStateMachine(opts({
+      projectPath: root,
+      writeToPty: (_id, data) => { writes.push(data) },
+    }), r)
+    await sm.start()
+    writes.length = 0
+
+    const reviewing = sm.testReviewGate({
+      gate: 'spec',
+      marker: marker(),
+      terminalTail: 'ready',
+    })
+    sm.pause()
+    pending.resolve(decision({
+      verdict: 'approve',
+      risk: 'low',
+      findings: [],
+      recommended_instruction: '',
+      rationale: 'late',
+    }))
+    await reviewing
+
+    expect(sm.getState().control).toBe('paused')
+    expect(sm.getState().lastCouncilDecision).toBeNull()
+    expect(writes).toHaveLength(0)
+    expect(existsSync(join(root, '.autopilot-council', 'packets', '001-spec-review.request.md'))).toBe(false)
+  })
+
   it('refine review sends bounded instruction to implementer and records decision', async () => {
     const longInstruction = 'Fix this. '.repeat(2000)
 
@@ -167,6 +275,41 @@ describe('AutopilotCouncilStateMachine', () => {
     expect(instruction).toBeDefined()
     expect(instruction!.length).toBeLessThanOrEqual(2500)
     expect(instruction).toContain('Fix this.')
+  })
+
+  it('empty refine instruction causes one reviewer retry and no direct reviewer-terminal write', async () => {
+    const writes: Array<{ terminalId: string; data: string }> = []
+    const r = sequentialReviewer([
+      decision({
+        verdict: 'refine',
+        risk: 'medium',
+        findings: [],
+        recommended_instruction: '',
+        rationale: 'too vague',
+      }),
+      decision({
+        verdict: 'refine',
+        risk: 'medium',
+        findings: [],
+        recommended_instruction: 'Name the exact file to update.',
+        rationale: 'now concrete',
+      }),
+    ])
+    const sm = new AutopilotCouncilStateMachine(opts({
+      writeToPty: (terminalId, data) => { writes.push({ terminalId, data }) },
+    }), r)
+
+    await sm.testReviewGate({
+      gate: 'spec',
+      marker: marker(),
+      terminalTail: 'ready',
+    })
+
+    expect(r.review).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(r.review).mock.calls[1][0]).toContain('prior Reviewer decision requested refine but did not include a concrete instruction')
+    expect(writes.some((write) => write.terminalId === 'review')).toBe(false)
+    expect(writes.some((write) => write.terminalId === 'impl' && write.data.includes('Name the exact file'))).toBe(true)
+    expect(sm.getState().lastCouncilDecision?.action).toBe('instruct-implementer')
   })
 
   it('high-risk disagreement/escalation blocks for user according to arbitration policy', async () => {
@@ -392,6 +535,154 @@ describe('AutopilotCouncilStateMachine', () => {
     expect(sm.getState().lastReviewPacketId).toBe('005-plan-review')
   })
 
+  it('restored running state without prior kickoff does not suppress kickoff', async () => {
+    const root = project()
+    const base = opts({ projectPath: root })
+    saveCouncilRuntime(root, {
+      mode: 'council',
+      stage: 'discovery',
+      control: 'running',
+      terminalId: base.terminalId,
+      reviewerTerminalId: base.reviewerTerminalId,
+      implementerCli: base.implementerCli,
+      reviewerCli: base.reviewerCli,
+      intensity: base.intensity,
+      humanApproval: {
+        highRiskDisagreement: true,
+        reviewerEscalation: true,
+        repeatedHighRiskBlock: true,
+        beforeEveryPhase: false,
+        beforeCommit: false,
+      },
+      cycleCount: 0,
+      costUsd: 0,
+      costCapUsd: 1,
+      validation: {},
+      recentLog: [],
+      liveStatus: null,
+      escalationReason: null,
+      lastMarker: null,
+      lastCouncilDecision: null,
+      lastReviewPacketId: null,
+      reviewerStatus: 'starting',
+      reviewerWarning: null,
+      permissionRequest: null,
+    }, {
+      packetSequence: 0,
+      repeatedBlockByGate: {},
+    })
+    const writes: string[] = []
+    const sm = new AutopilotCouncilStateMachine(opts({
+      projectPath: root,
+      writeToPty: (_id, data) => { writes.push(data) },
+    }), reviewer(decision({
+      verdict: 'approve',
+      risk: 'low',
+      findings: [],
+      recommended_instruction: '',
+      rationale: 'ok',
+    })))
+
+    await sm.start()
+
+    expect(writes.join('\n')).toContain('AUTOPILOT COUNCIL ROLE')
+    expect(writes.join('\n')).toContain('Idea: """Build feature"""')
+  })
+
+  it('does not include artifact content outside the project in review packets', async () => {
+    const root = project()
+    const outside = join(dirname(root), 'outside.txt')
+    writeFileSync(outside, 'SECRET OUTSIDE CONTENT')
+    const r = reviewer(decision({
+      verdict: 'approve',
+      risk: 'low',
+      findings: [],
+      recommended_instruction: '',
+      rationale: 'ok',
+    }))
+    const sm = new AutopilotCouncilStateMachine(opts({ projectPath: root }), r)
+
+    await sm.testReviewGate({
+      gate: 'spec',
+      marker: marker({ artifactPath: '../outside.txt' }),
+      terminalTail: 'ready',
+    })
+
+    expect(vi.mocked(r.review).mock.calls[0][0]).not.toContain('SECRET OUTSIDE CONTENT')
+  })
+
+  it('getState and onUpdate provide defensive copies', async () => {
+    const onUpdate = vi.fn((state) => {
+      state.control = 'blocked'
+      state.lastCouncilDecision = {
+        action: 'ask-user',
+        gate: 'spec',
+        risk: 'high',
+        instruction: 'mutated',
+        reason: 'mutated',
+        reviewerVerdict: 'escalate',
+      }
+    })
+    const sm = new AutopilotCouncilStateMachine(opts({ onUpdate }), reviewer(decision({
+      verdict: 'approve',
+      risk: 'low',
+      findings: [],
+      recommended_instruction: '',
+      rationale: 'ok',
+    })))
+
+    await sm.start()
+    const external = sm.getState()
+    external.control = 'blocked'
+    external.lastCouncilDecision = {
+      action: 'ask-user',
+      gate: 'spec',
+      risk: 'high',
+      instruction: 'mutated',
+      reason: 'mutated',
+      reviewerVerdict: 'escalate',
+    }
+
+    expect(sm.getState().control).toBe('running')
+    expect(sm.getState().lastCouncilDecision).toBeNull()
+  })
+
+  it('responds to a real detected permission request and clears it', async () => {
+    vi.useFakeTimers()
+    try {
+      let listener: ((data: string) => void) | null = null
+      const writes: string[] = []
+      const sm = new AutopilotCouncilStateMachine(opts({
+        onPtyData: (_id, next) => {
+          listener = next
+          return vi.fn()
+        },
+        writeToPty: (_id, data) => { writes.push(data) },
+      }), reviewer(decision({
+        verdict: 'approve',
+        risk: 'low',
+        findings: [],
+        recommended_instruction: '',
+        rationale: 'ok',
+      })))
+      await sm.start()
+
+      listener?.('Permission to run shell command?\n1. Yes\n2. No')
+      vi.advanceTimersByTime(1500)
+
+      expect(sm.getState().permissionRequest?.text).toContain('Permission to run')
+      expect(sm.getState().control).toBe('blocked')
+
+      sm.respondToPermission('deny')
+
+      expect(writes.at(-1)).toBe('n\r')
+      expect(sm.getState().permissionRequest).toBeNull()
+      expect(sm.getState().control).toBe('running')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('public createAutopilotCouncil handle delegates methods and returns state', async () => {
     const writes: string[] = []
     const handle = createAutopilotCouncil(opts({
@@ -403,11 +694,9 @@ describe('AutopilotCouncilStateMachine', () => {
     expect(handle.getState().control).toBe('paused')
     handle.resume()
     handle.replyToWaiting('Proceed with defaults.')
-    handle.respondToPermission('deny')
     handle.stop()
 
     expect(writes.join('\n')).toContain('Proceed with defaults.')
-    expect(writes.join('\n')).toContain('n')
     expect(handle.getState().mode).toBe('council')
     expect(handle.getState().control).toBe('stopped')
   })
