@@ -14,6 +14,48 @@ import type { DecisionShape, ProDecideInput, ArtifactState, MetaClassification, 
 import { PRINCIPLES } from './types'
 import type { AgentCli } from '../../shared/agent-cli'
 
+const PRO_DISCOVERY_ARTIFACT_CONTRACT = `PRO ARTIFACT CONTRACT — MACHINE REVIEWED:
+The .autopilot-pro artifacts are reviewed by CmdCLD and later model calls. Write them as
+stable handoff documents, not conversational notes.
+
+Required .autopilot-pro/spec.md shape:
+# Spec
+
+## Goal
+<one paragraph outcome>
+
+## Non-goals
+- <non-goal>
+
+## Acceptance
+- judge: WHEN <trigger>, THE SYSTEM SHALL <observable result>
+- shell: <command>
+
+## Constraints
+- <constraint>
+
+## Repository impact
+- <path>: <one-line impact>
+
+Required .autopilot-pro/plan.md shape:
+# Plan
+
+## Phase p1 — <name>
+- [ ] t1: <task with concrete path/scope>
+  - verify: <command or judge check>
+  - boundary.allowed: <comma-sep file patterns>
+  - boundary.forbidden: <comma-sep file patterns>
+
+## Notes
+<sequencing notes or Mermaid diagram when useful>
+
+Rules:
+- Use explicit headings and checkbox tasks. Do not bury tasks in paragraphs.
+- Keep IDs lowercase and stable: p1/p2 for phases, t1/t2 for tasks.
+- Put verification and boundary lines directly under the relevant task.
+- Before emitting an approve marker for an artifact, read it back and check that it has the
+  required headings, concrete acceptance/verification, and repository impact.`
+
 // ----- Principles block (cached prefix) -----
 
 export const PRINCIPLES_BLOCK = `## PRINCIPLES (orchestrator's values)
@@ -59,6 +101,8 @@ WORKFLOW STAGES (the orchestrator drives transitions; you produce artifacts):
                           drive each task to done with structured Status Reports
   STAGE 3 — PHASE REVIEW   After each phase, write .autopilot-pro/reviews/<phase-id>.md
   STAGE 4 — FINAL REVIEW   Cross-phase sign-off. Orchestrator runs the meta layer.
+
+${PRO_DISCOVERY_ARTIFACT_CONTRACT}
 
 STRUCTURED STATUS REPORT (v2 — every settled response):
 
@@ -426,6 +470,7 @@ export function stage0Kickoff(freeTextIdea: string): string {
     `Then write .autopilot-pro/spec.md with goal, non-goals, acceptance, constraints, AND a ` +
     `"## Repository impact" section listing the real files/modules this work will touch (or ` +
     `"(green-field — no existing code to ground in)" if the project is fresh).\n\n` +
+    `${PRO_DISCOVERY_ARTIFACT_CONTRACT}\n\n` +
     `When complete, emit [ORCH:WAITING] with DECISION_SHAPE: approve and ARTIFACT: spec.md.`
 }
 

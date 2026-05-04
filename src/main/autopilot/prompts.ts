@@ -4,6 +4,61 @@ import type {
 } from './types'
 import type { AgentCli } from '../../shared/agent-cli'
 
+const STRICT_CLASSIC_GOAL_TEMPLATE = `# Goal
+
+<one paragraph goal>
+
+## Non-goals
+- <non-goal>
+
+## Acceptance
+- judge: WHEN <trigger>, THE SYSTEM SHALL <observable result>
+- shell: <command>
+
+## Constraints
+- max_iterations: 40
+- max_api_cost_usd: 1.0
+- max_doer_output_per_reset: 60000
+
+## Repository impact
+- <path>: <one-line impact>`
+
+const STRICT_CLASSIC_MILESTONE_TEMPLATE = `# Milestone m1 — <name>
+
+Status: pending
+
+## Subgoals
+- [ ] s1: <description>
+  - shell: <command>
+  - judge: WHEN <trigger>, THE SYSTEM SHALL <observable result>
+  - boundary.allowed: <comma-sep file patterns>
+  - boundary.forbidden: <comma-sep file patterns>
+  - boundary.deps: <comma-sep package names>
+
+## Notes
+<notes>`
+
+const STRICT_CLASSIC_ARTIFACT_CONTRACT = `STRICT CLASSIC ARTIFACT FORMAT — MACHINE PARSED:
+The .autopilot files are not ordinary planning prose. They are parsed by CmdCLD's Classic
+parser. Copy the format below exactly and do not invent headings.
+
+Required .autopilot/goal.md template:
+${STRICT_CLASSIC_GOAL_TEMPLATE}
+
+Required .autopilot/milestones/m1.md template:
+${STRICT_CLASSIC_MILESTONE_TEMPLATE}
+
+Parser rules:
+- The goal file MUST start with exactly "# Goal". Do not write "# Goal: <name>".
+- The acceptance heading MUST be exactly "## Acceptance". Do not write "## Acceptance criteria".
+- Acceptance entries MUST be bullets starting with "- judge:" or "- shell:" where possible.
+- Milestone headings MUST use lowercase ids: "# Milestone m1 — <name>", "# Milestone m2 — <name>".
+- Milestone status MUST be "Status: pending", "Status: in-progress", or "Status: done".
+- Subgoals MUST be checkbox bullets: "- [ ] s1: <description>". Do not use "### s1" headings.
+- Boundary and verification lines MUST be indented sub-bullets under their subgoal.
+- Before emitting [ORCH:GOAL_READY], read the files back and confirm: one parsed goal,
+  at least one milestone, and at least one checkbox subgoal. If not, rewrite before emitting.`
+
 // ----- Doer system prompt -----
 // Injected into the agent CLI session at session start and after every /clear.
 
@@ -44,6 +99,8 @@ For each subgoal, you MAY add a boundary block as sub-bullets under the subgoal:
 Boundaries are guardrails for that subgoal — anything outside is out of scope for that
 subgoal. Use them where helpful; omit where not.
 When ALL files are written and you are happy with them, emit exactly: [ORCH:GOAL_READY]
+
+${STRICT_CLASSIC_ARTIFACT_CONTRACT}
 
 EXECUTION (PHASE 2):
 Read .autopilot/goal.md (read-only — never modify). Read the current milestone in
@@ -211,6 +268,10 @@ Please:
    so would help future iterations remember durable project context (language, framework,
    top-level folder layout). These are optional.
 6. When all files are written and you've reviewed them, emit exactly: [ORCH:GOAL_READY]
+
+Before step 6, enforce this parser contract:
+
+${STRICT_CLASSIC_ARTIFACT_CONTRACT}
 `
 }
 

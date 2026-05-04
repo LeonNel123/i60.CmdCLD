@@ -56,6 +56,17 @@ describe('DOER_SYSTEM_PROMPT', () => {
     expect(DOER_SYSTEM_PROMPT).toMatch(/WHEN .* SHALL/)
   })
 
+  it('pins the strict Classic parser format for goal and milestone files', () => {
+    expect(DOER_SYSTEM_PROMPT).toContain('STRICT CLASSIC ARTIFACT FORMAT')
+    expect(DOER_SYSTEM_PROMPT).toContain('Required .autopilot/goal.md template')
+    expect(DOER_SYSTEM_PROMPT).toContain('# Goal')
+    expect(DOER_SYSTEM_PROMPT).toContain('## Acceptance')
+    expect(DOER_SYSTEM_PROMPT).toContain('# Milestone m1 — <name>')
+    expect(DOER_SYSTEM_PROMPT).toContain('- [ ] s1: <description>')
+    expect(DOER_SYSTEM_PROMPT).toMatch(/Do not write "# Goal: <name>"/)
+    expect(DOER_SYSTEM_PROMPT).toMatch(/Do not use "### s1"/)
+  })
+
   it('adds a Codex runtime policy that forbids local commits', () => {
     const codexPrompt = buildDoerSystemPrompt('codex')
     expect(codexPrompt).toMatch(/Codex runtime guardrails/i)
@@ -159,6 +170,14 @@ it('buildWizardKickoff suggests optional steering files', () => {
 it('buildWizardKickoff still includes the user idea verbatim', () => {
   const k = buildWizardKickoff('a small Express server')
   expect(k).toContain('a small Express server')
+})
+
+it('buildWizardKickoff includes the strict Classic artifact contract', () => {
+  const k = buildWizardKickoff('idea')
+  expect(k).toContain('STRICT CLASSIC ARTIFACT FORMAT')
+  expect(k).toContain('The goal file MUST start with exactly "# Goal"')
+  expect(k).toContain('Subgoals MUST be checkbox bullets')
+  expect(k).toContain('Before emitting [ORCH:GOAL_READY]')
 })
 
 // ----- DEBUG prompt tests -----

@@ -61,6 +61,15 @@ describe('DOER_SYSTEM_PROMPT_PRO', () => {
     expect(codexPrompt).toMatch(/proposed commit/i)
   })
 
+  it('pins Pro artifact contracts for spec and plan handoffs', () => {
+    expect(DOER_SYSTEM_PROMPT_PRO).toContain('PRO ARTIFACT CONTRACT')
+    expect(DOER_SYSTEM_PROMPT_PRO).toContain('Required .autopilot-pro/spec.md shape')
+    expect(DOER_SYSTEM_PROMPT_PRO).toContain('Required .autopilot-pro/plan.md shape')
+    expect(DOER_SYSTEM_PROMPT_PRO).toContain('## Repository impact')
+    expect(DOER_SYSTEM_PROMPT_PRO).toContain('- [ ] t1:')
+    expect(DOER_SYSTEM_PROMPT_PRO).toMatch(/Keep IDs lowercase and stable/)
+  })
+
   it('PRINCIPLES_BLOCK lists six principles with severities', () => {
     expect(PRINCIPLES_BLOCK).toContain('hard')
     expect(PRINCIPLES_BLOCK).toContain('soft')
@@ -203,6 +212,8 @@ describe('PRO GROUNDING (Wave 3.5)', () => {
     expect(k).toContain('build a thing')
     expect(k).toMatch(/Before writing spec\.md/i)
     expect(k).toContain('Repository impact')
+    expect(k).toContain('PRO ARTIFACT CONTRACT')
+    expect(k).toContain('Required .autopilot-pro/spec.md shape')
   })
 })
 

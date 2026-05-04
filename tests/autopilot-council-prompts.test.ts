@@ -24,6 +24,8 @@ describe('autopilot council prompts', () => {
     expect(prompt).toContain('untrusted state')
     expect(prompt).toContain('Return JSON only')
     expect(prompt).toContain('No prose outside the JSON object')
+    expect(prompt).toContain('do not invent files')
+    expect(prompt).toContain('Anchor every finding')
     expect(prompt).toContain('"verdict"')
   })
 
