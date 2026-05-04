@@ -233,6 +233,33 @@ describe('CouncilReviewerSession', () => {
     }
   })
 
+  it('returns invalid for syntactically malformed current JSON with matching request id', async () => {
+    let listener: ((data: string) => void) | null = null
+    const writes: string[] = []
+    const session = new CouncilReviewerSession({
+      terminalId: 'reviewer',
+      reviewerCli: 'codex',
+      writeToPty: (_id, data) => { writes.push(data) },
+      onPtyData: (_id, cb) => {
+        listener = cb
+        return () => {}
+      },
+      timeoutMs: 5,
+    })
+
+    const pending = session.review('# Packet')
+    const current = listener
+    if (current === null) throw new Error('listener was not attached')
+    current(`{"request_id":"${extractRequestId(writes[1])}","verdict":"approve","risk":"low","findings":[],"recommended_instruction":"","rationale":"ok",}`)
+    const result = await pending
+
+    expect(result.kind).toBe('invalid')
+    if (result.kind === 'invalid') {
+      expect(result.error).toBeTruthy()
+      expect(result.raw).toContain('"request_id"')
+    }
+  })
+
   it('reattaches and resends prompt after stop while stop remains idempotent', async () => {
     const writes: string[] = []
     const detach = vi.fn()

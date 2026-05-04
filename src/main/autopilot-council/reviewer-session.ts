@@ -186,7 +186,13 @@ function parseReviewerDecisionForRequest(
 
   for (const candidate of candidates) {
     const parsedJson = parseJson(candidate)
-    if (!parsedJson.ok) continue
+    if (!parsedJson.ok) {
+      if (containsCurrentRequestId(candidate, requestId)) {
+        hasRelevantOutput = true
+        lastError = parsedJson.error
+      }
+      continue
+    }
 
     const value = parsedJson.value
     if (!isRecord(value)) continue
@@ -217,6 +223,14 @@ function parseJson(text: string): { ok: true; value: unknown } | { ok: false; er
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Invalid JSON' }
   }
+}
+
+function containsCurrentRequestId(text: string, requestId: string): boolean {
+  return new RegExp(`"request_id"\\s*:\\s*"${escapeRegExp(requestId)}"`).test(text)
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function extractBalancedJsonObjects(text: string): string[] {
