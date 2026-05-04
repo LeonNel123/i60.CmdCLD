@@ -64,7 +64,7 @@ function isCouncilStateShape(value: unknown): value is CouncilState {
     typeof value.control === 'string' &&
     CONTROLS.has(value.control as CouncilControl) &&
     typeof value.terminalId === 'string' &&
-    typeof value.reviewerTerminalId === 'string' &&
+    (typeof value.reviewerTerminalId === 'string' || value.reviewerTerminalId === null) &&
     typeof value.implementerCli === 'string' &&
     typeof value.reviewerCli === 'string' &&
     isCouncilIntensity(value.intensity) &&

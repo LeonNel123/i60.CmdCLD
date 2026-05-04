@@ -71,6 +71,12 @@ describe('council runtime state', () => {
     expect(loaded?.internals.repeatedBlockByGate.plan).toBe(1)
   })
 
+  it('saves and loads council runtime state without a reviewer terminal', () => {
+    const root = project()
+    saveCouncilRuntime(root, { ...state(), reviewerTerminalId: null }, { packetSequence: 4, repeatedBlockByGate: {} })
+    expect(loadCouncilRuntime(root)?.state.reviewerTerminalId).toBeNull()
+  })
+
   it('returns null for missing runtime file', () => {
     expect(loadCouncilRuntime(project())).toBeNull()
   })
