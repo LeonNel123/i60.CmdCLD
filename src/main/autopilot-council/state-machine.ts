@@ -21,6 +21,7 @@ import {
 
 const IMPLEMENTER_INSTRUCTION_LIMIT = 2400
 const MANUAL_REPLY_LIMIT = 4000
+const INVALID_REVIEWER_RAW_LIMIT = 1200
 const PERMISSION_RESPONSE: Record<'allow' | 'deny', string> = {
   allow: 'y\r',
   deny: 'n\r',
@@ -260,7 +261,7 @@ export class AutopilotCouncilStateMachine {
       terminalTail,
     })
     const packetMarkdown = formatReviewPacketForReviewer(packet)
-    const reviewResult = await this.reviewer.review(packetMarkdown)
+    const reviewResult = await this.reviewWithInvalidRepair(packetMarkdown)
     this.state.lastReviewPacketId = packet.id
 
     if (reviewResult.kind !== 'decision') {
@@ -292,6 +293,18 @@ export class AutopilotCouncilStateMachine {
     }
 
     this.notify()
+  }
+
+  private async reviewWithInvalidRepair(packetMarkdown: string): Promise<ReviewerSessionResult> {
+    const firstResult = await this.reviewer.review(packetMarkdown)
+    if (firstResult.kind !== 'invalid') return firstResult
+
+    this.state.reviewerStatus = 'protocol-violation'
+    this.state.reviewerWarning = firstResult.error
+    this.state.liveStatus = 'reviewer response invalid; retrying once'
+    this.notify()
+
+    return this.reviewer.review(buildInvalidReviewerRepairPacket(packetMarkdown, firstResult))
   }
 
   private handleReviewerFailure(
@@ -367,4 +380,22 @@ function trimInstruction(instruction: string): string {
 function describeEscalation(reason: string, rationale: string): string {
   const trimmedRationale = rationale.trim()
   return trimmedRationale ? `${reason}: ${trimmedRationale}` : reason
+}
+
+function buildInvalidReviewerRepairPacket(
+  packetMarkdown: string,
+  invalidResult: Extract<ReviewerSessionResult, { kind: 'invalid' }>,
+): string {
+  return [
+    'The prior Reviewer response was invalid for this same bounded Council review.',
+    `Protocol error: ${invalidResult.error}`,
+    '',
+    'Return valid framed JSON for the same bounded review. Do not use markdown fences.',
+    'Keep the same schema: verdict, risk, findings, recommended_instruction, and rationale.',
+    '',
+    'Prior invalid response excerpt:',
+    invalidResult.raw.slice(0, INVALID_REVIEWER_RAW_LIMIT) || '(empty)',
+    '',
+    packetMarkdown,
+  ].join('\n')
 }

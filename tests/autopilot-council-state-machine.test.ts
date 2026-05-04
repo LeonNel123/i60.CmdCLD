@@ -28,6 +28,18 @@ function reviewer(result: Awaited<ReturnType<CouncilReviewer['review']>>): Counc
   }
 }
 
+function sequentialReviewer(results: Array<Awaited<ReturnType<CouncilReviewer['review']>>>): CouncilReviewer {
+  return {
+    review: vi.fn(async () => {
+      const result = results.shift()
+      if (result === undefined) throw new Error('unexpected reviewer call')
+      return result
+    }),
+    start: vi.fn(async () => {}),
+    stop: vi.fn(),
+  }
+}
+
 function decision(decision: ReviewerDecision): Awaited<ReturnType<CouncilReviewer['review']>> {
   return { kind: 'decision', decision, raw: JSON.stringify(decision) }
 }
@@ -207,6 +219,93 @@ describe('AutopilotCouncilStateMachine', () => {
       action: 'ignore-reviewer',
       reviewerVerdict: 'invalid',
     })
+  })
+
+  it('invalid first reviewer response triggers exactly one retry and then uses the repaired decision', async () => {
+    const r = sequentialReviewer([
+      { kind: 'invalid', error: 'bad json', raw: '{nope' },
+      decision({
+        verdict: 'approve',
+        risk: 'low',
+        findings: [],
+        recommended_instruction: '',
+        rationale: 'repaired',
+      }),
+    ])
+    const root = project()
+    const sm = new AutopilotCouncilStateMachine(opts({ projectPath: root }), r)
+
+    await sm.testReviewGate({
+      gate: 'spec',
+      marker: marker(),
+      terminalTail: 'ready',
+    })
+
+    expect(r.review).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(r.review).mock.calls[1][0]).toContain('prior Reviewer response was invalid')
+    expect(vi.mocked(r.review).mock.calls[1][0]).toContain('Return valid framed JSON')
+    expect(sm.getState().reviewerStatus).toBe('idle')
+    expect(sm.getState().lastCouncilDecision).toMatchObject({
+      action: 'continue',
+      reviewerVerdict: 'approve',
+    })
+  })
+
+  it('invalid twice triggers fallback according to critical and non-critical gate rules', async () => {
+    const criticalReviewer = sequentialReviewer([
+      { kind: 'invalid', error: 'bad json', raw: '{nope' },
+      { kind: 'invalid', error: 'still bad', raw: 'no json' },
+    ])
+    const critical = new AutopilotCouncilStateMachine(opts(), criticalReviewer)
+
+    await critical.testReviewGate({
+      gate: 'spec',
+      marker: marker(),
+      terminalTail: 'ready',
+    })
+
+    expect(criticalReviewer.review).toHaveBeenCalledTimes(2)
+    expect(critical.getState().control).toBe('blocked')
+    expect(critical.getState().lastCouncilDecision).toMatchObject({
+      action: 'ask-user',
+      reviewerVerdict: 'invalid',
+      reason: 'still bad',
+    })
+
+    const nonCriticalReviewer = sequentialReviewer([
+      { kind: 'invalid', error: 'bad json', raw: '{nope' },
+      { kind: 'invalid', error: 'still bad', raw: 'no json' },
+    ])
+    const nonCritical = new AutopilotCouncilStateMachine(opts(), nonCriticalReviewer)
+
+    await nonCritical.testReviewGate({
+      gate: 'architecture',
+      marker: marker({ shape: 'decide-with-rationale', artifactPath: undefined }),
+      terminalTail: 'ready',
+    })
+
+    expect(nonCriticalReviewer.review).toHaveBeenCalledTimes(2)
+    expect(nonCritical.getState().control).not.toBe('blocked')
+    expect(nonCritical.getState().lastCouncilDecision).toMatchObject({
+      action: 'ignore-reviewer',
+      reviewerVerdict: 'invalid',
+      reason: 'still bad',
+    })
+  })
+
+  it('timeout does not spin in an unbounded retry loop', async () => {
+    const r = sequentialReviewer([{ kind: 'timeout', raw: '' }])
+    const sm = new AutopilotCouncilStateMachine(opts(), r)
+
+    await sm.testReviewGate({
+      gate: 'spec',
+      marker: marker(),
+      terminalTail: 'ready',
+    })
+
+    expect(r.review).toHaveBeenCalledOnce()
+    expect(sm.getState().reviewerStatus).toBe('timed-out')
+    expect(sm.getState().lastCouncilDecision?.reviewerVerdict).toBe('timeout')
   })
 
   it('pause/resume/stop lifecycle is idempotent enough and does not duplicate kickoff on resume', async () => {
