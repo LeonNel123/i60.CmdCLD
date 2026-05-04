@@ -42,7 +42,18 @@ export function arbitrateCouncilReview(args: CouncilArbitrationArgs): CouncilArb
       gate,
       risk: review.risk,
       instruction,
-      reason: review.risk === 'high' ? 'high-risk-disagreement' : 'low-risk-disagreement',
+      reason: review.risk === 'high' ? 'high-risk-disagreement' : 'Non-high-risk disagreement',
+      reviewerVerdict: review.verdict,
+    }
+  }
+
+  if (repeatedBlockCount >= 2) {
+    return {
+      action: review.risk === 'high' ? 'ask-user' : 'implementer-wins',
+      gate,
+      risk: review.risk,
+      instruction,
+      reason: review.risk === 'high' ? 'repeated-high-risk-refine' : 'Non-high-risk repeated refine',
       reviewerVerdict: review.verdict,
     }
   }
@@ -54,17 +65,6 @@ export function arbitrateCouncilReview(args: CouncilArbitrationArgs): CouncilArb
       risk: review.risk,
       instruction,
       reason: 'empty-refine-instruction',
-      reviewerVerdict: review.verdict,
-    }
-  }
-
-  if (repeatedBlockCount >= 2) {
-    return {
-      action: review.risk === 'high' ? 'ask-user' : 'implementer-wins',
-      gate,
-      risk: review.risk,
-      instruction,
-      reason: review.risk === 'high' ? 'repeated-high-risk-refine' : 'repeated-low-risk-refine',
       reviewerVerdict: review.verdict,
     }
   }

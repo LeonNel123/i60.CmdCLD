@@ -29,6 +29,18 @@ describe('council arbitration', () => {
     expect(result.instruction).toBe('Add test task.')
   })
 
+  it('trims concrete refine instruction and preserves review metadata', () => {
+    const result = arbitrateCouncilReview({
+      gate: 'architecture',
+      review: decision({ verdict: 'refine', risk: 'medium', recommended_instruction: '  Add test task.  ' }),
+      repeatedBlockCount: 0,
+    })
+    expect(result.instruction).toBe('Add test task.')
+    expect(result.gate).toBe('architecture')
+    expect(result.risk).toBe('medium')
+    expect(result.reviewerVerdict).toBe('refine')
+  })
+
   it('retries vague refine once', () => {
     const result = arbitrateCouncilReview({
       gate: 'plan',
@@ -45,6 +57,16 @@ describe('council arbitration', () => {
       repeatedBlockCount: 0,
     })
     expect(result.action).toBe('implementer-wins')
+  })
+
+  it('lets implementer win medium risk disagreement', () => {
+    const result = arbitrateCouncilReview({
+      gate: 'architecture',
+      review: decision({ verdict: 'disagree', risk: 'medium', recommended_instruction: 'Use a different name.' }),
+      repeatedBlockCount: 0,
+    })
+    expect(result.action).toBe('implementer-wins')
+    expect(result.reason).toContain('Non-high-risk')
   })
 
   it('asks user on high risk disagreement', () => {
@@ -65,10 +87,28 @@ describe('council arbitration', () => {
     expect(result.action).toBe('implementer-wins')
   })
 
+  it('lets implementer win repeated empty non-high risk refine', () => {
+    const result = arbitrateCouncilReview({
+      gate: 'phase',
+      review: decision({ verdict: 'refine', risk: 'medium', recommended_instruction: '  ' }),
+      repeatedBlockCount: 2,
+    })
+    expect(result.action).toBe('implementer-wins')
+  })
+
   it('asks user on repeated high risk refine', () => {
     const result = arbitrateCouncilReview({
       gate: 'phase',
       review: decision({ verdict: 'refine', risk: 'high', recommended_instruction: 'Do not run migration.' }),
+      repeatedBlockCount: 2,
+    })
+    expect(result.action).toBe('ask-user')
+  })
+
+  it('asks user on repeated empty high risk refine', () => {
+    const result = arbitrateCouncilReview({
+      gate: 'phase',
+      review: decision({ verdict: 'refine', risk: 'high', recommended_instruction: '' }),
       repeatedBlockCount: 2,
     })
     expect(result.action).toBe('ask-user')
