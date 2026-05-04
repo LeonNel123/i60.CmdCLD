@@ -162,6 +162,35 @@ describe('AutopilotCouncilStateMachine', () => {
     expect(writes).toHaveLength(0)
   })
 
+  it('cleans up reviewer process if stop happens before reviewer startup resolves', async () => {
+    const startup = deferred<void>()
+    const writes: string[] = []
+    const onPtyData = vi.fn(() => vi.fn())
+    const stopReviewer = vi.fn()
+    const sm = new AutopilotCouncilStateMachine(opts({
+      startReviewer: vi.fn(async () => startup.promise),
+      stopReviewer,
+      onPtyData,
+      writeToPty: (_id, data) => { writes.push(data) },
+    }), reviewer(decision({
+      verdict: 'approve',
+      risk: 'low',
+      findings: [],
+      recommended_instruction: '',
+      rationale: 'ok',
+    })))
+
+    const starting = sm.start()
+    sm.stop()
+    startup.resolve()
+    await starting
+
+    expect(sm.getState().control).toBe('stopped')
+    expect(stopReviewer).toHaveBeenCalledTimes(2)
+    expect(onPtyData).not.toHaveBeenCalled()
+    expect(writes).toHaveLength(0)
+  })
+
   it('approve review writes packet/decision state and continues', async () => {
     const root = project()
     writeFileSync(join(root, 'spec.md'), '# Spec')
@@ -533,6 +562,33 @@ describe('AutopilotCouncilStateMachine', () => {
     expect(r.review).toHaveBeenCalledOnce()
     expect(sm.getState().reviewerStatus).toBe('timed-out')
     expect(sm.getState().lastCouncilDecision?.reviewerVerdict).toBe('timeout')
+  })
+
+  it('reviewer transport exception during gate falls back deterministically', async () => {
+    const r: CouncilReviewer = {
+      review: vi.fn(async () => {
+        throw new Error('transport down')
+      }),
+      start: vi.fn(async () => {}),
+      stop: vi.fn(),
+    }
+    const sm = new AutopilotCouncilStateMachine(opts(), r)
+
+    await sm.testReviewGate({
+      gate: 'spec',
+      marker: marker(),
+      terminalTail: 'ready',
+    })
+
+    expect(r.review).toHaveBeenCalledTimes(2)
+    expect(sm.getState().reviewerStatus).toBe('protocol-violation')
+    expect(sm.getState().reviewerWarning).toBe('transport down')
+    expect(sm.getState().control).toBe('blocked')
+    expect(sm.getState().lastCouncilDecision).toMatchObject({
+      action: 'ask-user',
+      reviewerVerdict: 'invalid',
+      reason: 'transport down',
+    })
   })
 
   it('pause/resume/stop lifecycle is idempotent enough and does not duplicate kickoff on resume', async () => {
@@ -919,12 +975,30 @@ describe('AutopilotCouncilStateMachine', () => {
     await handle.start()
     handle.pause()
     expect(handle.getState().control).toBe('paused')
-    handle.resume()
+    await handle.resume()
     handle.replyToWaiting('Proceed with defaults.')
     handle.stop()
 
     expect(writes.join('\n')).toContain('Proceed with defaults.')
     expect(handle.getState().mode).toBe('council')
     expect(handle.getState().control).toBe('stopped')
+  })
+
+  it('public handle resume returns an awaitable promise after blocked start', async () => {
+    const startReviewer = vi.fn()
+      .mockImplementationOnce(async () => {
+        throw new Error('launch failed')
+      })
+      .mockImplementationOnce(async () => {})
+    const handle = createAutopilotCouncil(opts({ startReviewer }))
+
+    await expect(handle.start()).rejects.toThrow('launch failed')
+    const resumed = handle.resume()
+
+    expect(resumed).toBeInstanceOf(Promise)
+    await resumed
+    expect(startReviewer).toHaveBeenCalledTimes(2)
+    expect(handle.getState().control).toBe('running')
+    expect(handle.getState().reviewerStatus).toBe('idle')
   })
 })

@@ -4,7 +4,7 @@ import type { AutopilotCouncilOptions, CouncilState } from './types'
 export interface AutopilotCouncilHandle {
   start(): Promise<void>
   pause(): void
-  resume(): void
+  resume(): Promise<void>
   stop(): void
   replyToWaiting(text: string): void
   respondToPermission(verdict: 'allow' | 'deny'): void

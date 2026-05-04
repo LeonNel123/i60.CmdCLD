@@ -113,10 +113,16 @@ export class AutopilotCouncilStateMachine {
     try {
       await this.opts.startReviewer()
       reviewerProcessStarted = true
-      if (!this.isGenerationActive(generation)) return
+      if (!this.isGenerationActive(generation)) {
+        this.cleanupReviewerStartup(reviewerProcessStarted)
+        return
+      }
 
       await this.reviewer.start()
-      if (!this.isGenerationActive(generation)) return
+      if (!this.isGenerationActive(generation)) {
+        this.cleanupReviewerStartup(reviewerProcessStarted)
+        return
+      }
 
       this.state.reviewerStatus = 'idle'
 
@@ -137,8 +143,7 @@ export class AutopilotCouncilStateMachine {
       if (this.isGenerationActive(generation)) this.notify()
     } catch (error) {
       if (this.lifecycleGeneration === generation && this.state.control !== 'stopped') {
-        this.reviewer.stop()
-        if (reviewerProcessStarted) this.opts.stopReviewer()
+        this.cleanupReviewerStartup(reviewerProcessStarted)
         const message = errorMessage(error)
         this.state.control = 'blocked'
         this.state.reviewerStatus = 'failed'
@@ -149,6 +154,11 @@ export class AutopilotCouncilStateMachine {
       }
       throw error
     }
+  }
+
+  private cleanupReviewerStartup(reviewerProcessStarted: boolean): void {
+    this.reviewer.stop()
+    if (reviewerProcessStarted) this.opts.stopReviewer()
   }
 
   pause(): void {
@@ -366,7 +376,7 @@ export class AutopilotCouncilStateMachine {
     this.notify()
     if (!this.isReviewGenerationActive(generation, controlAtStart)) return firstResult
 
-    return this.reviewer.review(buildEmptyRefineRepairPacket(packetMarkdown, arbitration.reason))
+    return this.reviewSafely(buildEmptyRefineRepairPacket(packetMarkdown, arbitration.reason))
   }
 
   private async reviewWithInvalidRepair(
@@ -374,7 +384,7 @@ export class AutopilotCouncilStateMachine {
     generation: number,
     controlAtStart: CouncilState['control'],
   ): Promise<ReviewerSessionResult> {
-    const firstResult = await this.reviewer.review(packetMarkdown)
+    const firstResult = await this.reviewSafely(packetMarkdown)
     if (!this.isReviewGenerationActive(generation, controlAtStart) || firstResult.kind !== 'invalid') return firstResult
 
     this.state.reviewerStatus = 'protocol-violation'
@@ -383,7 +393,19 @@ export class AutopilotCouncilStateMachine {
     this.notify()
     if (!this.isReviewGenerationActive(generation, controlAtStart)) return firstResult
 
-    return this.reviewer.review(buildInvalidReviewerRepairPacket(packetMarkdown, firstResult))
+    return this.reviewSafely(buildInvalidReviewerRepairPacket(packetMarkdown, firstResult))
+  }
+
+  private async reviewSafely(packetMarkdown: string): Promise<ReviewerSessionResult> {
+    try {
+      return await this.reviewer.review(packetMarkdown)
+    } catch (error) {
+      return {
+        kind: 'invalid',
+        error: errorMessage(error),
+        raw: '',
+      }
+    }
   }
 
   private handleReviewerFailure(
