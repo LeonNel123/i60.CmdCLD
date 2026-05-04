@@ -105,13 +105,14 @@ describe('CouncilReviewerSession', () => {
     }
   })
 
-  it('detaches listener and makes stop idempotent', async () => {
+  it('reattaches and resends prompt after stop while stop remains idempotent', async () => {
+    const writes: string[] = []
     const detach = vi.fn()
-    const onPtyData = vi.fn(() => detach)
+    const onPtyData = vi.fn((_id: string, _cb: (data: string) => void) => detach)
     const session = new CouncilReviewerSession({
       terminalId: 'reviewer',
       reviewerCli: 'codex',
-      writeToPty: vi.fn(),
+      writeToPty: (_id, data) => { writes.push(data) },
       onPtyData,
       timeoutMs: 100,
     })
@@ -121,8 +122,12 @@ describe('CouncilReviewerSession', () => {
     session.stop()
     await session.start()
 
-    expect(onPtyData).toHaveBeenCalledTimes(1)
+    expect(onPtyData).toHaveBeenCalledTimes(2)
     expect(detach).toHaveBeenCalledTimes(1)
+    expect(writes).toEqual([
+      buildCouncilReviewerPrompt('codex') + '\r',
+      buildCouncilReviewerPrompt('codex') + '\r',
+    ])
   })
 
   it('does not parse stale prompt output as the current review response', async () => {

@@ -75,6 +75,8 @@ export class CouncilReviewerSession {
     if (this.detach !== null) {
       this.detach()
       this.detach = null
+      this.listenerAttached = false
+      this.promptSent = false
     }
   }
 
