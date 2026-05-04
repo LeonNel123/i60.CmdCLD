@@ -186,11 +186,7 @@ function parseReviewerDecisionForRequest(
 
   for (const candidate of candidates) {
     const parsedJson = parseJson(candidate)
-    if (!parsedJson.ok) {
-      hasRelevantOutput = true
-      lastError = parsedJson.error
-      continue
-    }
+    if (!parsedJson.ok) continue
 
     const value = parsedJson.value
     if (!isRecord(value)) continue
@@ -206,15 +202,6 @@ function parseReviewerDecisionForRequest(
 
     hasRelevantOutput = true
     lastError = parsedDecision.error
-  }
-
-  if (candidates.length === 0 && text.trim().length > 0) {
-    const parsedDecision = parseReviewerDecision(text)
-    return {
-      ok: false,
-      error: parsedDecision.ok ? 'Reviewer decision is missing current request_id' : parsedDecision.error,
-      hasRelevantOutput: true,
-    }
   }
 
   return {

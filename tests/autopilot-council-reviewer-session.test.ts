@@ -122,7 +122,7 @@ describe('CouncilReviewerSession', () => {
     expect(result).toEqual({ kind: 'timeout', raw: '' })
   })
 
-  it('returns invalid output when reviewer responds without valid JSON', async () => {
+  it('times out when reviewer output has no current JSON response', async () => {
     let listener: ((data: string) => void) | null = null
     const session = new CouncilReviewerSession({
       terminalId: 'reviewer',
@@ -141,10 +141,95 @@ describe('CouncilReviewerSession', () => {
     current('I think this needs changes, but I will not send JSON.')
     const result = await pending
 
+    expect(result.kind).toBe('timeout')
+    expect(result.raw).toContain('needs changes')
+  })
+
+  it('times out on chunked packet echo with no reviewer JSON response', async () => {
+    let listener: ((data: string) => void) | null = null
+    const writes: string[] = []
+    const session = new CouncilReviewerSession({
+      terminalId: 'reviewer',
+      reviewerCli: 'codex',
+      writeToPty: (_id, data) => { writes.push(data) },
+      onPtyData: (_id, cb) => {
+        listener = cb
+        return () => {}
+      },
+      timeoutMs: 5,
+    })
+
+    const pending = session.review('# Packet\n```diff\n+ if (ready) {\n+   runReview()\n```')
+    const current = listener
+    if (current === null) throw new Error('listener was not attached')
+    current(writes[1].slice(0, 40))
+    current(writes[1].slice(40))
+    const result = await pending
+
+    expect(result.kind).toBe('timeout')
+    expect(result.raw).toContain('runReview')
+  })
+
+  it('times out on split late old JSON during a new review', async () => {
+    let listener: ((data: string) => void) | null = null
+    const writes: string[] = []
+    const session = new CouncilReviewerSession({
+      terminalId: 'reviewer',
+      reviewerCli: 'codex',
+      writeToPty: (_id, data) => { writes.push(data) },
+      onPtyData: (_id, cb) => {
+        listener = cb
+        return () => {}
+      },
+      timeoutMs: 5,
+    })
+
+    const first = await session.review('# First packet')
+    expect(first.kind).toBe('timeout')
+    const oldResponse = reviewerJson(extractRequestId(writes[1]), 'refine')
+
+    const second = session.review('# Second packet')
+    const current = listener
+    if (current === null) throw new Error('listener was not attached')
+    current(oldResponse.slice(0, 30))
+    current(oldResponse.slice(30))
+    const result = await second
+
+    expect(result.kind).toBe('timeout')
+    expect(result.raw).toContain('"request_id"')
+  })
+
+  it('returns invalid for malformed current response with matching request id', async () => {
+    let listener: ((data: string) => void) | null = null
+    const writes: string[] = []
+    const session = new CouncilReviewerSession({
+      terminalId: 'reviewer',
+      reviewerCli: 'codex',
+      writeToPty: (_id, data) => { writes.push(data) },
+      onPtyData: (_id, cb) => {
+        listener = cb
+        return () => {}
+      },
+      timeoutMs: 5,
+    })
+
+    const pending = session.review('# Packet')
+    const current = listener
+    if (current === null) throw new Error('listener was not attached')
+    current(JSON.stringify({
+      request_id: extractRequestId(writes[1]),
+      verdict: 'block',
+      risk: 'low',
+      findings: [],
+      recommended_instruction: '',
+      rationale: '',
+    }))
+    const result = await pending
+
     expect(result.kind).toBe('invalid')
     if (result.kind === 'invalid') {
-      expect(result.raw).toContain('needs changes')
-      expect(result.error).toBeTruthy()
+      expect(result.error).toContain('verdict')
+      expect(result.raw).toContain('"request_id"')
     }
   })
 
