@@ -95,6 +95,28 @@ export function getAttachStatusLabel(status: AttachStatus | null): string {
   return `${status.status}: ${status.message}`
 }
 
+export function getCouncilPanelSummary(state: any): null | {
+  roleLine: string
+  intensityLine: string
+  reviewerLine: string
+  decisionLine: string | null
+  packetLine: string | null
+} {
+  if (!state || state.mode !== 'council') return null
+  const label = (cli: string) => cli === 'codex' ? 'Codex' : 'Claude'
+  const intensity = String(state.intensity ?? 'balanced')
+  const title = intensity.charAt(0).toUpperCase() + intensity.slice(1)
+  return {
+    roleLine: `${label(state.implementerCli)} implements; ${label(state.reviewerCli)} reviews`,
+    intensityLine: `${title} gates`,
+    reviewerLine: `Reviewer: ${state.reviewerStatus ?? 'unknown'}`,
+    decisionLine: state.lastCouncilDecision
+      ? `${state.lastCouncilDecision.gate}: ${state.lastCouncilDecision.action} (${state.lastCouncilDecision.risk})`
+      : null,
+    packetLine: state.lastReviewPacketId ? `Packet: ${state.lastReviewPacketId}` : null,
+  }
+}
+
 export function AutopilotPanel({ terminalId, onClose }: Props) {
   const [state, setState] = useState<AutopilotState | null>(null)
   const [manualReply, setManualReply] = useState('')
@@ -169,6 +191,7 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
     : { isPaused: false, isAwaitingReview: false, isEscalated: false, canPause: false, canResume: false }
   const { isPaused, isAwaitingReview, isEscalated, canPause, canResume } = flags
   const milestones = state?.milestones ?? []
+  const councilSummary = getCouncilPanelSummary(state)
   const clearAttachDraft = () => {
     attachDraftSeq.current += 1
     setAttachDraft(null)
@@ -299,6 +322,25 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
               transition: 'width 0.3s',
             }} />
           </div>
+        </div>
+      )}
+
+      {councilSummary && (
+        <div style={{
+          background: '#111827',
+          border: '1px solid #2d2d2d',
+          borderRadius: 4,
+          padding: 8,
+          fontSize: 11,
+          color: '#aaa',
+          lineHeight: 1.5,
+        }}>
+          <div style={{ color: '#a78bfa', fontWeight: 600, marginBottom: 4 }}>Council</div>
+          <div>{councilSummary.roleLine}</div>
+          <div>{councilSummary.intensityLine}</div>
+          <div>{councilSummary.reviewerLine}</div>
+          {councilSummary.decisionLine && <div>{councilSummary.decisionLine}</div>}
+          {councilSummary.packetLine && <div style={{ color: '#777', fontFamily: 'monospace' }}>{councilSummary.packetLine}</div>}
         </div>
       )}
 
