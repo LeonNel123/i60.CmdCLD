@@ -48,6 +48,37 @@ describe('AutopilotStateMachine', () => {
     expect(sm.state.phase).toBe('executing')
   })
 
+  it('asks the wizard to repair unparsable GOAL_READY files instead of escalating immediately', async () => {
+    writeMalformedWizardFiles()
+    const writes: string[] = []
+    const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })), writes)
+    await sm.start()
+    writes.length = 0
+
+    sm.feedPty('[ORCH:GOAL_READY]\n')
+    await waitForFlush()
+
+    expect(sm.state.phase).toBe('wizard')
+    expect(sm.state.escalationReason).toBeNull()
+    expect(writes.some((w) => w.includes('could not parse') && w.includes('exact Classic format'))).toBe(true)
+    expect(writes.some((w) => w.includes('[ORCH:GOAL_READY]'))).toBe(true)
+  })
+
+  it('escalates after repeated unparsable GOAL_READY repair attempts', async () => {
+    writeMalformedWizardFiles()
+    const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })))
+    await sm.start()
+
+    sm.feedPty('[ORCH:GOAL_READY]\n')
+    await waitForFlush()
+    sm.feedPty('[ORCH:GOAL_READY]\n')
+    await waitForFlush()
+    sm.feedPty('[ORCH:GOAL_READY]\n')
+    await waitForPhase(sm, 'escalated')
+
+    expect(sm.state.escalationReason).toMatch(/unparsable after 2 repair prompts/)
+  })
+
   it('escalates on STUCK marker', async () => {
     writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
     const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })))
@@ -123,6 +154,29 @@ function makeMilestone(): Milestone {
     id: 'm1', name: 'A', status: 'pending', notes: '',
     subgoals: [{ id: 's1', description: 'a', status: 'pending' }],
   }
+}
+
+function writeMalformedWizardFiles(): void {
+  mkdirSync(join(TMP, '.autopilot', 'milestones'), { recursive: true })
+  writeFileSync(join(TMP, '.autopilot', 'goal.md'), [
+    '# Goal: Edmore Pool Supplies marketing site',
+    '',
+    '## Goal statement',
+    'Build a marketing site.',
+    '',
+    '## Acceptance criteria',
+    '1. WHEN a user opens the homepage, THE SYSTEM SHALL show pool products.',
+    '',
+  ].join('\n'))
+  writeFileSync(join(TMP, '.autopilot', 'milestones', 'm1.md'), [
+    '# Milestone M1: Project scaffold',
+    '',
+    '## Subgoals',
+    '',
+    '### s1: Initialise project',
+    '- Use npm.',
+    '',
+  ].join('\n'))
 }
 
 async function waitForPhase(sm: AutopilotStateMachine, phase: string, timeoutMs = 1000): Promise<void> {

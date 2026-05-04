@@ -15,6 +15,8 @@ import { saveRuntimeClassic, loadRuntimeClassic } from './runtime-state'
 import { recordSpend } from './budget-tracker'
 import { getAutopilotRuntime, type AutopilotRuntime } from './runtime'
 
+const MAX_GOAL_READY_REPAIR_PROMPTS = 2
+
 export class AutopilotStateMachine {
   state: AutopilotState
   private opts: AutopilotOptions
@@ -26,6 +28,7 @@ export class AutopilotStateMachine {
   private outputVolumeSinceReset = 0
   private partialStreak = 0
   private markerFallbackPromptCount = 0
+  private goalReadyRepairCount = 0
   // Long-silence escalate: if no PTY bytes arrive for this long while we're
   // executing or in wizard phase, escalate. Catches truly-hung doer / dead
   // subagent / network stalls. 30 minutes is generous enough for legitimate
@@ -157,10 +160,11 @@ export class AutopilotStateMachine {
     this.state.goal = readGoal(this.opts.projectPath)
     this.state.milestones = readMilestones(this.opts.projectPath)
     this.state.currentMilestoneId = this.findCurrentMilestoneId()
-    if (!this.state.goal || this.state.milestones.length === 0) {
-      this.transition('escalated', 'goal files missing or empty after wizard')
+    if (!this.hasParsableGoalFiles()) {
+      this.requestGoalFileRepair('goal files missing or empty after wizard approval')
       return
     }
+    this.goalReadyRepairCount = 0
     this.transition('executing', 'goal approved')
   }
   replyToWaiting(text: string): void {
@@ -196,10 +200,7 @@ export class AutopilotStateMachine {
     }
 
     if (snap.marker.kind === 'GOAL_READY') {
-      this.state.goal = readGoal(this.opts.projectPath)
-      this.state.milestones = readMilestones(this.opts.projectPath)
-      this.state.currentMilestoneId = this.findCurrentMilestoneId()
-      this.transition('awaiting_goal_review', 'wizard produced goal files')
+      this.handleGoalReady()
       return
     }
 
@@ -310,6 +311,46 @@ export class AutopilotStateMachine {
         this.transition('escalated', d.reason)
         return
     }
+  }
+
+  private handleGoalReady(): void {
+    this.state.goal = readGoal(this.opts.projectPath)
+    this.state.milestones = readMilestones(this.opts.projectPath)
+    this.state.currentMilestoneId = this.findCurrentMilestoneId()
+    if (!this.hasParsableGoalFiles()) {
+      this.requestGoalFileRepair('GOAL_READY files could not be parsed')
+      return
+    }
+    this.goalReadyRepairCount = 0
+    this.transition('awaiting_goal_review', 'wizard produced goal files')
+  }
+
+  private requestGoalFileRepair(reason: string): void {
+    if (this.goalReadyRepairCount >= MAX_GOAL_READY_REPAIR_PROMPTS) {
+      this.state.escalationReason = `goal files still unparsable after ${MAX_GOAL_READY_REPAIR_PROMPTS} repair prompts`
+      this.transition('escalated', this.state.escalationReason)
+      return
+    }
+
+    this.goalReadyRepairCount++
+    this.transition('wizard', `goal files need parser repair: ${reason}`)
+
+    const instruction = buildGoalFileRepairPrompt(this.goalReadyRepairCount, MAX_GOAL_READY_REPAIR_PROMPTS)
+    const writeResult = this.opts.writeToPty(this.opts.terminalId, instruction + '\r')
+    void Promise.resolve(writeResult).catch((error) => {
+      this.appendActivity('escalation', `goal-file repair prompt failed: ${error?.message ?? 'unknown'}`)
+      this.notify()
+    })
+    this.appendActivity('orchestrator-reply', `goal-file repair prompt (${this.goalReadyRepairCount}/${MAX_GOAL_READY_REPAIR_PROMPTS}): ${reason}`)
+    this.notify()
+  }
+
+  private hasParsableGoalFiles(): boolean {
+    return Boolean(
+      this.state.goal
+      && this.state.milestones.length > 0
+      && this.state.milestones.some((milestone) => milestone.subgoals.length > 0),
+    )
   }
 
   /**
@@ -569,4 +610,47 @@ export class AutopilotStateMachine {
 
 function compactLogText(text: string): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, 180).replace(/"/g, "'")
+}
+
+function buildGoalFileRepairPrompt(attempt: number, maxAttempts: number): string {
+  return [
+    `Your [ORCH:GOAL_READY] marker was received, but Autopilot Classic could not parse .autopilot/goal.md or .autopilot/milestones/*.md. Repair attempt ${attempt}/${maxAttempts}.`,
+    '',
+    'Rewrite the files in the exact Classic format below, then emit [ORCH:GOAL_READY] again.',
+    '',
+    'Required .autopilot/goal.md:',
+    '# Goal',
+    '',
+    '<one paragraph goal>',
+    '',
+    '## Non-goals',
+    '- <non-goal>',
+    '',
+    '## Acceptance',
+    '- judge: WHEN <trigger>, THE SYSTEM SHALL <observable result>',
+    '- shell: <command>',
+    '',
+    '## Constraints',
+    '- max_iterations: 40',
+    '- max_api_cost_usd: 1.0',
+    '- max_doer_output_per_reset: 60000',
+    '',
+    'Required .autopilot/milestones/m1.md:',
+    '# Milestone m1 — <name>',
+    '',
+    'Status: pending',
+    '',
+    '## Subgoals',
+    '- [ ] s1: <description>',
+    '  - shell: <command>',
+    '  - judge: WHEN <trigger>, THE SYSTEM SHALL <observable result>',
+    '  - boundary.allowed: package.json, src/**',
+    '  - boundary.forbidden: .env*, node_modules/**',
+    '',
+    '## Notes',
+    '<notes>',
+    '',
+    'Rules: use lowercase milestone IDs like m1/m2 and subgoal IDs like s1/s2. Do not use "# Goal: ...", "# Milestone M1: ...", "## Goal statement", numbered acceptance criteria, or "### s1" subgoal headings.',
+    'Before emitting [ORCH:GOAL_READY], read the files back and confirm there is one goal and at least one milestone with at least one checkbox subgoal.',
+  ].join('\n')
 }
