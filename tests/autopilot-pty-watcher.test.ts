@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { parseTerminalMarkerLine, PtyWatcher } from '../src/main/autopilot/pty-watcher'
+import { parseTerminalMarkerLine, recoverLiteralMarkerFromTail, PtyWatcher } from '../src/main/autopilot/pty-watcher'
 import type { SettledSnapshot } from '../src/main/autopilot/types'
 
 const IDLE_MS = 50  // smaller than default for fast tests
@@ -26,6 +26,17 @@ describe('PtyWatcher', () => {
       kind: 'WAITING',
       tail: 'continue?',
     })
+  })
+
+  it('recovers literal markers from recent tail while ignoring protocol examples', () => {
+    expect(recoverLiteralMarkerFromTail([
+      'Some terminal chrome',
+      '  [ORCH:WAITING] <question> — you need a decision',
+      '  [ORCH:GOAL_READY]',
+      '* Churned for 1m 53s',
+    ].join('\n'))).toMatchObject({ kind: 'GOAL_READY' })
+
+    expect(recoverLiteralMarkerFromTail('Please emit [ORCH:WAITING] so the orchestrator knows where you are.')).toBeNull()
   })
 
   it('accepts Codex assistant bullet prefixes on marker lines', () => {

@@ -64,6 +64,35 @@ describe('AutopilotStateMachine', () => {
     expect(writes.some((w) => w.includes('[ORCH:GOAL_READY]'))).toBe(true)
   })
 
+  it('uses LLM tail adjudication to recover a literal marker missed by the strict parser', async () => {
+    vi.useFakeTimers()
+    try {
+      writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+      const api: ApiClient = {
+        decide: vi.fn(),
+        debug: vi.fn(),
+        chat: vi.fn(async () => ({
+          text: '{"verdict":"marker_found","marker":"GOAL_READY","exactEvidence":"[ORCH:GOAL_READY]","confidence":"high"}',
+          usage: { inputTokens: 100, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 20 } as ApiUsage,
+        })),
+        estimateCost: () => 0.0001,
+      }
+      const sm = makeSm('idea', api)
+      await sm.start()
+
+      sm.feedPty(`${'wizard wrote files '.repeat(8)}final marker [ORCH:GOAL_READY]\n`)
+      await vi.advanceTimersByTimeAsync(31_000)
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(api.chat).toHaveBeenCalledTimes(1)
+      expect(sm.state.phase).toBe('awaiting_goal_review')
+      expect(sm.state.lastMarker?.kind).toBe('GOAL_READY')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('escalates after repeated unparsable GOAL_READY repair attempts', async () => {
     writeMalformedWizardFiles()
     const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })))

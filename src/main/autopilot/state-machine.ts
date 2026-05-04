@@ -2,7 +2,7 @@ import type {
   ApiClient, ActivityEntry, AutopilotOptions, AutopilotState, DecideResult,
   Goal, Milestone, SettledSnapshot, AutopilotPhase,
 } from './types'
-import { PtyWatcher, type MissingMarkerDiagnostics } from './pty-watcher'
+import { PtyWatcher, recoverLiteralMarkerFromTail, type MissingMarkerDiagnostics } from './pty-watcher'
 import { CostTracker } from './cost-tracker'
 import { readGoal, readMilestones, writeMilestone, appendLog, appendTranscript, autopilotDirExists, readLearnings, readSteering } from './state-files'
 import { discoverValidation } from './validation'
@@ -86,7 +86,7 @@ export class AutopilotStateMachine {
         this.notify()
       },
       onMissingMarker: (diagnostics) => {
-        this.handleMissingMarker(diagnostics)
+        void this.handleMissingMarker(diagnostics)
       },
     })
   }
@@ -506,7 +506,14 @@ export class AutopilotStateMachine {
     this.notify()
   }
 
-  private handleMissingMarker(diagnostics?: MissingMarkerDiagnostics): void {
+  private async handleMissingMarker(diagnostics?: MissingMarkerDiagnostics): Promise<void> {
+    const recovered = await this.tryRecoverMissingMarker(diagnostics)
+    if (recovered) {
+      this.appendActivity('doer-marker', `recovered ${recovered.marker.kind} via ${recovered.source}`)
+      await this.onSettled(recovered.snapshot)
+      return
+    }
+
     if (this.markerFallbackPromptCount >= 2) {
       this.state.escalationReason = 'doer not emitting markers — manual intervention needed'
       this.transition('escalated', this.state.escalationReason)
@@ -521,6 +528,21 @@ export class AutopilotStateMachine {
     void Promise.resolve(writeResult).then(() => {
       this.appendActivity('orchestrator-reply', `diagnostic marker-nudge-write-complete count=${this.markerFallbackPromptCount}/2 ms=${Date.now() - startedAt} outputDelta=${this.outputVolumeSinceReset - beforeOutput}`)
       this.notify()
+      const submitRetryTimer = setTimeout(() => {
+        if (!this.canProcessPty()) return
+        if (this.outputVolumeSinceReset !== beforeOutput) return
+        const retryResult = this.opts.writeToPty(this.opts.terminalId, '\r')
+        void Promise.resolve(retryResult).then(() => {
+          this.appendActivity('orchestrator-reply', `diagnostic marker-nudge-submit-retry count=${this.markerFallbackPromptCount}/2 afterMs=750`)
+          this.notify()
+        }).catch((error) => {
+          this.appendActivity('escalation', `diagnostic marker-nudge-submit-retry-failed: ${error?.message ?? 'unknown'}`)
+          this.notify()
+        })
+      }, 750)
+      if (typeof (submitRetryTimer as any)?.unref === 'function') {
+        (submitRetryTimer as any).unref()
+      }
       const observeTimer = setTimeout(() => {
         if (!this.canProcessPty()) return
         this.appendActivity('orchestrator-reply', `diagnostic marker-nudge-observe count=${this.markerFallbackPromptCount}/2 afterMs=5000 outputDelta=${this.outputVolumeSinceReset - beforeOutput}`)
@@ -535,6 +557,58 @@ export class AutopilotStateMachine {
     })
     this.appendActivity('orchestrator-reply', `marker fallback nudge (${this.markerFallbackPromptCount}/2)`)
     this.notify()
+  }
+
+  private async tryRecoverMissingMarker(diagnostics?: MissingMarkerDiagnostics): Promise<{
+    source: 'tail-scan' | 'llm-adjudication'
+    marker: NonNullable<ReturnType<typeof recoverLiteralMarkerFromTail>>
+    snapshot: SettledSnapshot
+  } | null> {
+    const tail = diagnostics?.cleanTail ?? ''
+    if (!tail.includes('[ORCH:')) return null
+
+    const deterministic = recoverLiteralMarkerFromTail(tail)
+    if (deterministic) {
+      return {
+        source: 'tail-scan',
+        marker: deterministic,
+        snapshot: { text: tail, marker: deterministic, receivedAt: Date.now() },
+      }
+    }
+
+    if (!this.api.chat) return null
+    const adjudicated = await this.adjudicateTailMarker(tail)
+    if (!adjudicated) return null
+    return {
+      source: 'llm-adjudication',
+      marker: adjudicated,
+      snapshot: { text: tail, marker: adjudicated, receivedAt: Date.now() },
+    }
+  }
+
+  private async adjudicateTailMarker(tail: string): Promise<NonNullable<ReturnType<typeof recoverLiteralMarkerFromTail>> | null> {
+    const system = [
+      'You classify whether a recent terminal tail contains a real CmdCLD Autopilot marker.',
+      'Return exactly one JSON object and no prose.',
+      'Only return marker_found when exactEvidence is a literal substring of the provided tail.',
+      'Do not infer intent. Mentions such as "please emit [ORCH:WAITING]" or protocol examples are no_marker.',
+      'Schema:',
+      '{"verdict":"marker_found","marker":"WAITING|PROGRESS|GOAL_READY|STUCK","exactEvidence":"<literal substring>","confidence":"high"}',
+      '{"verdict":"no_marker"}',
+    ].join('\n')
+    const user = `Terminal tail:\n${tail.slice(-2500)}`
+    try {
+      const { text, usage } = await this.api.chat({ system, user, maxTokens: 120 })
+      this.cost.add(this.api.estimateCost(usage))
+      this.state.costUsd = this.cost.totalUsd
+      const result = parseMarkerAdjudication(text, tail)
+      if (!result) return null
+      return recoverLiteralMarkerFromTail(result.exactEvidence)
+    } catch (error: any) {
+      this.appendActivity('orchestrator-reply', `marker adjudication failed: ${error?.message ?? 'unknown'}`)
+      this.notify()
+      return null
+    }
   }
 
   respondToPermission(verdict: 'allow' | 'deny'): void {
@@ -653,4 +727,43 @@ function buildGoalFileRepairPrompt(attempt: number, maxAttempts: number): string
     'Rules: use lowercase milestone IDs like m1/m2 and subgoal IDs like s1/s2. Do not use "# Goal: ...", "# Milestone M1: ...", "## Goal statement", numbered acceptance criteria, or "### s1" subgoal headings.',
     'Before emitting [ORCH:GOAL_READY], read the files back and confirm there is one goal and at least one milestone with at least one checkbox subgoal.',
   ].join('\n')
+}
+
+function parseMarkerAdjudication(text: string, tail: string): { exactEvidence: string } | null {
+  const json = extractFirstJsonObject(text)
+  if (!json) return null
+  try {
+    const obj = JSON.parse(json)
+    if (!obj || typeof obj !== 'object') return null
+    if (obj.verdict !== 'marker_found') return null
+    if (obj.confidence !== 'high') return null
+    if (!['WAITING', 'PROGRESS', 'GOAL_READY', 'STUCK'].includes(obj.marker)) return null
+    if (typeof obj.exactEvidence !== 'string' || obj.exactEvidence.length === 0) return null
+    if (!tail.includes(obj.exactEvidence)) return null
+    if (!obj.exactEvidence.includes(`[ORCH:${obj.marker}]`)) return null
+    return { exactEvidence: obj.exactEvidence }
+  } catch {
+    return null
+  }
+}
+
+function extractFirstJsonObject(text: string): string | null {
+  const start = text.indexOf('{')
+  if (start < 0) return null
+  let depth = 0
+  let inString = false
+  let escape = false
+  for (let i = start; i < text.length; i++) {
+    const c = text[i]
+    if (escape) { escape = false; continue }
+    if (c === '\\') { escape = true; continue }
+    if (c === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (c === '{') depth++
+    else if (c === '}') {
+      depth--
+      if (depth === 0) return text.slice(start, i + 1)
+    }
+  }
+  return null
 }

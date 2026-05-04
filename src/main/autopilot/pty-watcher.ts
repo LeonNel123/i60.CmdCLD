@@ -172,6 +172,47 @@ export function findLastMarker(text: string): { marker: DoerMarker; before: stri
   return null
 }
 
+export function recoverLiteralMarkerFromTail(text: string): DoerMarker | null {
+  const cleaned = stripTerminalAnsi(text)
+  const lines = splitTerminalLines(cleaned)
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]
+    const token = line.match(/\[ORCH:(WAITING|PROGRESS|GOAL_READY|STUCK)\]/)
+    if (!token || token.index === undefined) continue
+    const before = line.slice(0, token.index)
+    const tail = line.slice(token.index + token[0].length).trim()
+    if (looksLikeProtocolMention(line, before, tail)) continue
+
+    const kind = token[1] as MarkerKind
+    let subgoalId: string | undefined
+    let status: 'done' | 'partial' | 'blocked' | undefined
+    if (kind === 'PROGRESS') {
+      const pm = tail.match(/^(\S+)\s+(done|partial|blocked)\b/)
+      if (!pm) continue
+      subgoalId = pm[1]
+      status = pm[2] as 'done' | 'partial' | 'blocked'
+    }
+    return {
+      kind,
+      text: tail,
+      raw: line.trim(),
+      subgoalId,
+      status,
+    }
+  }
+  return null
+}
+
+function looksLikeProtocolMention(line: string, before: string, tail: string): boolean {
+  const lower = line.toLowerCase()
+  if (lower.includes('please emit')) return true
+  if (lower.includes('must contain') || lower.includes('marker line')) return true
+  if (lower.includes('only during phase') || lower.includes('you need a decision')) return true
+  if (/<[^>]+>/.test(tail)) return true
+  if (/^[A-Za-z0-9 ,.'"`:/()[\]-]+$/.test(before.trim()) && before.trim().length > 0) return true
+  return false
+}
+
 export class PtyWatcher {
   private buffer = ''
   private idleMs: number
@@ -299,7 +340,7 @@ export class PtyWatcher {
     this.opts.onMissingMarker?.({
       rawChars: raw?.length ?? this.activeBuffer().length,
       cleanChars: cleaned?.length ?? stripTerminalAnsi(this.activeBuffer()).length,
-      cleanTail: (cleaned ?? stripTerminalAnsi(this.activeBuffer())).slice(-240),
+      cleanTail: (cleaned ?? stripTerminalAnsi(this.activeBuffer())).slice(-4000),
     })
   }
 
