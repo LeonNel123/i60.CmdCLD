@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { AGENT_CLI_LABELS, getAutopilotRuntimeGuardrail, type AgentCli } from '../../../shared/agent-cli'
 
+type AutopilotMode = 'classic' | 'pro' | 'council'
+type CouncilIntensity = 'light' | 'balanced' | 'strict'
+
 interface Props {
   terminalId: string
   projectPath: string
@@ -18,9 +21,19 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
   const [maxIter, setMaxIter] = useState(defaultMaxIterations)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [mode, setMode] = useState<'classic' | 'pro'>('classic')
-  const [artifacts, setArtifacts] = useState<{ hasClassic: boolean; hasPro: boolean }>({ hasClassic: false, hasPro: false })
+  const [mode, setMode] = useState<AutopilotMode>('classic')
+  const [reviewerCli, setReviewerCli] = useState<AgentCli>(agentCli === 'claude' ? 'codex' : 'claude')
+  const [intensity, setIntensity] = useState<CouncilIntensity>('balanced')
+  const [artifacts, setArtifacts] = useState<{ hasClassic: boolean; hasPro: boolean; hasCouncil: boolean }>({
+    hasClassic: false,
+    hasPro: false,
+    hasCouncil: false,
+  })
   const guardrail = getAutopilotRuntimeGuardrail(agentCli, launchArgs)
+
+  useEffect(() => {
+    setReviewerCli(agentCli === 'claude' ? 'codex' : 'claude')
+  }, [agentCli])
 
   useEffect(() => {
     let cancelled = false
@@ -33,13 +46,23 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
   const start = async () => {
     if (!idea.trim() || !guardrail.canStart) return
     setBusy(true); setError(null)
-    const res = mode === 'pro'
-      ? await window.api.autopilotProStart({
-          terminalId, projectPath, freeTextIdea: idea, costCapUsd: costCap,
+    const res = mode === 'council'
+      ? await window.api.autopilotCouncilStart({
+          terminalId,
+          projectPath,
+          freeTextIdea: idea,
+          costCapUsd: costCap,
+          implementerCli: agentCli,
+          reviewerCli,
+          intensity,
         })
-      : await window.api.autopilotStart({
-          terminalId, projectPath, freeTextIdea: idea, costCapUsd: costCap, maxIterations: maxIter,
-        })
+      : mode === 'pro'
+        ? await window.api.autopilotProStart({
+            terminalId, projectPath, freeTextIdea: idea, costCapUsd: costCap,
+          })
+        : await window.api.autopilotStart({
+            terminalId, projectPath, freeTextIdea: idea, costCapUsd: costCap, maxIterations: maxIter,
+          })
     setBusy(false)
     if (!res.ok) { setError(res.error ?? 'failed'); return }
     onStarted()
@@ -48,13 +71,23 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
   const resume = async () => {
     if (!guardrail.canStart) return
     setBusy(true); setError(null)
-    const res = mode === 'pro'
-      ? await window.api.autopilotProStart({
-          terminalId, projectPath, freeTextIdea: '', costCapUsd: costCap,
+    const res = mode === 'council'
+      ? await window.api.autopilotCouncilStart({
+          terminalId,
+          projectPath,
+          freeTextIdea: '',
+          costCapUsd: costCap,
+          implementerCli: agentCli,
+          reviewerCli,
+          intensity,
         })
-      : await window.api.autopilotStart({
-          terminalId, projectPath, freeTextIdea: '', costCapUsd: costCap, maxIterations: maxIter,
-        })
+      : mode === 'pro'
+        ? await window.api.autopilotProStart({
+            terminalId, projectPath, freeTextIdea: '', costCapUsd: costCap,
+          })
+        : await window.api.autopilotStart({
+            terminalId, projectPath, freeTextIdea: '', costCapUsd: costCap, maxIterations: maxIter,
+          })
     setBusy(false)
     if (!res.ok) { setError(res.error ?? 'failed'); return }
     onStarted()
@@ -89,7 +122,7 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
           <div>Codex sandboxed full auto is enabled for this terminal.</div>
         )}
       </div>
-      {((mode === 'classic' && artifacts.hasClassic) || (mode === 'pro' && artifacts.hasPro)) && (
+      {((mode === 'classic' && artifacts.hasClassic) || (mode === 'pro' && artifacts.hasPro) || (mode === 'council' && artifacts.hasCouncil)) && (
         <>
           <button
             onClick={resume}
@@ -112,7 +145,7 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
       )}
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11 }}>
         <span style={{ color: '#888' }}>Mode:</span>
-        {(['classic', 'pro'] as const).map((m) => (
+        {(['classic', 'pro', 'council'] as const).map((m) => (
           <button
             key={m}
             onClick={() => setMode(m)}
@@ -123,15 +156,57 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
               padding: '3px 9px', borderRadius: 4, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
             }}
           >
-            {m === 'classic' ? 'Classic' : 'PRO (beta)'}
+            {m === 'classic' ? 'Classic' : m === 'pro' ? 'PRO (beta)' : 'Council'}
           </button>
         ))}
         <span style={{ color: '#666', fontSize: 10, marginLeft: 6 }}>
-          {mode === 'pro'
-            ? 'Discovery → planning → impl → review with structured gates'
-            : 'Drive a single goal with milestones (v1.2.4 default)'}
+          {mode === 'council'
+            ? 'One CLI implements; the other reviews at structured gates'
+            : mode === 'pro'
+              ? 'Discovery → planning → impl → review with structured gates'
+              : 'Drive a single goal with milestones (v1.2.4 default)'}
         </span>
       </div>
+      {mode === 'council' && (
+        <div style={{
+          background: '#111827',
+          border: '1px solid #2d2d2d',
+          borderRadius: 4,
+          padding: 10,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}>
+          <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em' }}>COUNCIL</div>
+          <div style={{ fontSize: 11, color: '#aaa' }}>
+            Implementer: <span style={{ color: '#ccc' }}>{AGENT_CLI_LABELS[agentCli]}</span> · Reviewer:{' '}
+            <select
+              value={reviewerCli}
+              onChange={(e) => setReviewerCli(e.target.value as AgentCli)}
+              style={{ background: '#0d1117', color: '#ccc', border: '1px solid #2d2d2d', borderRadius: 4, padding: '2px 6px', fontSize: 11 }}
+            >
+              {(['claude', 'codex'] as const).filter((cli) => cli !== agentCli).map((cli) => (
+                <option key={cli} value={cli}>{AGENT_CLI_LABELS[cli]}</option>
+              ))}
+            </select>
+          </div>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11, color: '#aaa' }}>
+            Intensity
+            <select
+              value={intensity}
+              onChange={(e) => setIntensity(e.target.value as CouncilIntensity)}
+              style={{ width: 140, background: '#0d1117', color: '#ccc', border: '1px solid #2d2d2d', borderRadius: 4, padding: '4px 8px', fontSize: 12 }}
+            >
+              <option value="light">Light</option>
+              <option value="balanced">Balanced</option>
+              <option value="strict">Strict</option>
+            </select>
+          </label>
+          <div style={{ color: '#777', fontSize: 10 }}>
+            Implementer wins non-high-risk disagreements. High-risk Reviewer findings pause for user decision.
+          </div>
+        </div>
+      )}
       <textarea
         autoFocus
         value={idea}
