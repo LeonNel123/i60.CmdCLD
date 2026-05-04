@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { AgentCli } from '../../shared/agent-cli'
 import { parseReviewerDecision } from './packets'
 import { buildCouncilReviewerPrompt } from './prompts'
@@ -18,12 +19,15 @@ export interface CouncilReviewerSessionOptions {
 
 interface PendingReview {
   buffer: string
+  hasRelevantOutput: boolean
   lastError: string
+  requestId: string
   resolve: (result: ReviewerSessionResult) => void
   timer: ReturnType<typeof setTimeout>
 }
 
 const DEFAULT_TIMEOUT_MS = 120_000
+const NO_MATCHING_REQUEST_ERROR = 'No reviewer decision found for current request'
 
 export class CouncilReviewerSession {
   private readonly opts: CouncilReviewerSessionOptions
@@ -55,9 +59,12 @@ export class CouncilReviewerSession {
 
     const timeoutMs = Math.max(0, this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS)
     return new Promise((resolve) => {
+      const requestId = createReviewRequestId()
       const pending: PendingReview = {
         buffer: '',
-        lastError: 'No JSON object found in reviewer output',
+        hasRelevantOutput: false,
+        lastError: NO_MATCHING_REQUEST_ERROR,
+        requestId,
         resolve,
         timer: setTimeout(() => {
           this.finishPendingReview(pending, this.resultFromTimedOutReview(pending))
@@ -65,7 +72,7 @@ export class CouncilReviewerSession {
       }
 
       this.pendingReview = pending
-      this.opts.writeToPty(this.opts.terminalId, packetMarkdown + '\r')
+      this.opts.writeToPty(this.opts.terminalId, frameReviewPacket(packetMarkdown, requestId) + '\r')
     })
   }
 
@@ -99,9 +106,10 @@ export class CouncilReviewerSession {
     if (pending === null) return
 
     pending.buffer = this.cleanReviewOutput(pending.buffer + data)
-    const parsed = parseReviewerDecision(pending.buffer)
+    const parsed = parseReviewerDecisionForRequest(pending.buffer, pending.requestId)
     if (!parsed.ok) {
       pending.lastError = parsed.error
+      pending.hasRelevantOutput = pending.hasRelevantOutput || parsed.hasRelevantOutput
       return
     }
 
@@ -121,13 +129,15 @@ export class CouncilReviewerSession {
   }
 
   private resultFromTimedOutReview(pending: PendingReview): ReviewerSessionResult {
-    if (pending.buffer.trim().length === 0) return { kind: 'timeout', raw: pending.buffer }
+    if (pending.buffer.trim().length === 0 || !pending.hasRelevantOutput) return { kind: 'timeout', raw: pending.buffer }
     return { kind: 'invalid', error: pending.lastError, raw: pending.buffer }
   }
 
   private resultFromStoppedReview(): ReviewerSessionResult {
     const pending = this.pendingReview
-    if (pending === null || pending.buffer.trim().length === 0) return { kind: 'timeout', raw: pending?.buffer ?? '' }
+    if (pending === null || pending.buffer.trim().length === 0 || !pending.hasRelevantOutput) {
+      return { kind: 'timeout', raw: pending?.buffer ?? '' }
+    }
     return { kind: 'invalid', error: pending.lastError, raw: pending.buffer }
   }
 
@@ -147,4 +157,120 @@ function stripKnownStaleText(text: string, promptText: string): string {
 function removeAll(text: string, staleText: string): string {
   if (staleText.length === 0) return text
   return text.split(staleText).join('')
+}
+
+function createReviewRequestId(): string {
+  return randomUUID()
+}
+
+function frameReviewPacket(packetMarkdown: string, requestId: string): string {
+  return [
+    `Council Review Request ID: ${requestId}`,
+    '',
+    'Return JSON only for this review.',
+    `Your JSON object must include a top-level "request_id" property exactly equal to ${requestId}.`,
+    'Do not copy JSON objects from this packet. Do not use markdown fences.',
+    '',
+    packetMarkdown,
+  ].join('\n')
+}
+
+function parseReviewerDecisionForRequest(
+  text: string,
+  requestId: string,
+): { ok: true; decision: ReviewerDecision } | { ok: false; error: string; hasRelevantOutput: boolean } {
+  const candidates = extractBalancedJsonObjects(text)
+  let hasRelevantOutput = false
+  let lastError = NO_MATCHING_REQUEST_ERROR
+  let sawIgnoredReviewerDecision = false
+
+  for (const candidate of candidates) {
+    const parsedJson = parseJson(candidate)
+    if (!parsedJson.ok) {
+      hasRelevantOutput = true
+      lastError = parsedJson.error
+      continue
+    }
+
+    const value = parsedJson.value
+    if (!isRecord(value)) continue
+
+    if (value.request_id !== requestId) {
+      const ignoredDecision = parseReviewerDecision(JSON.stringify(value))
+      if (ignoredDecision.ok) sawIgnoredReviewerDecision = true
+      continue
+    }
+
+    const parsedDecision = parseReviewerDecision(JSON.stringify(value))
+    if (parsedDecision.ok) return { ok: true, decision: parsedDecision.decision }
+
+    hasRelevantOutput = true
+    lastError = parsedDecision.error
+  }
+
+  if (candidates.length === 0 && text.trim().length > 0) {
+    const parsedDecision = parseReviewerDecision(text)
+    return {
+      ok: false,
+      error: parsedDecision.ok ? 'Reviewer decision is missing current request_id' : parsedDecision.error,
+      hasRelevantOutput: true,
+    }
+  }
+
+  return {
+    ok: false,
+    error: sawIgnoredReviewerDecision ? 'Reviewer decision did not match current request_id' : lastError,
+    hasRelevantOutput,
+  }
+}
+
+function parseJson(text: string): { ok: true; value: unknown } | { ok: false; error: string } {
+  try {
+    return { ok: true, value: JSON.parse(text) }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Invalid JSON' }
+  }
+}
+
+function extractBalancedJsonObjects(text: string): string[] {
+  const candidates: string[] = []
+
+  for (let start = 0; start < text.length; start += 1) {
+    if (text[start] !== '{') continue
+
+    const candidate = extractBalancedJsonObjectFrom(text, start)
+    if (candidate !== null) candidates.push(candidate)
+  }
+
+  return candidates
+}
+
+function extractBalancedJsonObjectFrom(text: string, start: number): string | null {
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index]
+
+    if (escaped) {
+      escaped = false
+    } else if (char === '\\' && inString) {
+      escaped = true
+    } else if (char === '"') {
+      inString = !inString
+    } else if (!inString && char === '{') {
+      depth += 1
+    } else if (!inString && char === '}') {
+      depth -= 1
+
+      if (depth === 0) return text.slice(start, index + 1)
+    }
+  }
+
+  return null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
