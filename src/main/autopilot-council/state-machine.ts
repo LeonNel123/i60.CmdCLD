@@ -45,6 +45,7 @@ export class AutopilotCouncilStateMachine {
   private kickoffSent = false
   private stopped = false
   private lifecycleGeneration = 0
+  private startPromise: Promise<void> | null = null
   private state: CouncilState
 
   constructor(opts: AutopilotCouncilOptions, reviewerOverride?: CouncilReviewer) {
@@ -91,36 +92,59 @@ export class AutopilotCouncilStateMachine {
 
   async start(): Promise<void> {
     if (this.state.control === 'running' && this.kickoffSent) return
+    if (this.startPromise !== null) return this.startPromise
 
+    this.startPromise = this.performStart()
+    try {
+      await this.startPromise
+    } finally {
+      this.startPromise = null
+    }
+  }
+
+  private async performStart(): Promise<void> {
     const generation = ++this.lifecycleGeneration
     this.stopped = false
     this.state.control = 'running'
     this.state.reviewerStatus = 'starting'
     this.state.validation = discoverValidation(this.opts.projectPath)
 
-    await this.opts.startReviewer()
-    if (!this.isGenerationActive(generation)) return
+    try {
+      await this.opts.startReviewer()
+      if (!this.isGenerationActive(generation)) return
 
-    await this.reviewer.start()
-    if (!this.isGenerationActive(generation)) return
+      await this.reviewer.start()
+      if (!this.isGenerationActive(generation)) return
 
-    this.state.reviewerStatus = 'idle'
+      this.state.reviewerStatus = 'idle'
 
-    if (this.detachPty === null) {
-      this.detachPty = this.opts.onPtyData(this.opts.terminalId, (data) => {
-        if (this.state.control !== 'running') return
-        this.buffer += data
-        this.watcher.feed(data)
-      })
+      if (this.detachPty === null) {
+        this.detachPty = this.opts.onPtyData(this.opts.terminalId, (data) => {
+          if (this.state.control !== 'running') return
+          this.buffer += data
+          this.watcher.feed(data)
+        })
+      }
+
+      if (!this.kickoffSent) {
+        this.writeImplementer(buildCouncilImplementerPrompt(this.opts.implementerCli))
+        this.writeImplementer(stage0Kickoff(this.opts.freeTextIdea))
+        this.kickoffSent = true
+      }
+
+      if (this.isGenerationActive(generation)) this.notify()
+    } catch (error) {
+      if (this.lifecycleGeneration === generation && this.state.control !== 'stopped') {
+        const message = errorMessage(error)
+        this.state.control = 'blocked'
+        this.state.reviewerStatus = 'failed'
+        this.state.reviewerWarning = message
+        this.state.escalationReason = `Reviewer startup failed: ${message}`
+        this.state.liveStatus = this.state.escalationReason
+        this.notify()
+      }
+      throw error
     }
-
-    if (!this.kickoffSent) {
-      this.writeImplementer(buildCouncilImplementerPrompt(this.opts.implementerCli))
-      this.writeImplementer(stage0Kickoff(this.opts.freeTextIdea))
-      this.kickoffSent = true
-    }
-
-    if (this.isGenerationActive(generation)) this.notify()
   }
 
   pause(): void {
@@ -128,6 +152,9 @@ export class AutopilotCouncilStateMachine {
     this.lifecycleGeneration += 1
     this.state.control = 'paused'
     this.state.liveStatus = 'paused'
+    this.buffer = ''
+    this.watcher.reset()
+    this.reviewer.stop()
     this.notify()
   }
 
@@ -137,6 +164,7 @@ export class AutopilotCouncilStateMachine {
     this.state.control = 'running'
     this.state.escalationReason = null
     this.state.liveStatus = 'running'
+    void this.reviewer.start()
     this.notify()
   }
 
@@ -208,6 +236,8 @@ export class AutopilotCouncilStateMachine {
   }
 
   private async onSettled(marker: ProMarker, terminalTail: string): Promise<void> {
+    if (this.state.control !== 'running') return
+
     this.state.lastMarker = {
       kind: marker.kind,
       ...(marker.subgoalId === undefined ? {} : { subgoalId: marker.subgoalId }),
@@ -217,11 +247,13 @@ export class AutopilotCouncilStateMachine {
 
     const gate = this.gateForMarker(marker)
     if (gate === null) {
+      if (this.state.control !== 'running') return
       this.writeImplementer('Proceed. Council review is not required for this gate.')
       this.notify()
       return
     }
 
+    if (this.state.control !== 'running') return
     await this.runReviewGate(gate, marker, terminalTail)
   }
 
@@ -473,6 +505,10 @@ function describeEscalation(reason: string, rationale: string): string {
 
 function cloneCouncilState(state: CouncilState): CouncilState {
   return JSON.parse(JSON.stringify(state)) as CouncilState
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function restoredRuntimeShowsKickoffSent(state: CouncilState): boolean {

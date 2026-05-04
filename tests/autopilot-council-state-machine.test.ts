@@ -257,6 +257,90 @@ describe('AutopilotCouncilStateMachine', () => {
     expect(existsSync(join(root, '.autopilot-council', 'packets', '001-spec-review.request.md'))).toBe(false)
   })
 
+  it('pause before watcher settles prevents review and implementer writes', async () => {
+    vi.useFakeTimers()
+    try {
+      let listener: ((data: string) => void) | null = null
+      const writes: string[] = []
+      const r = reviewer(decision({
+        verdict: 'approve',
+        risk: 'low',
+        findings: [],
+        recommended_instruction: '',
+        rationale: 'ok',
+      }))
+      const sm = new AutopilotCouncilStateMachine(opts({
+        onPtyData: (_id, next) => {
+          listener = next
+          return vi.fn()
+        },
+        writeToPty: (_id, data) => { writes.push(data) },
+      }), r)
+      await sm.start()
+      writes.length = 0
+
+      listener?.('[ORCH:WAITING]\nSTATUS: waiting\nDECISION_SHAPE: approve\nARTIFACT: spec.md\n')
+      sm.pause()
+      vi.advanceTimersByTime(1500)
+      await Promise.resolve()
+
+      expect(sm.getState().control).toBe('paused')
+      expect(r.review).not.toHaveBeenCalled()
+      expect(writes).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('pause during review cancels reviewer so resume can review next gate cleanly', async () => {
+    const pending = deferred<Awaited<ReturnType<CouncilReviewer['review']>>>()
+    const r: CouncilReviewer = {
+      review: vi.fn()
+        .mockImplementationOnce(async () => pending.promise)
+        .mockImplementationOnce(async () => decision({
+          verdict: 'approve',
+          risk: 'low',
+          findings: [],
+          recommended_instruction: '',
+          rationale: 'next gate ok',
+        })),
+      start: vi.fn(async () => {}),
+      stop: vi.fn(),
+    }
+    const sm = new AutopilotCouncilStateMachine(opts(), r)
+    await sm.start()
+
+    const firstReview = sm.testReviewGate({
+      gate: 'spec',
+      marker: marker(),
+      terminalTail: 'first',
+    })
+    sm.pause()
+    pending.resolve(decision({
+      verdict: 'approve',
+      risk: 'low',
+      findings: [],
+      recommended_instruction: '',
+      rationale: 'stale',
+    }))
+    await firstReview
+
+    expect(r.stop).toHaveBeenCalled()
+    expect(sm.getState().lastCouncilDecision).toBeNull()
+
+    sm.resume()
+    await sm.testReviewGate({
+      gate: 'plan',
+      marker: marker({ artifactPath: 'plan.md' }),
+      terminalTail: 'second',
+    })
+
+    expect(r.start).toHaveBeenCalledTimes(2)
+    expect(r.review).toHaveBeenCalledTimes(2)
+    expect(sm.getState().lastReviewPacketId).toBe('001-plan-review')
+    expect(sm.getState().lastCouncilDecision?.action).toBe('continue')
+  })
+
   it('refine review sends bounded instruction to implementer and records decision', async () => {
     const longInstruction = 'Fix this. '.repeat(2000)
 
@@ -479,6 +563,59 @@ describe('AutopilotCouncilStateMachine', () => {
     expect(sm.getState().control).toBe('stopped')
     expect(detach).toHaveBeenCalledOnce()
     expect(stopReviewer).toHaveBeenCalledOnce()
+  })
+
+  it('concurrent start only starts reviewer once and sends one kickoff', async () => {
+    const startup = deferred<void>()
+    const writes: string[] = []
+    const startReviewer = vi.fn(async () => startup.promise)
+    const r = reviewer(decision({
+      verdict: 'approve',
+      risk: 'low',
+      findings: [],
+      recommended_instruction: '',
+      rationale: 'ok',
+    }))
+    const sm = new AutopilotCouncilStateMachine(opts({
+      startReviewer,
+      writeToPty: (_id, data) => { writes.push(data) },
+    }), r)
+
+    const first = sm.start()
+    const second = sm.start()
+    startup.resolve()
+    await Promise.all([first, second])
+
+    expect(startReviewer).toHaveBeenCalledOnce()
+    expect(r.start).toHaveBeenCalledOnce()
+    expect(writes.filter((write) => write.includes('Idea: """Build feature"""'))).toHaveLength(1)
+  })
+
+  it('startup failure updates failed blocked state and rethrows', async () => {
+    const error = new Error('reviewer failed to launch')
+    const onUpdate = vi.fn()
+    const sm = new AutopilotCouncilStateMachine(opts({
+      onUpdate,
+      startReviewer: vi.fn(async () => {
+        throw error
+      }),
+    }), reviewer(decision({
+      verdict: 'approve',
+      risk: 'low',
+      findings: [],
+      recommended_instruction: '',
+      rationale: 'ok',
+    })))
+
+    await expect(sm.start()).rejects.toThrow('reviewer failed to launch')
+
+    expect(sm.getState()).toMatchObject({
+      control: 'blocked',
+      reviewerStatus: 'failed',
+      reviewerWarning: 'reviewer failed to launch',
+      escalationReason: 'Reviewer startup failed: reviewer failed to launch',
+    })
+    expect(onUpdate).toHaveBeenCalled()
   })
 
   it('runtime resume restores state/packet counters enough to continue next packet sequence', async () => {
