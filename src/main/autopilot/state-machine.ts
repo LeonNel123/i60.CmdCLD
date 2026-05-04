@@ -217,7 +217,7 @@ export class AutopilotStateMachine {
       return
     }
 
-    if (this.outputVolumeSinceReset >= (this.state.goal?.constraints.maxDoerOutputPerReset ?? 60000)) {
+    if (this.state.phase === 'executing' && this.outputVolumeSinceReset >= (this.state.goal?.constraints.maxDoerOutputPerReset ?? 60000)) {
       await this.reset('output volume threshold reached')
       return
     }
@@ -507,6 +507,18 @@ export class AutopilotStateMachine {
   }
 
   private async handleMissingMarker(diagnostics?: MissingMarkerDiagnostics): Promise<void> {
+    if (this.state.phase === 'wizard') {
+      this.state.goal = readGoal(this.opts.projectPath)
+      this.state.milestones = readMilestones(this.opts.projectPath)
+      this.state.currentMilestoneId = this.findCurrentMilestoneId()
+      if (this.hasParsableGoalFiles()) {
+        const marker = { kind: 'GOAL_READY' as const, text: '', raw: '[ORCH:GOAL_READY]' }
+        this.appendActivity('doer-marker', 'recovered GOAL_READY from parser-valid files')
+        await this.onSettled({ text: diagnostics?.cleanTail ?? '', marker, receivedAt: Date.now() })
+        return
+      }
+    }
+
     const recovered = await this.tryRecoverMissingMarker(diagnostics)
     if (recovered) {
       this.appendActivity('doer-marker', `recovered ${recovered.marker.kind} via ${recovered.source}`)

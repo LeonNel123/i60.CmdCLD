@@ -93,6 +93,33 @@ describe('AutopilotStateMachine', () => {
     }
   })
 
+  it('recovers GOAL_READY from parser-valid wizard files when marker output is missed', async () => {
+    vi.useFakeTimers()
+    try {
+      const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })))
+      await sm.start()
+      writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+
+      sm.feedPty('Wizard wrote parser-valid .autopilot files but no visible marker yet. '.repeat(4))
+      await vi.advanceTimersByTimeAsync(31_000)
+      await Promise.resolve()
+
+      expect(sm.state.phase).toBe('awaiting_goal_review')
+      expect(sm.state.lastMarker?.kind).toBe('GOAL_READY')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not reset for output volume while still in wizard phase', async () => {
+    const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })))
+    await sm.start()
+    sm.feedPty('x'.repeat(70000))
+    sm.feedPty('[ORCH:WAITING] still drafting goal\n')
+    await waitForFlush()
+    expect(sm.state.phase).toBe('wizard')
+  })
+
   it('escalates after repeated unparsable GOAL_READY repair attempts', async () => {
     writeMalformedWizardFiles()
     const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })))
