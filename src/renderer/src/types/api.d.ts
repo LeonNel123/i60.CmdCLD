@@ -63,6 +63,33 @@ export type AttachClassification =
 
 export type MarkerKind = 'WAITING' | 'PROGRESS' | 'GOAL_READY' | 'STUCK'
 
+export type CouncilIntensity = 'light' | 'balanced' | 'strict'
+
+export interface CouncilState {
+  mode: 'council'
+  stage: string
+  control: 'idle' | 'running' | 'paused' | 'blocked' | 'stopped'
+  implementerCli: 'claude' | 'codex'
+  reviewerCli: 'claude' | 'codex'
+  intensity: CouncilIntensity
+  cycleCount: number
+  costUsd: number
+  costCapUsd: number
+  liveStatus: string | null
+  escalationReason: string | null
+  reviewerStatus: string
+  reviewerWarning: string | null
+  lastReviewPacketId: string | null
+  lastCouncilDecision: {
+    action: string
+    gate: string
+    risk: string
+    instruction: string
+    reason: string
+    reviewerVerdict: string
+  } | null
+}
+
 export interface AttachDraft {
   terminalId: string
   classification: AttachClassification
@@ -168,6 +195,15 @@ export interface ElectronAPI {
   autopilotKeyClear: (provider: 'anthropic' | 'openrouter') => Promise<void>
   autopilotStart: (args: { terminalId: string; projectPath: string; freeTextIdea: string; costCapUsd: number; maxIterations: number }) => Promise<{ ok: boolean; error?: string }>
   autopilotProStart: (args: { terminalId: string; projectPath: string; freeTextIdea: string; costCapUsd: number }) => Promise<{ ok: boolean; error?: string }>
+  autopilotCouncilStart: (args: {
+    terminalId: string
+    projectPath: string
+    freeTextIdea: string
+    costCapUsd: number
+    implementerCli: 'claude' | 'codex'
+    reviewerCli: 'claude' | 'codex'
+    intensity: CouncilIntensity
+  }) => Promise<{ ok: boolean; error?: string; warnings?: string[] }>
   autopilotProRunMeta: (terminalId: string) => Promise<{ ok: boolean; result?: unknown; error?: string }>
   autopilotPause: (terminalId: string) => Promise<void>
   autopilotResume: (terminalId: string) => Promise<void>
@@ -178,7 +214,7 @@ export interface ElectronAPI {
   autopilotPermissionDeny: (terminalId: string) => Promise<void>
   autopilotGetStatus: (terminalId: string) => Promise<unknown>
   autopilotInspectOutput: (terminalId: string) => Promise<unknown>
-  autopilotProbeArtifacts: (projectPath: string) => Promise<{ hasClassic: boolean; hasPro: boolean }>
+  autopilotProbeArtifacts: (projectPath: string) => Promise<{ hasClassic: boolean; hasPro: boolean; hasCouncil: boolean }>
   autopilotAttachDraft: (args: {
     terminalId: string
     userAnswer?: string

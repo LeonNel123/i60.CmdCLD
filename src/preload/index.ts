@@ -205,6 +205,16 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('autopilot:start', args),
   autopilotProStart: (args: { terminalId: string; projectPath: string; freeTextIdea: string; costCapUsd: number }): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('autopilot-pro:start', args),
+  autopilotCouncilStart: (args: {
+    terminalId: string
+    projectPath: string
+    freeTextIdea: string
+    costCapUsd: number
+    implementerCli: 'claude' | 'codex'
+    reviewerCli: 'claude' | 'codex'
+    intensity: 'light' | 'balanced' | 'strict'
+  }): Promise<{ ok: boolean; error?: string; warnings?: string[] }> =>
+    ipcRenderer.invoke('autopilot-council:start', args),
   autopilotProRunMeta: (terminalId: string): Promise<{ ok: boolean; result?: unknown; error?: string }> =>
     ipcRenderer.invoke('autopilot-pro:runMeta', terminalId),
   autopilotPause: (terminalId: string): Promise<void> =>
