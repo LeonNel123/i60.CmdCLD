@@ -17,6 +17,17 @@ describe('PtyWatcher', () => {
     })
   })
 
+  it('accepts whitespace-indented real marker lines from terminal rendering', () => {
+    expect(parseTerminalMarkerLine('  [ORCH:GOAL_READY]')).toEqual({
+      kind: 'GOAL_READY',
+      tail: '',
+    })
+    expect(parseTerminalMarkerLine('  [ORCH:WAITING] continue?')).toEqual({
+      kind: 'WAITING',
+      tail: 'continue?',
+    })
+  })
+
   it('accepts Codex assistant bullet prefixes on marker lines', () => {
     expect(parseTerminalMarkerLine('• [ORCH:WAITING]')).toEqual({
       kind: 'WAITING',

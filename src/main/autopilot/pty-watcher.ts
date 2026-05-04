@@ -31,9 +31,18 @@ export function splitTerminalLines(s: string): string[] {
 }
 
 export function parseTerminalMarkerLine(line: string): { kind: MarkerKind; tail: string } | null {
-  const m = line.match(MARKER_LINE_RE)
+  const candidate = line.trimStart()
+  const m = candidate.match(MARKER_LINE_RE)
   if (!m) return null
-  return { kind: m[1] as MarkerKind, tail: (m[2] ?? '').trim() }
+  const tail = (m[2] ?? '').trim()
+  if (line.length !== candidate.length && looksLikeIndentedProtocolExample(tail)) {
+    return null
+  }
+  return { kind: m[1] as MarkerKind, tail }
+}
+
+function looksLikeIndentedProtocolExample(tail: string): boolean {
+  return /<[^>]+>/.test(tail) || /[—–-]\s+/.test(tail)
 }
 
 const STRUCTURED_KEYS = new Set([
