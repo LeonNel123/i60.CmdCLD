@@ -51,6 +51,11 @@ function state(): CouncilState {
   }
 }
 
+function writeRuntime(root: string, snapshot: unknown): void {
+  mkdirSync(councilPath(root, '.'), { recursive: true })
+  writeFileSync(councilPath(root, 'runtime.json'), JSON.stringify(snapshot))
+}
+
 describe('council runtime state', () => {
   it('saves and loads council runtime state', () => {
     const root = project()
@@ -69,6 +74,44 @@ describe('council runtime state', () => {
     const root = project()
     mkdirSync(councilPath(root, '.'), { recursive: true })
     writeFileSync(councilPath(root, 'runtime.json'), '{not json')
+    expect(loadCouncilRuntime(root)).toBeNull()
+  })
+
+  it('returns null for runtime state with invalid control', () => {
+    const root = project()
+    writeRuntime(root, {
+      state: { ...state(), control: 'invalid' },
+      internals: { packetSequence: 4, repeatedBlockByGate: {} },
+    })
+    expect(loadCouncilRuntime(root)).toBeNull()
+  })
+
+  it('returns null for runtime state missing recentLog', () => {
+    const root = project()
+    const runtimeState = state() as Partial<CouncilState>
+    delete runtimeState.recentLog
+    writeRuntime(root, {
+      state: runtimeState,
+      internals: { packetSequence: 4, repeatedBlockByGate: {} },
+    })
+    expect(loadCouncilRuntime(root)).toBeNull()
+  })
+
+  it('returns null for non-object repeated block counts', () => {
+    const root = project()
+    writeRuntime(root, {
+      state: state(),
+      internals: { packetSequence: 4, repeatedBlockByGate: [] },
+    })
+    expect(loadCouncilRuntime(root)).toBeNull()
+  })
+
+  it('returns null for invalid packet sequence', () => {
+    const root = project()
+    writeRuntime(root, {
+      state: state(),
+      internals: { packetSequence: null, repeatedBlockByGate: {} },
+    })
     expect(loadCouncilRuntime(root)).toBeNull()
   })
 })

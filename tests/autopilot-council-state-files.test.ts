@@ -27,6 +27,12 @@ describe('council state files', () => {
     expect(councilPath(root, 'decisions.md')).toBe(join(root, '.autopilot-council', 'decisions.md'))
   })
 
+  it('rejects paths outside .autopilot-council', () => {
+    const root = project()
+    expect(() => councilPath(root, '../outside.txt')).toThrow()
+    expect(() => writeReviewPacketFiles(root, '../escape', '# request', '{}')).toThrow()
+  })
+
   it('writes packet request and response files', () => {
     const root = project()
     writeReviewPacketFiles(root, '001-spec-review', '# request', '{"verdict":"approve"}')

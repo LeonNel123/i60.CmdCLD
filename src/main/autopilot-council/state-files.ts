@@ -1,9 +1,21 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { dirname, join } from 'path'
+import { dirname, isAbsolute, relative, resolve } from 'path'
 import { COUNCIL_DIR } from './types'
 
 export function councilPath(projectPath: string, relativePath: string): string {
-  return join(projectPath, COUNCIL_DIR, relativePath)
+  if (relativePath.split(/[\\/]+/).includes('..')) {
+    throw new Error(`Council path cannot traverse outside ${COUNCIL_DIR}`)
+  }
+
+  const councilDir = resolve(projectPath, COUNCIL_DIR)
+  const path = resolve(councilDir, relativePath)
+  const pathRelativeToCouncilDir = relative(councilDir, path)
+
+  if (pathRelativeToCouncilDir.startsWith('..') || isAbsolute(pathRelativeToCouncilDir)) {
+    throw new Error(`Council path must stay inside ${COUNCIL_DIR}`)
+  }
+
+  return path
 }
 
 export function writeCouncilFile(projectPath: string, relativePath: string, content: string): void {
