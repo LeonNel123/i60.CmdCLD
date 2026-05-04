@@ -86,6 +86,18 @@ describe('council runtime state', () => {
     expect(loaded?.internals.repeatedBlockByGate.plan).toBe(1)
   })
 
+  it('saves and loads plain object runtime maps', () => {
+    const root = project()
+    saveCouncilRuntime(
+      root,
+      { ...state(), validation: { test: 'npm test', typecheck: 'npx tsc --noEmit' } },
+      { packetSequence: 4, repeatedBlockByGate: { plan: 1, final: 0 } },
+    )
+    const loaded = loadCouncilRuntime(root)
+    expect(loaded?.state.validation.test).toBe('npm test')
+    expect(loaded?.internals.repeatedBlockByGate.final).toBe(0)
+  })
+
   it('saves and loads council runtime state without a reviewer terminal', () => {
     const root = project()
     saveCouncilRuntime(root, { ...state(), reviewerTerminalId: null }, { packetSequence: 4, repeatedBlockByGate: {} })
@@ -95,6 +107,11 @@ describe('council runtime state', () => {
   it('throws without writing for invalid runtime state', () => {
     const root = project()
     expectInvalidStateNotSaved(root, { ...state(), stage: 'invalid' })
+  })
+
+  it('throws without writing for non-plain runtime state objects', () => {
+    const root = project()
+    expectInvalidStateNotSaved(root, { ...state(), validation: new Date(0) })
   })
 
   it('returns null for missing runtime file', () => {
@@ -224,6 +241,11 @@ describe('council runtime state', () => {
   it('throws without writing for unknown repeated block gate keys', () => {
     const root = project()
     expectInvalidInternalsNotSaved(root, { packetSequence: 4, repeatedBlockByGate: { bogus: 1 } })
+  })
+
+  it('throws without writing for non-plain repeated block counters', () => {
+    const root = project()
+    expectInvalidInternalsNotSaved(root, { packetSequence: 4, repeatedBlockByGate: new Date(0) })
   })
 
   it.each([Number.POSITIVE_INFINITY, -1])('throws without writing for invalid repeated block counter %s', (plan) => {
