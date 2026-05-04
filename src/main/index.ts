@@ -18,7 +18,9 @@ import { getGitStatus } from './git-status'
 import type { TerminalMeta } from './pty-manager'
 import { createAutopilot, type AutopilotHandle, type AutopilotState } from './autopilot'
 import { createAutopilotPro, type AutopilotProHandle, type AutopilotProOptions } from './autopilot-pro'
+import { createAutopilotCouncil, type AutopilotCouncilHandle, type AutopilotCouncilOptions } from './autopilot-council'
 import type { ProState } from './autopilot-pro/types'
+import type { CouncilState } from './autopilot-council/types'
 import type { AutopilotOptions } from './autopilot/types'
 import { QueuedPtyWriter } from './autopilot/pty-input-queue'
 import { inspectAutopilotOutput } from './autopilot/output-inspector'
@@ -28,7 +30,14 @@ import { createDeterministicAttachDraft, createLlmAttachDraft } from './autopilo
 import type { AttachSessionStatus } from './autopilot/attach-types'
 import { loadBudget, getSnapshot as getBudgetSnapshot, setProjectCap, setGlobalCap, resetTodaySpend } from './autopilot/budget-tracker'
 import { detectAgentCliAvailability } from './agent-cli-detect'
-import { getArgsForAgent, getAutopilotRuntimeGuardrail, normalizeAgentCli, type AgentCli } from '../shared/agent-cli'
+import {
+  buildAgentLaunchCommand,
+  getArgsForAgent,
+  getAutopilotRuntimeGuardrail,
+  getCouncilReviewerRuntimeGuardrail,
+  normalizeAgentCli,
+  type AgentCli,
+} from '../shared/agent-cli'
 
 // File logger for debugging startup issues
 const logPath = join(app.getPath('userData'), 'cmdcld.log')
@@ -127,6 +136,7 @@ const confirmedClose = new WeakSet<BrowserWindow>()
 
 const autopilots = new Map<string, AutopilotHandle>()  // keyed by terminalId — Classic mode
 const autopilotPros = new Map<string, AutopilotProHandle>()  // keyed by terminalId — PRO mode
+const autopilotCouncils = new Map<string, AutopilotCouncilHandle>()  // keyed by terminalId — Council mode
 const attachSessions = new Map<string, AttachSessionStatus>()
 const attachUnsubscribers = new Map<string, () => void>()
 const cancelledAttachSessionIds = new Set<string>()
@@ -201,6 +211,13 @@ function broadcastAutopilotUpdate(terminalId: string, state: AutopilotState): vo
 }
 
 function broadcastAutopilotProUpdate(terminalId: string, state: ProState): void {
+  for (const wcId of registry.list().map((w) => w.id)) {
+    const wc = registry.getWebContents(wcId)
+    if (wc) wc.send('autopilot:update', terminalId, state)
+  }
+}
+
+function broadcastAutopilotCouncilUpdate(terminalId: string, state: CouncilState): void {
   for (const wcId of registry.list().map((w) => w.id)) {
     const wc = registry.getWebContents(wcId)
     if (wc) wc.send('autopilot:update', terminalId, state)
@@ -586,7 +603,7 @@ ipcMain.handle('autopilot:start', async (_event, args: { terminalId: string; pro
   const provider = settings.get('autopilotApiProvider')
   const apiKey = readAutopilotKey(provider)
   if (!apiKey) return { ok: false, error: `No API key for ${provider}. Add one in Settings.` }
-  if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId)) return { ok: false, error: 'Autopilot already running for this terminal.' }
+  if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId) || autopilotCouncils.has(args.terminalId)) return { ok: false, error: 'Autopilot already running for this terminal.' }
   if (hasActiveAttachSession(args.terminalId)) return { ok: false, error: 'Attach is already active for this terminal.' }
   const runtime = getAutopilotRuntimeStartContext(args.terminalId)
   if (!runtime.ok) return runtime
@@ -614,16 +631,20 @@ ipcMain.handle('autopilot:start', async (_event, args: { terminalId: string; pro
 ipcMain.handle('autopilot:pause', (_event, terminalId: string) => {
   autopilots.get(terminalId)?.pause()
   autopilotPros.get(terminalId)?.pause()
+  autopilotCouncils.get(terminalId)?.pause()
 })
-ipcMain.handle('autopilot:resume', (_event, terminalId: string) => {
+ipcMain.handle('autopilot:resume', async (_event, terminalId: string) => {
   autopilots.get(terminalId)?.resume()
   autopilotPros.get(terminalId)?.resume()
+  await autopilotCouncils.get(terminalId)?.resume()
 })
 ipcMain.handle('autopilot:stop', (_event, terminalId: string) => {
   autopilots.get(terminalId)?.stop()
   autopilots.delete(terminalId)
   autopilotPros.get(terminalId)?.stop()
   autopilotPros.delete(terminalId)
+  autopilotCouncils.get(terminalId)?.stop()
+  autopilotCouncils.delete(terminalId)
   cancelAttachSession(terminalId)
 })
 ipcMain.handle('autopilot:approveGoal', (_event, terminalId: string) => {
@@ -633,16 +654,21 @@ ipcMain.handle('autopilot:approveGoal', (_event, terminalId: string) => {
 ipcMain.handle('autopilot:replyToWaiting', (_event, terminalId: string, text: string) => {
   autopilots.get(terminalId)?.replyToWaiting(text)
   autopilotPros.get(terminalId)?.replyToWaiting(text)
+  autopilotCouncils.get(terminalId)?.replyToWaiting(text)
 })
 ipcMain.handle('autopilot:permissionAllow', (_event, terminalId: string) => {
   autopilots.get(terminalId)?.respondToPermission('allow')
   autopilotPros.get(terminalId)?.respondToPermission('allow')
+  autopilotCouncils.get(terminalId)?.respondToPermission('allow')
 })
 ipcMain.handle('autopilot:permissionDeny', (_event, terminalId: string) => {
   autopilots.get(terminalId)?.respondToPermission('deny')
   autopilotPros.get(terminalId)?.respondToPermission('deny')
+  autopilotCouncils.get(terminalId)?.respondToPermission('deny')
 })
 ipcMain.handle('autopilot:getStatus', (_event, terminalId: string) => {
+  const council = autopilotCouncils.get(terminalId)
+  if (council) return council.getState()
   // Prefer PRO state if a PRO instance is active for this terminal; else Classic.
   const pro = autopilotPros.get(terminalId)
   if (pro) return pro.getState()
@@ -657,7 +683,7 @@ ipcMain.handle('autopilot:probeArtifacts', (_event, projectPath: string) => {
 
 ipcMain.handle('autopilot:attachDraft', async (_event, args: { terminalId: string; userAnswer?: string; useLlm: boolean }) => {
   if (!ptyManager.has(args.terminalId)) return { ok: false, error: 'Terminal session not found.' }
-  if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId)) {
+  if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId) || autopilotCouncils.has(args.terminalId)) {
     return { ok: false, error: 'Autopilot is already running for this terminal.' }
   }
   const provider = settings.get('autopilotApiProvider')
@@ -681,7 +707,7 @@ ipcMain.handle('autopilot:attachDraft', async (_event, args: { terminalId: strin
 
 ipcMain.handle('autopilot:attachConfirm', async (_event, args: { terminalId: string; bridgePrompt: string }) => {
   if (!ptyManager.has(args.terminalId)) return { ok: false, error: 'Terminal session not found.' }
-  if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId)) {
+  if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId) || autopilotCouncils.has(args.terminalId)) {
     return { ok: false, error: 'Autopilot is already running for this terminal.' }
   }
   const bridgePrompt = args.bridgePrompt.trimEnd()
@@ -787,7 +813,7 @@ ipcMain.handle('autopilot-pro:start', async (_event, args: { terminalId: string;
   const provider = settings.get('autopilotApiProvider')
   const apiKey = readAutopilotKey(provider)
   if (!apiKey) return { ok: false, error: `No API key for ${provider}. Add one in Settings.` }
-  if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId)) {
+  if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId) || autopilotCouncils.has(args.terminalId)) {
     return { ok: false, error: 'Autopilot already running for this terminal.' }
   }
   if (hasActiveAttachSession(args.terminalId)) {
@@ -813,6 +839,95 @@ ipcMain.handle('autopilot-pro:start', async (_event, args: { terminalId: string;
   autopilotPros.set(args.terminalId, handle)
   await handle.start()
   return { ok: true }
+})
+
+ipcMain.handle('autopilot-council:start', async (event, args: {
+  terminalId: string
+  projectPath: string
+  freeTextIdea: string
+  costCapUsd: number
+  implementerCli: AgentCli
+  reviewerCli: AgentCli
+  intensity: 'light' | 'balanced' | 'strict'
+}) => {
+  const provider = settings.get('autopilotApiProvider')
+  const apiKey = readAutopilotKey(provider)
+  if (!apiKey) return { ok: false, error: `No API key for ${provider}. Add one in Settings.` }
+  if (autopilots.has(args.terminalId) || autopilotPros.has(args.terminalId) || autopilotCouncils.has(args.terminalId)) {
+    return { ok: false, error: 'Autopilot already running for this terminal.' }
+  }
+  if (hasActiveAttachSession(args.terminalId)) {
+    return { ok: false, error: 'Attach is already active for this terminal.' }
+  }
+  if (args.implementerCli === args.reviewerCli) {
+    return { ok: false, error: 'Council mode requires different Implementer and Reviewer CLIs.' }
+  }
+
+  const runtime = getAutopilotRuntimeStartContext(args.terminalId)
+  if (!runtime.ok) return runtime
+  if (runtime.agentCli !== args.implementerCli) {
+    return { ok: false, error: 'Council Implementer must match the visible terminal CLI.' }
+  }
+
+  const reviewerLaunchArgs = getArgsForAgent(args.reviewerCli, {
+    claudeArgs: settings.get('claudeArgs'),
+    codexArgs: settings.get('codexArgs'),
+  })
+  const reviewerGuardrail = getCouncilReviewerRuntimeGuardrail(args.reviewerCli, reviewerLaunchArgs)
+  if (!reviewerGuardrail.canStart) return { ok: false, error: reviewerGuardrail.reason ?? 'Reviewer CLI cannot start.' }
+
+  const ownerWindowId = getWindowIdFromEvent(event) ?? registry.list()[0]?.id
+  const owner = ownerWindowId ? registry.getWebContents(ownerWindowId) : undefined
+  if (!owner) return { ok: false, error: 'No window is available to own the hidden reviewer terminal.' }
+
+  const reviewerTerminalId = `council-reviewer-${args.terminalId}-${crypto.randomUUID()}`
+  const startReviewer = async (): Promise<void> => {
+    if (ptyManager.has(reviewerTerminalId)) return
+    const name = `${args.reviewerCli} reviewer`
+    const meta: TerminalMeta = {
+      id: reviewerTerminalId,
+      path: args.projectPath,
+      name,
+      color: '',
+      agentCli: args.reviewerCli,
+      launchArgs: reviewerLaunchArgs,
+    }
+    if (args.reviewerCli === 'claude') trustFolder(args.projectPath)
+    ptyManager.create(reviewerTerminalId, args.projectPath, owner, meta)
+    ptyManager.write(reviewerTerminalId, buildAgentLaunchCommand(args.reviewerCli, reviewerLaunchArgs))
+  }
+
+  const opts: AutopilotCouncilOptions = {
+    terminalId: args.terminalId,
+    reviewerTerminalId,
+    projectPath: args.projectPath,
+    freeTextIdea: args.freeTextIdea,
+    implementerCli: args.implementerCli,
+    reviewerCli: args.reviewerCli,
+    reviewerLaunchArgs,
+    intensity: args.intensity,
+    costCapUsd: args.costCapUsd,
+    apiProvider: provider,
+    apiKey,
+    plannerModel: settings.get('autopilotPlannerModel'),
+    writeToPty: (terminalId, data) => { autopilotPtyWriter.write(terminalId, data) },
+    onPtyData: (terminalId, listener) => ptyManager.subscribeOutput(terminalId, listener),
+    onUpdate: (state) => broadcastAutopilotCouncilUpdate(args.terminalId, state),
+    startReviewer,
+    stopReviewer: () => { ptyManager.kill(reviewerTerminalId) },
+  }
+
+  const handle = createAutopilotCouncil(opts)
+  autopilotCouncils.set(args.terminalId, handle)
+  try {
+    await handle.start()
+  } catch (error) {
+    autopilotCouncils.delete(args.terminalId)
+    ptyManager.kill(reviewerTerminalId)
+    return { ok: false, error: error instanceof Error ? error.message : 'Council Autopilot failed to start.' }
+  }
+
+  return { ok: true, warnings: reviewerGuardrail.warnings }
 })
 
 ipcMain.handle('autopilot-pro:runMeta', async (_event, terminalId: string) => {

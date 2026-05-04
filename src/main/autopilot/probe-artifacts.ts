@@ -4,6 +4,7 @@ import { join } from 'path'
 export interface ProbeArtifactsResult {
   hasClassic: boolean
   hasPro: boolean
+  hasCouncil: boolean
 }
 
 /**
@@ -16,5 +17,6 @@ export function probeArtifacts(projectPath: string): ProbeArtifactsResult {
       existsSync(join(projectPath, '.autopilot', 'goal.md')) &&
       existsSync(join(projectPath, '.autopilot', 'milestones')),
     hasPro: existsSync(join(projectPath, '.autopilot-pro', 'spec.md')),
+    hasCouncil: existsSync(join(projectPath, '.autopilot-council', 'runtime.json')),
   }
 }

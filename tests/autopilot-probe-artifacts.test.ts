@@ -15,6 +15,7 @@ describe('probeArtifacts', () => {
     const r = probeArtifacts(TMP)
     expect(r.hasClassic).toBe(true)
     expect(r.hasPro).toBe(false)
+    expect(r.hasCouncil).toBe(false)
   })
 
   it('returns hasPro=true when .autopilot-pro/spec.md exists', () => {
@@ -23,5 +24,15 @@ describe('probeArtifacts', () => {
     const r = probeArtifacts(TMP)
     expect(r.hasClassic).toBe(false)
     expect(r.hasPro).toBe(true)
+    expect(r.hasCouncil).toBe(false)
+  })
+
+  it('returns hasCouncil=true when .autopilot-council/runtime.json exists', () => {
+    mkdirSync(join(TMP, '.autopilot-council'), { recursive: true })
+    writeFileSync(join(TMP, '.autopilot-council', 'runtime.json'), '{}\n')
+    const r = probeArtifacts(TMP)
+    expect(r.hasClassic).toBe(false)
+    expect(r.hasPro).toBe(false)
+    expect(r.hasCouncil).toBe(true)
   })
 })
