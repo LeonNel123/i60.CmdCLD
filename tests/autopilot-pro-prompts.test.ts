@@ -89,7 +89,7 @@ describe('DOER_SYSTEM_PROMPT_PRO', () => {
     expect(p).toMatch(/\.autopilot-pro\/outbox\/marker\.json/)
     expect(p).toMatch(/\.autopilot-pro\/inbox\/reply\.txt/)
     expect(p).toMatch(/PRIMARY MACHINE CHANNEL/i)
-    expect(p).toMatch(/schemaVersion.*1/)
+    expect(p).toMatch(/"schemaVersion":\s*1/)
     expect(p).toMatch(/DECISION_SHAPE/)  // existing PRO field still present
   })
 
@@ -97,6 +97,22 @@ describe('DOER_SYSTEM_PROMPT_PRO', () => {
     const p = buildDoerSystemPromptPro('claude', { controlDir: '.autopilot-council' })
     expect(p).toMatch(/\.autopilot-council\/outbox\/marker\.json/)
     expect(p).not.toMatch(/\.autopilot-pro\/outbox\/marker\.json/)
+  })
+
+  it('preserves no-commit policy and control dir for codex agent', () => {
+    const p = buildDoerSystemPromptPro('codex')
+    expect(p).toMatch(/CODEX RUNTIME GUARDRAILS/)
+    expect(p).toMatch(/DO NOT commit/)
+    expect(p).toMatch(/\.autopilot-pro\/outbox\/marker\.json/)
+    expect(p).not.toMatch(/\{\{CONTROL_DIR\}\}/)  // placeholder must be substituted
+  })
+
+  it('preserves no-commit policy and substituted controlDir for codex + council reuse', () => {
+    const p = buildDoerSystemPromptPro('codex', { controlDir: '.autopilot-council' })
+    expect(p).toMatch(/CODEX RUNTIME GUARDRAILS/)
+    expect(p).toMatch(/\.autopilot-council\/outbox\/marker\.json/)
+    expect(p).not.toMatch(/\.autopilot-pro\/outbox\/marker\.json/)
+    expect(p).not.toMatch(/\{\{CONTROL_DIR\}\}/)
   })
 })
 
