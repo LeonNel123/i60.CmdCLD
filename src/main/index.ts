@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Menu, powerSaveBlocker, safeStorage } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Menu, powerSaveBlocker, safeStorage, screen } from 'electron'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { spawn, execSync } from 'child_process'
@@ -267,9 +267,39 @@ try {
   log(`hardenGlobalSettings failed: ${e}`)
 }
 
+type WindowBounds = { width: number; height: number; x: number; y: number }
+
+// If a window was last placed on a monitor that's no longer connected, the
+// saved (x, y) lands off-screen and the window is invisible — only Task
+// Manager sees it. Clamp to a connected display before constructing the
+// BrowserWindow.
+function ensureBoundsVisible(bounds: WindowBounds): WindowBounds {
+  const displays = screen.getAllDisplays()
+  const MIN_VISIBLE_W = 100
+  const MIN_VISIBLE_H = 40
+  const intersectsADisplay = displays.some((d) => {
+    const wa = d.workArea
+    const ix = Math.max(bounds.x, wa.x)
+    const iy = Math.max(bounds.y, wa.y)
+    const ax = Math.min(bounds.x + bounds.width, wa.x + wa.width)
+    const ay = Math.min(bounds.y + bounds.height, wa.y + wa.height)
+    return ax - ix >= MIN_VISIBLE_W && ay - iy >= MIN_VISIBLE_H
+  })
+  if (intersectsADisplay) return bounds
+  const wa = screen.getPrimaryDisplay().workArea
+  const width = Math.min(bounds.width, wa.width)
+  const height = Math.min(bounds.height, wa.height)
+  return {
+    width,
+    height,
+    x: wa.x + Math.max(0, Math.floor((wa.width - width) / 2)),
+    y: wa.y + Math.max(0, Math.floor((wa.height - height) / 2)),
+  }
+}
+
 function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: string; window: BrowserWindow } {
   const id = opts?.persistedId || crypto.randomUUID()
-  const bounds = store.getWindowBounds(id)
+  const bounds = ensureBoundsVisible(store.getWindowBounds(id))
   const isEmpty = opts?.empty ?? false
 
   const win = new BrowserWindow({
