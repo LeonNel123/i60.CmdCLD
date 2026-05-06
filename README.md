@@ -60,6 +60,7 @@ Open multiple project folders, each running its own Claude or Codex CLI instance
 | Ctrl+F | Search in terminal |
 | Ctrl+=/- | Zoom in/out |
 | Ctrl+0 | Reset zoom |
+| Ctrl+End | Scroll terminal to bottom (no input sent) |
 
 **Other**
 - Always starts with a blank slate (no session restore)

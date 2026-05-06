@@ -224,7 +224,15 @@ export function TerminalPanel({
       // Keep the last 7 bytes (length of either toggle sequence) so a
       // toggle straddling the next chunk boundary still gets caught.
       sniffTailRef.current = probe.length > 7 ? probe.slice(-7) : probe
-      term.write(data)
+      // Pin viewport to the bottom only when the user was already there.
+      // Defends against rare WebGL-renderer cases where rapid output bursts
+      // leave the viewport one row above the cursor — the symptom users
+      // resolve by pressing Enter, which we don't want them to have to do.
+      const buf = term.buffer.active
+      const wasAtBottom = buf.viewportY >= buf.baseY
+      term.write(data, () => {
+        if (wasAtBottom && terminalRef.current) terminalRef.current.scrollToBottom()
+      })
       onTerminalDataReceived(id)
     })
 
@@ -349,6 +357,13 @@ export function TerminalPanel({
       if (e.type === 'keydown' && modKey(e) && e.key === '0') {
         term.options.fontSize = 13
         fitAddon.fit()
+        return false
+      }
+      // Mod+End: scroll to bottom without sending input. Escape hatch when
+      // a long output burst leaves the last line visually below the
+      // viewport and pressing Enter would otherwise send a stray \r.
+      if (e.type === 'keydown' && modKey(e) && e.key === 'End') {
+        term.scrollToBottom()
         return false
       }
       return true
