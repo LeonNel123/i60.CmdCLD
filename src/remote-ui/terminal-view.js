@@ -145,15 +145,25 @@
         }
       })
 
-      // Desktop: intercept image paste (let xterm handle text paste natively)
+      // Desktop: intercept image-only paste (let xterm handle text paste natively).
+      // Many clipboards carry both text and image formats simultaneously
+      // (copying from VS Code, browsers, Office). Prefer text — only upload
+      // the image when there is no usable text alongside it.
       term.textarea.addEventListener('paste', function (ev) {
         var items = (ev.clipboardData || {}).items || []
+        var hasText = false
+        var imageFile = null
         for (var i = 0; i < items.length; i++) {
-          if (items[i].type.indexOf('image/') === 0) {
-            ev.preventDefault()
-            uploadImage(items[i].getAsFile())
-            return
+          var it = items[i]
+          if (it.kind === 'string' && it.type.indexOf('text/') === 0) {
+            hasText = true
+          } else if (it.kind === 'file' && it.type.indexOf('image/') === 0 && !imageFile) {
+            imageFile = it.getAsFile()
           }
+        }
+        if (imageFile && !hasText) {
+          ev.preventDefault()
+          uploadImage(imageFile)
         }
       })
     } else {
