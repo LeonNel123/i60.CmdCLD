@@ -1,19 +1,22 @@
 import type {
   ApiClient, ActivityEntry, AutopilotOptions, AutopilotState, DecideResult,
-  Goal, Milestone, SettledSnapshot, AutopilotPhase,
+  Goal, Milestone, SettledSnapshot, AutopilotPhase, DoerMarker,
 } from './types'
+import { existsSync } from 'fs'
+import { join } from 'path'
 import { PtyWatcher, recoverLiteralMarkerFromTail, type MissingMarkerDiagnostics } from './pty-watcher'
 import { CostTracker } from './cost-tracker'
-import { readGoal, readMilestones, writeMilestone, appendLog, appendTranscript, autopilotDirExists, readLearnings, readSteering } from './state-files'
+import { readGoal, readMilestones, writeMilestone, appendLog, appendTranscript, appendDebugEvent, autopilotDirExists, readLearnings, readSteering } from './state-files'
 import { discoverValidation } from './validation'
 import { decide } from './decision'
 import { runResetSequence } from './reset'
 import { makeApiClient } from './api-client'
-import { buildDoerSystemPrompt, buildWizardKickoff } from './prompts'
+import { buildDoerSystemPrompt, buildExecutionKickoff, buildWizardKickoff } from './prompts'
 import { debugCall } from './debug'
 import { saveRuntimeClassic, loadRuntimeClassic } from './runtime-state'
 import { recordSpend } from './budget-tracker'
 import { getAutopilotRuntime, type AutopilotRuntime } from './runtime'
+import { markerToSnapshot, readControlMarker, reconcileMilestoneState, writeInboxReply } from './control-channel'
 
 const MAX_GOAL_READY_REPAIR_PROMPTS = 2
 
@@ -29,6 +32,11 @@ export class AutopilotStateMachine {
   private partialStreak = 0
   private markerFallbackPromptCount = 0
   private goalReadyRepairCount = 0
+  private controlPollTimer: ReturnType<typeof setInterval> | null = null
+  private lastControlMarkerId: string | null = null
+  private lastControlValidationReason: string | null = null
+  private lastFileControlMarkerSignature: string | null = null
+  private lastFileControlMarkerAt = 0
   // Long-silence escalate: if no PTY bytes arrive for this long while we're
   // executing or in wizard phase, escalate. Catches truly-hung doer / dead
   // subagent / network stalls. 30 minutes is generous enough for legitimate
@@ -116,16 +124,20 @@ export class AutopilotStateMachine {
       this.armSilenceTimer()
       this.watcher.feed(data)
     })
+    this.startControlWatchdog()
 
     // Discover validation once at start
     this.state.validation = discoverValidation(this.opts.projectPath)
 
-    this.opts.writeToPty(this.opts.terminalId, buildDoerSystemPrompt(this.runtime.agentCli) + '\r')
+    this.sendToDoer(buildDoerSystemPrompt(this.runtime.agentCli, {
+      gitAvailable: this.isGitAvailable(),
+    }), 'system-prompt')
 
     if (autopilotDirExists(this.opts.projectPath) && this.state.goal && this.state.milestones.length > 0) {
       this.transition('executing', 'goal already defined; resuming')
+      this.sendExecutionKickoff()
     } else {
-      this.opts.writeToPty(this.opts.terminalId, buildWizardKickoff(this.opts.freeTextIdea) + '\r')
+      this.sendToDoer(buildWizardKickoff(this.opts.freeTextIdea), 'wizard-kickoff')
       this.transition('wizard', 'wizard kickoff sent')
     }
     this.state.liveStatus = 'waiting for doer'
@@ -152,6 +164,7 @@ export class AutopilotStateMachine {
   }
   stop(): void {
     if (this.detachPty) { this.detachPty(); this.detachPty = null }
+    this.stopControlWatchdog()
     this.clearSilenceTimer()
     this.state.liveStatus = null
     this.transition('stopped', 'user stopped')
@@ -166,9 +179,10 @@ export class AutopilotStateMachine {
     }
     this.goalReadyRepairCount = 0
     this.transition('executing', 'goal approved')
+    this.sendExecutionKickoff()
   }
   replyToWaiting(text: string): void {
-    this.opts.writeToPty(this.opts.terminalId, text + '\r')
+    this.sendToDoer(text, 'manual-reply')
     this.state.liveStatus = 'waiting for doer'
     this.appendActivity('orchestrator-reply', `Manual reply: ${text.slice(0, 80)}`)
     this.recordUserManualTranscript(text)
@@ -179,19 +193,40 @@ export class AutopilotStateMachine {
     while (this.settleResolvers.length) this.settleResolvers.shift()?.()
     if (!this.canProcessPty()) return
 
+    const markerSignature = this.markerSignature(snap.marker)
+    const isFileControl = snap.text === 'file-control-channel'
+    if (!isFileControl && markerSignature === this.lastFileControlMarkerSignature && Date.now() - this.lastFileControlMarkerAt < 2000) {
+      this.appendDebug('marker-duplicate-skipped', { marker: snap.marker })
+      return
+    }
+    if (isFileControl) {
+      this.lastFileControlMarkerSignature = markerSignature
+      this.lastFileControlMarkerAt = Date.now()
+    }
+
     this.markerFallbackPromptCount = 0
 
     this.state.lastMarker = {
       kind: snap.marker.kind,
+      text: snap.marker.text,
+      question: snap.marker.question,
       subgoalId: snap.marker.subgoalId,
       status: snap.marker.status,
       receivedAt: snap.receivedAt,
     }
 
+    this.appendDebug('doer-settled', {
+      phase: this.state.phase,
+      marker: snap.marker,
+      textChars: snap.text.length,
+      textTail: snap.text.slice(-2000),
+    })
     this.appendActivity('doer-marker', `${snap.marker.kind}${snap.marker.subgoalId ? ` ${snap.marker.subgoalId} ${snap.marker.status}` : ''}`)
 
-    if (snap.marker.kind === 'PROGRESS') {
+    const markerCarriesProgress = Boolean(snap.marker.subgoalId && snap.marker.status)
+    if (snap.marker.kind === 'PROGRESS' || markerCarriesProgress) {
       this.applyProgress(snap.marker.subgoalId ?? '', snap.marker.status ?? 'done')
+      this.outputVolumeSinceReset = 0
     }
 
     if (snap.marker.kind === 'STUCK') {
@@ -217,8 +252,10 @@ export class AutopilotStateMachine {
       return
     }
 
-    if (snap.marker.kind === 'WAITING') {
-      if (this.shouldResetAtWaitingCheckpoint()) {
+    const markerHasQuestion = Boolean((snap.marker.question || snap.marker.text || '').trim())
+    const progressMarkerNeedsReply = markerCarriesProgress && markerHasQuestion
+    if (snap.marker.kind === 'WAITING' || progressMarkerNeedsReply) {
+      if (!markerCarriesProgress && this.shouldResetAtWaitingCheckpoint(snap)) {
         await this.reset('output volume checkpoint reached')
         return
       }
@@ -228,8 +265,20 @@ export class AutopilotStateMachine {
 
   private async cycleDecide(snap: SettledSnapshot): Promise<void> {
     if (!this.state.goal) {
-      this.opts.writeToPty(this.opts.terminalId, 'Continue.\r')
+      this.sendToDoer('Continue.', 'wizard-default')
       this.appendActivity('orchestrator-reply', 'Continue. (wizard default)')
+      return
+    }
+
+    const directReply = this.getDirectGreenlightReply(snap)
+    if (directReply) {
+      this.appendDebug('planner-skipped', {
+        reason: 'direct-greenlight',
+        marker: snap.marker,
+        reply: directReply,
+      })
+      this.handleDecision({ kind: 'reply', text: directReply }, snap, 'direct-greenlight')
+      this.notify()
       return
     }
 
@@ -245,6 +294,15 @@ export class AutopilotStateMachine {
     this.notify()
     let out
     try {
+      this.appendDebug('planner-request', {
+        cycle: this.state.cycleCount,
+        currentMilestoneId: this.state.currentMilestoneId,
+        marker: snap.marker,
+        recentLogTail: this.state.recentLog.slice(-5),
+        validation: this.state.validation,
+        learnings,
+        steering,
+      })
       out = await decide(this.api, {
         goal: this.state.goal,
         milestones: this.state.milestones,
@@ -264,6 +322,12 @@ export class AutopilotStateMachine {
       this.notify()
     }
 
+    this.appendDebug('planner-response', {
+      cycle: this.state.cycleCount,
+      result: out.result,
+      usage: out.usage,
+      costUsd: out.costUsd,
+    })
     this.cost.add(out.costUsd)
     this.state.costUsd = this.cost.totalUsd
 
@@ -285,17 +349,20 @@ export class AutopilotStateMachine {
       return
     }
 
-    this.handleDecision(out.result, snap)
+    this.handleDecision(out.result, snap, 'planner-reply')
     this.notify()
   }
 
-  private handleDecision(d: DecideResult, snap?: SettledSnapshot): void {
+  private handleDecision(d: DecideResult, snap?: SettledSnapshot, writeReason = 'planner-reply'): void {
     switch (d.kind) {
       case 'reply':
-        this.opts.writeToPty(this.opts.terminalId, d.text + '\r')
-        this.state.lastDecisionText = `Replied: ${d.text.slice(0, 80)}`
-        this.appendActivity('orchestrator-reply', d.text.slice(0, 100))
-        if (snap) this.recordTranscript(snap, 'reply', d.text)
+        {
+          const text = this.normalizeReplyDecision(d.text, snap)
+          this.sendToDoer(text, writeReason)
+          this.state.lastDecisionText = `Replied: ${text.slice(0, 80)}`
+          this.appendActivity('orchestrator-reply', text.slice(0, 100))
+          if (snap) this.recordTranscript(snap, 'reply', text)
+        }
         return
       case 'reset':
         if (snap) this.recordTranscript(snap, 'reset', 'orchestrator decided to reset')
@@ -310,6 +377,36 @@ export class AutopilotStateMachine {
         this.transition('escalated', d.reason)
         return
     }
+  }
+
+  private normalizeReplyDecision(text: string, snap?: SettledSnapshot): string {
+    const trimmed = text.trim()
+    if (trimmed) return trimmed
+
+    const question = (snap?.marker.question || snap?.marker.text || '').trim()
+    const next = question.match(/\b(m\d+\/s\d+)\b/i)?.[1]
+    if (next && /\b(greenlight|proceed|continue|ready|start)\b/i.test(question)) {
+      return `Yes, proceed with ${next}.`
+    }
+    if (/\b(greenlight|proceed|continue|ready|start)\b/i.test(question)) {
+      return 'Yes, proceed.'
+    }
+    if (question) {
+      return `Proceed with the safest next step implied by this question: ${question}`
+    }
+    return 'Continue with the next pending subgoal from the milestone files.'
+  }
+
+  private getDirectGreenlightReply(snap: SettledSnapshot): string | null {
+    const isWaiting = snap.marker.kind === 'WAITING'
+    const carriesProgress = Boolean(snap.marker.subgoalId && snap.marker.status)
+    if (!isWaiting && !carriesProgress) return null
+    const question = (snap.marker.question || snap.marker.text || '').trim()
+    if (!question) return null
+    if (!/\b(greenlight|proceed|continue|ready|start)\b/i.test(question)) return null
+    const next = question.match(/\b(m\d+\/s\d+)\b/i)?.[1]
+    if (!next) return null
+    return `Yes, proceed with ${next}.`
   }
 
   private handleGoalReady(): void {
@@ -335,7 +432,7 @@ export class AutopilotStateMachine {
     this.transition('wizard', `goal files need parser repair: ${reason}`)
 
     const instruction = buildGoalFileRepairPrompt(this.goalReadyRepairCount, MAX_GOAL_READY_REPAIR_PROMPTS)
-    const writeResult = this.opts.writeToPty(this.opts.terminalId, instruction + '\r')
+    const writeResult = this.sendToDoer(instruction, 'goal-file-repair')
     void Promise.resolve(writeResult).catch((error) => {
       this.appendActivity('escalation', `goal-file repair prompt failed: ${error?.message ?? 'unknown'}`)
       this.notify()
@@ -440,7 +537,7 @@ export class AutopilotStateMachine {
     }
 
     if (out.result.kind === 'retry') {
-      this.opts.writeToPty(this.opts.terminalId, out.result.instruction + '\r')
+      this.sendToDoer(out.result.instruction, 'debug-retry')
       this.state.lastDecisionText = `Debug retry: ${out.result.instruction.slice(0, 80)}`
       this.appendActivity('orchestrator-reply', `debug retry: ${out.result.instruction.slice(0, 100)}`)
       this.recordTranscript(snap, 'debug-retry', out.result.instruction)
@@ -459,17 +556,35 @@ export class AutopilotStateMachine {
   private async reset(reason: string): Promise<void> {
     this.appendActivity('orchestrator-reset', reason)
     await runResetSequence({
-      writeToPty: (s) => this.opts.writeToPty(this.opts.terminalId, s),
+      writeToPty: (s) => {
+        this.appendDebug('doer-write', { reason: 'reset-sequence', text: s, appendCarriageReturn: s.endsWith('\r'), chars: s.length })
+        return this.opts.writeToPty(this.opts.terminalId, s)
+      },
       waitForSettle: () => new Promise<void>((res) => { this.settleResolvers.push(res) }),
       currentMilestoneId: this.state.currentMilestoneId,
       clearCommand: this.runtime.clearCommand,
-      doerSystemPrompt: buildDoerSystemPrompt(this.runtime.agentCli),
+      doerSystemPrompt: buildDoerSystemPrompt(this.runtime.agentCli, {
+        gitAvailable: this.isGitAvailable(),
+      }),
     })
     this.outputVolumeSinceReset = 0
   }
 
-  private shouldResetAtWaitingCheckpoint(): boolean {
+  private sendExecutionKickoff(): void {
+    this.sendToDoer(buildExecutionKickoff(
+      this.state.currentMilestoneId,
+      this.isGitAvailable(),
+    ), 'execution-kickoff')
+    this.appendActivity('orchestrator-reply', 'Execution kickoff sent')
+  }
+
+  private isGitAvailable(): boolean {
+    return existsSync(join(this.opts.projectPath, '.git'))
+  }
+
+  private shouldResetAtWaitingCheckpoint(snap?: SettledSnapshot): boolean {
     if (this.state.phase !== 'executing') return false
+    if (snap?.marker.filesChanged?.length || snap?.marker.tests || snap?.marker.evidence || snap?.marker.question) return false
     const threshold = this.state.goal?.constraints.maxDoerOutputPerReset ?? 180000
     return this.outputVolumeSinceReset >= threshold
   }
@@ -541,13 +656,14 @@ export class AutopilotStateMachine {
     const beforeOutput = this.outputVolumeSinceReset
     const startedAt = Date.now()
     this.appendActivity('orchestrator-reply', `diagnostic marker-missing count=${this.markerFallbackPromptCount}/2 cleanChars=${diagnostics?.cleanChars ?? 'unknown'} rawChars=${diagnostics?.rawChars ?? 'unknown'} tail="${compactLogText(diagnostics?.cleanTail ?? '')}"`)
-    const writeResult = this.opts.writeToPty(this.opts.terminalId, nudge + '\r')
+    const writeResult = this.sendToDoer(nudge, 'marker-fallback-nudge')
     void Promise.resolve(writeResult).then(() => {
       this.appendActivity('orchestrator-reply', `diagnostic marker-nudge-write-complete count=${this.markerFallbackPromptCount}/2 ms=${Date.now() - startedAt} outputDelta=${this.outputVolumeSinceReset - beforeOutput}`)
       this.notify()
       const submitRetryTimer = setTimeout(() => {
         if (!this.canProcessPty()) return
         if (this.outputVolumeSinceReset !== beforeOutput) return
+        this.appendDebug('doer-write', { reason: 'marker-nudge-submit-retry', text: '', appendCarriageReturn: true, chars: 0 })
         const retryResult = this.opts.writeToPty(this.opts.terminalId, '\r')
         void Promise.resolve(retryResult).then(() => {
           this.appendActivity('orchestrator-reply', `diagnostic marker-nudge-submit-retry count=${this.markerFallbackPromptCount}/2 afterMs=750`)
@@ -636,6 +752,7 @@ export class AutopilotStateMachine {
       return
     }
     const reply = this.runtime.permissionReplies[verdict]
+    this.appendDebug('doer-write', { reason: `permission-${verdict}`, text: reply, appendCarriageReturn: false, chars: reply.length })
     this.opts.writeToPty(this.opts.terminalId, reply)
     this.state.permissionRequest = null
     this.appendActivity('orchestrator-reply', `permission ${verdict}`)
@@ -647,6 +764,86 @@ export class AutopilotStateMachine {
     this.state.recentLog.push(e)
     if (this.state.recentLog.length > 10) this.state.recentLog.shift()
     appendLog(this.opts.projectPath, e)
+  }
+
+  private appendDebug(kind: string, data: Record<string, unknown>): void {
+    try {
+      appendDebugEvent(this.opts.projectPath, kind, data)
+    } catch {
+      // Debug logging is diagnostic only; never let it break the run.
+    }
+  }
+
+  private sendToDoer(text: string, reason: string): void | Promise<void> {
+    try {
+      writeInboxReply(this.opts.projectPath, text)
+    } catch (error: any) {
+      this.appendActivity('escalation', `control inbox write failed: ${error?.message ?? 'unknown'}`)
+    }
+    this.appendDebug('doer-write', {
+      reason,
+      text,
+      appendCarriageReturn: true,
+      chars: text.length,
+    })
+    return this.opts.writeToPty(this.opts.terminalId, text + '\r')
+  }
+
+  private startControlWatchdog(): void {
+    this.stopControlWatchdog()
+    this.controlPollTimer = setInterval(() => {
+      void this.pollControlChannel()
+    }, 1000)
+    if (typeof (this.controlPollTimer as any)?.unref === 'function') {
+      (this.controlPollTimer as any).unref()
+    }
+    void this.pollControlChannel()
+  }
+
+  private stopControlWatchdog(): void {
+    if (this.controlPollTimer) {
+      clearInterval(this.controlPollTimer)
+      this.controlPollTimer = null
+    }
+  }
+
+  private async pollControlChannel(): Promise<void> {
+    if (!this.canProcessPty()) return
+
+    const control = readControlMarker(this.opts.projectPath)
+    if (control && 'reason' in control) {
+      if (control.reason !== this.lastControlValidationReason) {
+        this.lastControlValidationReason = control.reason
+        this.appendActivity('escalation', `control marker invalid: ${control.reason}`)
+        this.appendDebug('control-marker-invalid', { reason: control.reason })
+        this.notify()
+      }
+    } else if (control && control.id !== this.lastControlMarkerId) {
+      this.lastControlMarkerId = control.id
+      this.lastControlValidationReason = null
+      this.appendActivity('doer-marker', `file-control ${control.marker.kind}${control.marker.subgoalId ? ` ${control.marker.subgoalId} ${control.marker.status}` : ''}`)
+      this.appendDebug('control-marker-read', { id: control.id, marker: control.marker, mtimeMs: control.mtimeMs })
+      await this.onSettled(markerToSnapshot(control.marker))
+    }
+
+    if (this.state.phase === 'executing') {
+      const reconciled = reconcileMilestoneState(this.state.milestones, readMilestones(this.opts.projectPath))
+      if (reconciled.changed) {
+        this.state.milestones = reconciled.milestones
+        this.appendActivity('orchestrator-resume', 'reconciled milestone state from files')
+        this.notify()
+      }
+    }
+  }
+
+  private markerSignature(marker: DoerMarker): string {
+    return [
+      marker.kind,
+      marker.subgoalId ?? '',
+      marker.status ?? '',
+      marker.question ?? '',
+      marker.text ?? '',
+    ].join('|')
   }
 
   private notify(): void {

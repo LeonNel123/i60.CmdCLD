@@ -37,7 +37,7 @@ export function buildAttachBridgePrompt(args: {
 }): string {
   const indentBlock = (text: string) => text
     .split(/\r\n|\n|\r/)
-    .map((line) => `  ${line}`)
+    .map((line) => `# ${line}`)
     .join('\n')
 
   const parts = [
@@ -49,21 +49,21 @@ export function buildAttachBridgePrompt(args: {
     'In your future responses, emit actual marker lines without indentation at column 1.',
     '',
     'If you need user or orchestrator input, end the response like:',
-    '  [ORCH:WAITING]',
+    '  [ORCH:WAITING] <example>',
     '  STATUS: waiting',
     '  QUESTION: <specific question>',
     '',
     'If you are actively working, report progress like:',
-    '  [ORCH:PROGRESS]',
+    '  [ORCH:PROGRESS] <example>',
     '  STATUS: progress',
     '',
     'If the requested work is complete and ready for review, end like:',
-    '  [ORCH:GOAL_READY]',
+    '  [ORCH:GOAL_READY] <example>',
     '  STATUS: goal_ready',
     '  SUMMARY: <short summary>',
     '',
     'If blocked, end like:',
-    '  [ORCH:STUCK]',
+    '  [ORCH:STUCK] <example>',
     '  STATUS: stuck',
     '  REASON: <blocker>',
     '',

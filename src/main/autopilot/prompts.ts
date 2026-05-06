@@ -133,7 +133,34 @@ Before emitting [ORCH:PROGRESS] <id> done you MUST run all of:
 If any check fails, do NOT emit done. Emit partial or fix and re-check.
 
 STATUS REPORT (the Doer's structured output):
-Every settled response should be terminated by a structured block immediately after the
+The primary machine channel is file-based. BEFORE every settled response, write
+.autopilot/outbox/marker.json using this exact JSON shape:
+
+  {
+    "schemaVersion": 1,
+    "id": "<unique id, e.g. ISO timestamp plus subgoal>",
+    "kind": "WAITING|PROGRESS|GOAL_READY|STUCK",
+    "text": "<short human-readable marker text>",
+    "subgoalId": "m1/s2",
+    "status": "done|partial|blocked",
+    "filesChanged": ["src/foo.ts"],
+    "tests": "134 passed / 0 failed",
+    "redPhase": "yes|no|na",
+    "boundaryOk": true,
+    "evidence": "<one-line proof>",
+    "blocker": "<only if stuck>",
+    "question": "<what you want from the orchestrator>"
+  }
+
+Rules:
+- For PROGRESS, subgoalId and status are required.
+- Use a new id for every new settled response, even if the text is similar.
+- Write valid JSON only. No comments, markdown fences, or trailing commas.
+- The orchestrator reads marker.json first. Terminal markers are a human-visible fallback.
+- The orchestrator writes its latest reply to .autopilot/inbox/reply.txt. If terminal input
+  appears stale or unclear, read that file before continuing.
+
+Also terminate the visible terminal response with a structured block immediately after the
 marker line:
 
   [ORCH:WAITING]
@@ -164,6 +191,12 @@ The orchestrator IGNORES everything before the last marker (apart from the struc
 that follows it). Be terse before, clear in the marker.
 
 CONSTRAINTS:
+- ORCHESTRATOR STATE LOCK: never move, rename, delete, chmod, copy-as-workaround, or
+  otherwise manipulate the .autopilot/ directory itself. It may be open and locked by
+  CmdCLD. Only write the specific .autopilot files the protocol allows. If a scaffold
+  generator such as create-next-app refuses to run because .autopilot/ exists, do NOT
+  move .autopilot. Manually create the needed project files instead and report that
+  fallback in EVIDENCE or LEARNINGS.
 - NEVER modify .autopilot/goal.md or files under .autopilot/milestones/. Treat them as
   read-only spec.
 - NEVER push to git remote (git push). You may commit locally.
@@ -211,9 +244,20 @@ CODEX RUNTIME GUARDRAILS:
 - The app or human owns final staging and commits for Codex Autopilot runs.
 `
 
-export function buildDoerSystemPrompt(agentCli: AgentCli = 'claude'): string {
-  if (agentCli !== 'codex') return BASE_DOER_SYSTEM_PROMPT
-  return BASE_DOER_SYSTEM_PROMPT
+const NO_GIT_GUARDRAILS = `
+NO-GIT WORKSPACE GUARDRAILS:
+- CmdCLD did not detect a .git directory/file at the selected project root.
+- DO NOT run git add, git commit, git tag, or git push in this workspace.
+- When a subgoal is done, report FILES_CHANGED, TESTS, EVIDENCE, and a proposed commit message.
+- The app or human can initialize Git later if versioned checkpoints are desired.
+`
+
+interface DoerPromptOptions {
+  gitAvailable?: boolean
+}
+
+function withNoCommitPolicy(prompt: string, guardrails: string): string {
+  return prompt
     .replace(
       '  5. Commit. Use conventional-commits style (feat:, fix:, chore:, etc.).\n  6. Emit',
       '  5. Do NOT commit. Record a proposed conventional-commits message in your final status.\n  6. Emit',
@@ -226,11 +270,42 @@ export function buildDoerSystemPrompt(agentCli: AgentCli = 'claude'): string {
     )
     .replace(
       '- NEVER push to git remote (git push). You may commit locally.',
-      '- NEVER push to git remote (git push). Under Codex Autopilot, DO NOT commit locally.',
-    ) + CODEX_RUNTIME_GUARDRAILS
+      '- NEVER push to git remote (git push). DO NOT commit locally in this run.',
+    )
+    .replace(
+      '- NEVER stage with `git add -A`, `git add .`, or `git add -u`. Stage exactly the files you\n' +
+        '  intentionally changed (`git add path/to/file`). The .autopilot/ directory is internal —\n' +
+        '  do NOT commit .autopilot/state.md, .autopilot/log.md, .autopilot/cost.json, or\n' +
+        '  .autopilot/learnings.md. You MAY commit .autopilot/goal.md, .autopilot/milestones/*.md,\n' +
+        '  and .autopilot/project/*.md — those are the spec.',
+      '- Do not stage files in this run. Report FILES_CHANGED and a proposed commit message instead.',
+    ) + guardrails
+}
+
+export function buildDoerSystemPrompt(agentCli: AgentCli = 'claude', options: DoerPromptOptions = {}): string {
+  if (agentCli === 'codex') return withNoCommitPolicy(BASE_DOER_SYSTEM_PROMPT, CODEX_RUNTIME_GUARDRAILS)
+  if (options.gitAvailable === false) return withNoCommitPolicy(BASE_DOER_SYSTEM_PROMPT, NO_GIT_GUARDRAILS)
+  return BASE_DOER_SYSTEM_PROMPT
 }
 
 export const DOER_SYSTEM_PROMPT = buildDoerSystemPrompt('claude')
+
+export function buildExecutionKickoff(currentMilestoneId: string | null, gitAvailable = true): string {
+  const milestone = currentMilestoneId ?? 'the first pending milestone'
+  const milestonePath = currentMilestoneId
+    ? `.autopilot/milestones/${currentMilestoneId}.md`
+    : '.autopilot/milestones/'
+  const gitPolicy = gitAvailable
+    ? 'Use the commit rules from the system prompt after completing exactly one subgoal.'
+    : 'This selected project root has no .git directory/file. Do NOT run git commands; report FILES_CHANGED and a proposed commit message instead.'
+  return `Goal approved. Begin Phase 2 execution now.
+
+Read .autopilot/goal.md and ${milestonePath}, then work on the first unchecked subgoal in ${milestone} only. Do not wait for another instruction unless the milestone file is missing or ambiguous.
+
+${gitPolicy}
+
+When that single subgoal is complete or blocked, emit [ORCH:PROGRESS] <milestone>/<subgoal> done|partial|blocked followed by [ORCH:WAITING] <next question>.`
+}
 
 // ----- Wizard kickoff message -----
 

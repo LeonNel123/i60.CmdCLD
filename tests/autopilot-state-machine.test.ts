@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { AutopilotStateMachine } from '../src/main/autopilot/state-machine'
 import type { ApiClient, AutopilotOptions, Goal, Milestone, ApiUsage, DecideResult } from '../src/main/autopilot/types'
@@ -40,12 +40,26 @@ describe('AutopilotStateMachine', () => {
 
   it('approveGoal moves to executing', async () => {
     writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
-    const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })))
+    const writes: string[] = []
+    const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })), writes)
     await sm.start()
     sm.feedPty('[ORCH:GOAL_READY]\n')
     await waitForPhase(sm, 'awaiting_goal_review')
+    writes.length = 0
     sm.approveGoal()
     expect(sm.state.phase).toBe('executing')
+    expect(writes.some((w) => w.includes('Begin Phase 2 execution now'))).toBe(true)
+    expect(writes.some((w) => w.includes('Do NOT run git commands'))).toBe(true)
+  })
+
+  it('sends execution kickoff when resuming an existing approved goal', async () => {
+    writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+    const writes: string[] = []
+    const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })), writes)
+    await sm.start()
+
+    expect(sm.state.phase).toBe('executing')
+    expect(writes.some((w) => w.includes('Begin Phase 2 execution now'))).toBe(true)
   })
 
   it('asks the wizard to repair unparsable GOAL_READY files instead of escalating immediately', async () => {
@@ -123,7 +137,9 @@ describe('AutopilotStateMachine', () => {
   it('does not reset for output volume on PROGRESS markers during execution', async () => {
     const goal = makeGoal()
     goal.constraints.maxDoerOutputPerReset = 50
-    writeGoal(TMP, goal); writeMilestone(TMP, makeMilestone())
+    const milestone = makeMilestone()
+    milestone.subgoals.push({ id: 's2', description: 'b', status: 'pending' })
+    writeGoal(TMP, goal); writeMilestone(TMP, milestone)
     const writes: string[] = []
     const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })), writes)
     await sm.start()
@@ -141,7 +157,9 @@ describe('AutopilotStateMachine', () => {
   it('resets only at an executing WAITING checkpoint after output threshold', async () => {
     const goal = makeGoal()
     goal.constraints.maxDoerOutputPerReset = 50
-    writeGoal(TMP, goal); writeMilestone(TMP, makeMilestone())
+    const milestone = makeMilestone()
+    milestone.subgoals.push({ id: 's2', description: 'b', status: 'pending' })
+    writeGoal(TMP, goal); writeMilestone(TMP, milestone)
     const writes: string[] = []
     const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })), writes)
     await sm.start()
@@ -154,6 +172,34 @@ describe('AutopilotStateMachine', () => {
 
     expect(writes.some((w) => w.includes('Before we /clear context'))).toBe(true)
     expect(writes.some((w) => w === 'next\r')).toBe(false)
+  })
+
+  it('does not reset a WAITING marker that carries completed subgoal metadata', async () => {
+    const goal = makeGoal()
+    goal.constraints.maxDoerOutputPerReset = 50
+    const milestone = makeMilestone()
+    milestone.subgoals.push({ id: 's2', description: 'b', status: 'pending' })
+    writeGoal(TMP, goal); writeMilestone(TMP, milestone)
+    const writes: string[] = []
+    const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'Proceed to m1/s2.' })), writes)
+    await sm.start()
+    sm.approveGoal()
+    writes.length = 0
+
+    ;(sm as any).outputVolumeSinceReset = 100
+    sm.feedPty([
+      '[ORCH:WAITING]\n',
+      'STATUS: progress\n',
+      'SUBGOAL: m1/s1\n',
+      'PROGRESS_STATUS: done\n',
+      'QUESTION: Proceed to m1/s2?\n',
+    ].join(''))
+    await waitForFlush(200)
+
+    const m = sm.state.milestones.find((mm) => mm.id === 'm1')!
+    expect(m.subgoals.find((ss) => ss.id === 's1')?.status).toBe('done')
+    expect(writes.some((w) => w.includes('Before we /clear context'))).toBe(false)
+    expect(writes.some((w) => w === 'Yes, proceed with m1/s2.\r')).toBe(true)
   })
 
   it('escalates after repeated unparsable GOAL_READY repair attempts', async () => {
@@ -193,6 +239,82 @@ describe('AutopilotStateMachine', () => {
     const m = sm.state.milestones.find((mm) => mm.id === 'm1')!
     const s = m.subgoals.find((ss) => ss.id === 's1')!
     expect(s.status).toBe('done')
+  })
+
+  it('answers a PROGRESS done marker that carries a next-step question', async () => {
+    const milestone = makeMilestone()
+    milestone.subgoals.push({ id: 's2', description: 'b', status: 'pending' })
+    writeGoal(TMP, makeGoal()); writeMilestone(TMP, milestone)
+    const writes: string[] = []
+    const api = makeApi(() => ({ kind: 'reply', text: 'planner should not be called' }))
+    const sm = makeSm('idea', api, writes)
+    await sm.start()
+    sm.approveGoal()
+    writes.length = 0
+
+    sm.feedPty([
+      '[ORCH:PROGRESS] m1/s1 done\n',
+      'STATUS: progress\n',
+      'SUBGOAL: m1/s1\n',
+      'PROGRESS_STATUS: done\n',
+      'QUESTION: Ready for m1/s2?\n',
+    ].join(''))
+    await waitForFlush()
+
+    expect(writes).toContain('Yes, proceed with m1/s2.\r')
+    expect(api.decide).not.toHaveBeenCalled()
+  })
+
+  it('uses .autopilot/outbox/marker.json as the primary control channel', async () => {
+    const milestone = makeMilestone()
+    milestone.subgoals.push({ id: 's2', description: 'b', status: 'pending' })
+    writeGoal(TMP, makeGoal()); writeMilestone(TMP, milestone)
+    const writes: string[] = []
+    const api = makeApi(() => ({ kind: 'reply', text: 'planner should not be called' }))
+    const sm = makeSm('idea', api, writes)
+    await sm.start()
+    sm.approveGoal()
+    writes.length = 0
+
+    mkdirSync(join(TMP, '.autopilot', 'outbox'), { recursive: true })
+    writeFileSync(join(TMP, '.autopilot', 'outbox', 'marker.json'), JSON.stringify({
+      schemaVersion: 1,
+      id: 'm1-s1-done-1',
+      kind: 'PROGRESS',
+      text: 'm1/s1 done',
+      subgoalId: 'm1/s1',
+      status: 'done',
+      boundaryOk: true,
+      question: 'Ready for m1/s2?',
+    }))
+
+    await waitForFlush(1200)
+
+    expect(writes).toContain('Yes, proceed with m1/s2.\r')
+    expect(readFileSync(join(TMP, '.autopilot', 'inbox', 'reply.txt'), 'utf-8')).toContain('Yes, proceed with m1/s2.')
+    expect(api.decide).not.toHaveBeenCalled()
+  })
+
+  it('rejects invalid marker.json without falling back to guessed file intent', async () => {
+    writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+    const writes: string[] = []
+    const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })), writes)
+    await sm.start()
+    sm.approveGoal()
+    writes.length = 0
+
+    mkdirSync(join(TMP, '.autopilot', 'outbox'), { recursive: true })
+    writeFileSync(join(TMP, '.autopilot', 'outbox', 'marker.json'), JSON.stringify({
+      schemaVersion: 1,
+      id: 'bad-progress',
+      kind: 'PROGRESS',
+      status: 'done',
+    }))
+
+    await waitForFlush(1200)
+
+    expect(writes).toEqual([])
+    expect(sm.state.recentLog.some((entry) => entry.summary.includes('control marker invalid'))).toBe(true)
   })
 
   it('halts on cost cap', async () => {
@@ -423,6 +545,56 @@ it('writes a user-manual transcript block when replyToWaiting is called', async 
   const transcript = readFileSync(join(TMP, '.autopilot', 'transcript.md'), 'utf-8')
   expect(transcript).toContain('User manual reply')
   expect(transcript).toContain('Use 8080 instead.')
+})
+
+it('does not send a blank reply when planner returns empty text for a greenlight WAITING marker', async () => {
+  writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+  const writes: string[] = []
+  const api = makeApi(() => ({ kind: 'reply', text: '' }))
+  const sm = makeSm('idea', api, writes)
+  await sm.start()
+  sm.approveGoal()
+  writes.length = 0
+
+  sm.feedPty('[ORCH:WAITING] m2 complete - greenlight m3/s1?\n')
+  await waitForFlush()
+
+  expect(writes).toContain('Yes, proceed with m3/s1.\r')
+  expect(writes).not.toContain('\r')
+  expect(api.decide).not.toHaveBeenCalled()
+})
+
+it('keeps WAITING marker question text in state for panel diagnostics', async () => {
+  writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+  const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: 'next' })))
+  await sm.start()
+  sm.approveGoal()
+
+  sm.feedPty('[ORCH:WAITING] greenlight m3/s1?\n')
+  await waitForFlush()
+
+  expect(sm.state.lastMarker?.kind).toBe('WAITING')
+  expect(sm.state.lastMarker?.text).toBe('greenlight m3/s1?')
+})
+
+it('writes detailed debug events for received markers, skipped planners, and outbound replies', async () => {
+  writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
+  const writes: string[] = []
+  const sm = makeSm('idea', makeApi(() => ({ kind: 'reply', text: '' })), writes)
+  await sm.start()
+  sm.approveGoal()
+
+  sm.feedPty('[ORCH:WAITING] m2 complete - greenlight m3/s1?\n')
+  await waitForFlush()
+
+  const debugPath = join(TMP, '.autopilot', 'debug', 'events.jsonl')
+  const events = readFileSync(debugPath, 'utf-8')
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => JSON.parse(line))
+  expect(events.some((event) => event.kind === 'doer-settled' && event.marker?.text === 'm2 complete - greenlight m3/s1?')).toBe(true)
+  expect(events.some((event) => event.kind === 'planner-skipped' && event.reason === 'direct-greenlight')).toBe(true)
+  expect(events.some((event) => event.kind === 'doer-write' && event.reason === 'direct-greenlight' && event.text === 'Yes, proceed with m3/s1.')).toBe(true)
 })
 
 // ---- silence-escalate guard ----

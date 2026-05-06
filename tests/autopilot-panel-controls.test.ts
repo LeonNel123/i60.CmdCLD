@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getAttachStatusLabel, getAutopilotPanelControlFlags, getCouncilPanelSummary, shouldAllowAttachDraft } from '../src/renderer/src/components/AutopilotPanel'
+import { getAttachStatusLabel, getAutopilotPanelControlFlags, getCouncilPanelSummary, shouldAllowAttachDraft, shouldShowManualReply } from '../src/renderer/src/components/AutopilotPanel'
 
 describe('Autopilot panel controls', () => {
   it('does not offer resume for blocked Pro runs', () => {
@@ -41,6 +41,29 @@ describe('Autopilot attach panel helpers', () => {
   it('formats attach status labels', () => {
     expect(getAttachStatusLabel({ status: 'watching', message: 'Watching from output offset 20.' } as any))
       .toBe('watching: Watching from output offset 20.')
+  })
+})
+
+describe('Autopilot manual reply helper', () => {
+  it('shows manual reply when the latest marker is WAITING', () => {
+    expect(shouldShowManualReply({
+      lastMarker: { kind: 'WAITING', receivedAt: Date.now() },
+    } as any, {
+      isPaused: false,
+      isAwaitingReview: false,
+      isEscalated: false,
+    })).toBe(true)
+  })
+
+  it('hides manual reply for active work without a wait signal', () => {
+    expect(shouldShowManualReply({
+      phase: 'executing',
+      lastMarker: { kind: 'PROGRESS', receivedAt: Date.now() },
+    } as any, {
+      isPaused: false,
+      isAwaitingReview: false,
+      isEscalated: false,
+    })).toBe(false)
   })
 })
 

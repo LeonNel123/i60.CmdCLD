@@ -154,6 +154,12 @@ Choose DECISION_SHAPE based on what you actually need from the orchestrator:
 If you forget DECISION_SHAPE the orchestrator defaults to 'reply' (classic behaviour) — but the cleaner the shape, the cheaper and more deterministic the orchestrator's response.
 
 CONSTRAINTS (same as classic + a few PRO additions):
+- ORCHESTRATOR STATE LOCK: never move, rename, delete, chmod, copy-as-workaround, or
+  otherwise manipulate .autopilot/ or .autopilot-pro/ directories themselves. They may
+  be open and locked by CmdCLD. Only write the specific .autopilot-pro files the protocol
+  allows. If a scaffold generator such as create-next-app refuses to run because an
+  orchestrator directory exists, do NOT move it. Manually create the needed project files
+  instead and report that fallback in EVIDENCE or LEARNINGS.
 - NEVER stage with \`git add -A\`, \`git add .\`, or \`git add -u\`. Stage exactly the files you intentionally changed.
 - NEVER push to git remote. You may commit locally.
 - NEVER modify .autopilot-pro/state.json — the orchestrator owns it.

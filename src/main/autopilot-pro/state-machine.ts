@@ -200,6 +200,16 @@ function appendTranscript(projectPath: string, blockMarkdown: string): void {
   appendFileSync(path, blockMarkdown.endsWith('\n') ? blockMarkdown : blockMarkdown + '\n')
 }
 
+function appendDebugEvent(projectPath: string, kind: string, data: Record<string, unknown>): void {
+  try {
+    const path = join(projectPath, PRO_DIR, 'debug', 'events.jsonl')
+    mkdirSync(dirname(path), { recursive: true })
+    appendFileSync(path, JSON.stringify({ at: new Date().toISOString(), kind, ...data }) + '\n')
+  } catch {
+    // Debug logging must never affect an autopilot run.
+  }
+}
+
 // ----- State machine -----
 
 export class AutopilotProStateMachine {
@@ -379,8 +389,8 @@ export class AutopilotProStateMachine {
         lines.push('Before we write spec.md, do focused research. Emit DECISION_SHAPE: research with topic slugs, queries, and any seed sources you want to fetch first. The orchestrator will approve per-topic budgets and gate writes to docs/research/<slug>.md.')
 
         const reply = lines.join('\n')
-        this.opts.writeToPty(this.opts.terminalId, buildDoerSystemPromptPro(this.runtime.agentCli) + '\r')
-        this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+        this.sendToDoer(buildDoerSystemPromptPro(this.runtime.agentCli), 'start-system-prompt')
+        this.sendToDoer(reply, 'research-stage-kickoff')
         this.state.liveStatus = 'waiting for doer'
         this.armSilenceTimer()
         this.notify()
@@ -388,11 +398,11 @@ export class AutopilotProStateMachine {
       }
     }
 
-    this.opts.writeToPty(this.opts.terminalId, buildDoerSystemPromptPro(this.runtime.agentCli) + '\r')
+    this.sendToDoer(buildDoerSystemPromptPro(this.runtime.agentCli), 'start-system-prompt')
 
     // Stage-aware kickoff message
     const kickoff = this.kickoffForStage(this.state.stage)
-    if (kickoff) this.opts.writeToPty(this.opts.terminalId, kickoff + '\r')
+    if (kickoff) this.sendToDoer(kickoff, `stage-kickoff:${this.state.stage}`)
 
     this.state.liveStatus = 'waiting for doer'
     this.armSilenceTimer()
@@ -432,7 +442,7 @@ export class AutopilotProStateMachine {
   }
 
   replyToWaiting(text: string): void {
-    this.opts.writeToPty(this.opts.terminalId, text + '\r')
+    this.sendToDoer(text, 'manual-reply')
     this.state.liveStatus = 'waiting for doer'
     this.appendActivity('orchestrator-reply', `Manual reply: ${text.slice(0, 80)}`)
     this.recordTranscript({
@@ -463,11 +473,22 @@ export class AutopilotProStateMachine {
 
     this.state.lastMarker = {
       kind: snap.marker.kind,
+      text: snap.marker.text,
+      question: snap.marker.question,
+      shape: snap.marker.shape,
       subgoalId: snap.marker.subgoalId,
+      status: snap.marker.status,
       receivedAt: snap.receivedAt,
     }
 
     this.appendActivity('doer-marker', `${m.kind}${m.shape ? ` shape=${m.shape}` : ''}${m.subgoalId ? ` ${m.subgoalId}` : ''}`)
+    this.appendDebug('doer-settled', {
+      stage: this.state.stage,
+      control: this.state.control,
+      marker: m,
+      textChars: snap.text.length,
+      textTail: snap.text.slice(-2000),
+    })
 
     // Drain any pending waitForSettle promises (used by reset())
     while (this.settleResolvers.length) this.settleResolvers.shift()?.()
@@ -486,7 +507,7 @@ export class AutopilotProStateMachine {
       this.state.subagentEtaMs = m.subagentEtaMin * 60_000
       this.maxSilenceMs = Math.max(this.baseMaxSilenceMs, m.subagentEtaMin * 60_000 + 2 * 60_000)
       this.armSilenceTimer()
-      this.opts.writeToPty(this.opts.terminalId, 'Acknowledged. Proceeding with sub-agent.\r')
+      this.sendToDoer('Acknowledged. Proceeding with sub-agent.', 'subagent-eta-ack')
       this.notify()
       return
     } else if (this.state.subagentRunning) {
@@ -526,7 +547,7 @@ export class AutopilotProStateMachine {
         this.state.researchInFlight = undefined
         this.appendActivity('research-stage-complete', `returning to ${trigger}`)
         const writtenCount = this.state.researchHistory?.filter((h) => h.outcome === 'written').length ?? 0
-        this.opts.writeToPty(this.opts.terminalId, `Research complete. ${writtenCount} artifact(s) under docs/research/. Proceed to ${trigger}: read those findings and continue.\r`)
+        this.sendToDoer(`Research complete. ${writtenCount} artifact(s) under docs/research/. Proceed to ${trigger}: read those findings and continue.`, 'research-complete')
         if (trigger !== this.state.stage) this.transition(trigger, 'research complete')
       }
     }
@@ -536,6 +557,14 @@ export class AutopilotProStateMachine {
 
     // Pick the shape (default 'reply' for back-compat).
     const shape = m.shape ?? 'reply'
+
+    const directReply = this.getDirectReply(m)
+    if (directReply) {
+      this.appendDebug('planner-skipped', { reason: 'direct-greenlight', marker: m, reply: directReply })
+      await this.dispatch({ shape: 'reply', text: directReply }, m, 'direct-greenlight')
+      this.notify()
+      return
+    }
 
     // Build artifact-content extra for approve shape so the planner can see what to evaluate.
     let artifactContent: string | undefined
@@ -548,6 +577,12 @@ export class AutopilotProStateMachine {
 
     // Call planner.
     this.state.liveStatus = 'calling planner'
+    this.appendDebug('planner-request', {
+      shape,
+      stage: this.state.stage,
+      marker: m,
+      artifactPath: m.artifactPath,
+    })
     this.notify()
     let out
     try {
@@ -580,6 +615,13 @@ export class AutopilotProStateMachine {
     }
 
     this.cost.add(out.costUsd)
+    this.appendDebug('planner-response', {
+      shape,
+      stage: this.state.stage,
+      result: out.result,
+      costUsd: out.costUsd,
+      usage: out.usage,
+    })
     this.state.costUsd = this.cost.totalUsd
     this.state.cycleCount++
 
@@ -625,7 +667,7 @@ export class AutopilotProStateMachine {
           this.state.artifacts = readState(this.opts.projectPath)
           this.maybeWarnPhaseSpecOverlap(m.delta)
           const reply = `Spec-update applied: ${m.delta.slice(0, 60).replace(/\s+/g, ' ').trim()}. Proceed.`
-          this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+          this.sendToDoer(reply, 'spec-update-approved')
           this.appendActivity('orchestrator-reply', 'spec-update applied')
           this.recordTranscript({
             kind: 'spec-update',
@@ -648,18 +690,62 @@ export class AutopilotProStateMachine {
 
   // ---- shape-specific dispatch ----
 
-  private async dispatch(result: ProDecideResult, marker: ProMarker): Promise<void> {
+  private sendToDoer(text: string, reason: string, appendCarriageReturn = true): void {
+    const data = appendCarriageReturn ? (text.endsWith('\r') ? text : text + '\r') : text
+    this.appendDebug('doer-write', {
+      reason,
+      appendCarriageReturn,
+      chars: data.length,
+      text: data.slice(0, 4000),
+    })
+    this.opts.writeToPty(this.opts.terminalId, data)
+  }
+
+  private appendDebug(kind: string, data: Record<string, unknown>): void {
+    appendDebugEvent(this.opts.projectPath, kind, data)
+  }
+
+  private getDirectReply(marker: ProMarker): string | null {
+    if ((marker.shape ?? 'reply') !== 'reply') return null
+    const question = (marker.question || marker.text || '').trim()
+    if (!question) return null
+    if (!/\b(greenlight|proceed|continue|ready|start)\b/i.test(question)) return null
+
+    const subgoal = question.match(/\b(m\d+\/s\d+)\b/i)?.[1]
+    if (subgoal) return `Yes, proceed with ${subgoal}.`
+
+    const phase = question.match(/\b(phase[- ]?\d+)\b/i)?.[1]?.replace(/\s+/g, '-')
+    if (phase) return `Yes, proceed with ${phase}.`
+
+    return 'Yes, proceed.'
+  }
+
+  private normalizeReplyText(text: string, marker: ProMarker): string {
+    const trimmed = text.trim()
+    if (trimmed) return trimmed
+
+    const direct = this.getDirectReply(marker)
+    if (direct) return direct
+
+    const question = (marker.question || marker.text || '').trim()
+    if (question) return `Proceed with the safest next step implied by this question: ${question}`
+
+    return 'Continue with the current Autopilot Pro stage.'
+  }
+
+  private async dispatch(result: ProDecideResult, marker: ProMarker, writeReason = 'planner-reply'): Promise<void> {
     switch (result.shape) {
       case 'reply': {
-        this.opts.writeToPty(this.opts.terminalId, result.text + '\r')
-        this.appendActivity('orchestrator-reply', result.text.slice(0, 100))
-        this.recordTranscript({ kind: 'reply', doerQuestion: marker.question || marker.text, orchestratorBody: result.text, shape: 'reply' })
+        const reply = this.normalizeReplyText(result.text, marker)
+        this.sendToDoer(reply, writeReason)
+        this.appendActivity('orchestrator-reply', reply.slice(0, 100))
+        this.recordTranscript({ kind: 'reply', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'reply' })
         return
       }
 
       case 'choose': {
         const reply = `Pick: ${result.option}. Rationale: ${result.why}`
-        this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+        this.sendToDoer(reply, writeReason)
         this.appendActivity('orchestrator-reply', `chose ${result.option}: ${result.why.slice(0, 60)}`)
         this.recordTranscript({ kind: 'choose', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'choose' })
         return
@@ -669,7 +755,7 @@ export class AutopilotProStateMachine {
         const path = marker.artifactPath
         if (!path) {
           // Approve shape without artifact path is meaningless — degrade.
-          this.opts.writeToPty(this.opts.terminalId, 'Approve requires ARTIFACT path. Please re-emit.\r')
+          this.sendToDoer('Approve requires ARTIFACT path. Please re-emit.', 'approve-missing-artifact')
           return
         }
         const kind = this.inferArtifactKind(path)
@@ -684,7 +770,7 @@ export class AutopilotProStateMachine {
           // whether to re-enter Stage 3 for the next phase, return to
           // implementation, or move to final-review.
           const reply = `Approved: ${path}. ${result.why ?? ''} Proceed.`
-          this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+          this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-reply', `approved ${path}`)
           this.recordTranscript({ kind: 'approve', doerQuestion: `(approve) ${path}`, orchestratorBody: reply, shape: 'approve' })
         } else {
@@ -694,12 +780,11 @@ export class AutopilotProStateMachine {
           if (newCount > REFINE_LIMIT) {
             this.state.escalationReason = `refinement-bound-exceeded: ${path}`
             this.appendActivity('escalation', this.state.escalationReason)
-            this.opts.writeToPty(this.opts.terminalId,
-              `Refinement bound (${REFINE_LIMIT}) exceeded for ${path}. Escalating to human.\r`)
+            this.sendToDoer(`Refinement bound (${REFINE_LIMIT}) exceeded for ${path}. Escalating to human.`, 'refinement-bound-exceeded')
             return
           }
           const reply = `Refine ${path} (attempt ${newCount}/${REFINE_LIMIT}): ${result.directive}`
-          this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+          this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-reply', `refine ${path} (${newCount})`)
           this.recordTranscript({ kind: 'refine', doerQuestion: `(refine) ${path}`, orchestratorBody: reply, shape: 'approve' })
         }
@@ -708,7 +793,7 @@ export class AutopilotProStateMachine {
 
       case 'route': {
         const reply = `Use the ${result.skill} skill. ${result.why}`
-        this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+        this.sendToDoer(reply, writeReason)
         this.appendActivity('orchestrator-reply', `route: ${result.skill}`)
         this.recordTranscript({ kind: 'route', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'route' })
         return
@@ -717,12 +802,12 @@ export class AutopilotProStateMachine {
       case 'validate': {
         if (result.verdict === 'verified') {
           const reply = `Verified — proceed with that assumption.`
-          this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+          this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-reply', 'verified')
           this.recordTranscript({ kind: 'validate', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'validate' })
         } else {
           const reply = `Research first: ${result.query}. Report findings before proceeding.`
-          this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+          this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-reply', `research: ${result.query.slice(0, 60)}`)
           this.recordTranscript({ kind: 'validate', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'validate' })
         }
@@ -735,7 +820,7 @@ export class AutopilotProStateMachine {
           `where NNNN is the next available 4-digit number; sections: # ADR-NNNN: <title>, ` +
           `## Status, ## Context, ## Decision, ## Consequences). Then emit ` +
           `DECISION_SHAPE: approve, ARTIFACT: <that-path>.`
-        this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+        this.sendToDoer(reply, writeReason)
         this.appendActivity('orchestrator-reply', `decide-with-rationale → ${result.recommendation.slice(0, 60)}`)
         this.recordTranscript({
           kind: 'decide-with-rationale',
@@ -781,7 +866,7 @@ export class AutopilotProStateMachine {
         }
 
         const reply = lines.join('\n')
-        this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+        this.sendToDoer(reply, writeReason)
         this.recordTranscript({
           kind: 'research',
           doerQuestion: marker.question || marker.text,
@@ -809,12 +894,12 @@ export class AutopilotProStateMachine {
           // Validate gates before allowing advance
           this.maybeAdvanceStage()
           const reply = `Stage now: ${this.state.stage}. ${result.why}`
-          this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+          this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-resume', `stage→${this.state.stage}`)
           this.recordTranscript({ kind: 'transition', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'transition' })
         } else if (result.action === 'cycle') {
           const reply = `Cycle current stage. ${result.why}`
-          this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+          this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-resume', 'cycle')
           this.recordTranscript({ kind: 'transition', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'transition' })
         } else {
@@ -823,7 +908,7 @@ export class AutopilotProStateMachine {
             // We're already in Stage 4 — the doer is signalling Stage 4 complete.
             this.state.stage = 'done'
             const reply = `Final review acknowledged. Run complete. Firing meta-orchestrator…`
-            this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+            this.sendToDoer(reply, writeReason)
             this.appendActivity('orchestrator-resume', 'stage→done')
             this.recordTranscript({ kind: 'transition', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'transition' })
             void this.fireMetaAutoAsync()
@@ -831,7 +916,7 @@ export class AutopilotProStateMachine {
             // Pre-Stage-4 final-review request (legacy path) — set stage and let next cycle handle kickoff.
             this.state.stage = 'final-review'
             const reply = `Advancing to final review. ${result.why}`
-            this.opts.writeToPty(this.opts.terminalId, reply + '\r')
+            this.sendToDoer(reply, writeReason)
             this.appendActivity('orchestrator-resume', 'final-review')
             this.recordTranscript({ kind: 'transition', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'transition' })
           }
@@ -898,7 +983,7 @@ export class AutopilotProStateMachine {
       this.state.currentPhaseId = phaseAwaitingReview.id
       this.state.currentTaskId = null
       if (this.stage3KickoffSentForPhase !== phaseAwaitingReview.id) {
-        this.opts.writeToPty(this.opts.terminalId, stage3Kickoff(phaseAwaitingReview.id) + '\r')
+        this.sendToDoer(stage3Kickoff(phaseAwaitingReview.id), `stage-3-kickoff:${phaseAwaitingReview.id}`)
         this.appendActivity('orchestrator-resume', `stage 3 kickoff: ${phaseAwaitingReview.id}`)
         this.stage3KickoffSentForPhase = phaseAwaitingReview.id
       }
@@ -915,7 +1000,7 @@ export class AutopilotProStateMachine {
       this.state.currentTaskId = null
       this.stage3KickoffSentForPhase = null
       if (!this.stage4KickoffSent) {
-        this.opts.writeToPty(this.opts.terminalId, stage4Kickoff() + '\r')
+        this.sendToDoer(stage4Kickoff(), 'stage-4-kickoff')
         this.appendActivity('orchestrator-resume', 'stage 4 kickoff')
         this.stage4KickoffSent = true
       }
@@ -972,7 +1057,7 @@ export class AutopilotProStateMachine {
     this.appendActivity('orchestrator-reset', reason)
     this.notify()
     await runResetSequencePro({
-      writeToPty: (s) => this.opts.writeToPty(this.opts.terminalId, s),
+      writeToPty: (s) => this.sendToDoer(s, 'reset-sequence', false),
       waitForSettle: () => new Promise<void>((res) => { this.settleResolvers.push(res) }),
       state: this.state,
       clearCommand: this.runtime.clearCommand,
@@ -1084,6 +1169,12 @@ export class AutopilotProStateMachine {
     const startedAt = Date.now()
     this.appendActivity('orchestrator-reply', `diagnostic marker-missing count=${this.markerFallbackPromptCount}/2 cleanChars=${diagnostics?.cleanChars ?? 'unknown'} rawChars=${diagnostics?.rawChars ?? 'unknown'} tail="${compactLogText(diagnostics?.cleanTail ?? '')}"`)
     const writeResult = this.opts.writeToPty(this.opts.terminalId, nudge + '\r')
+    this.appendDebug('doer-write', {
+      reason: 'marker-fallback-nudge',
+      appendCarriageReturn: true,
+      chars: nudge.length + 1,
+      text: nudge,
+    })
     void Promise.resolve(writeResult).then(() => {
       this.appendActivity('orchestrator-reply', `diagnostic marker-nudge-write-complete count=${this.markerFallbackPromptCount}/2 ms=${Date.now() - startedAt} outputDelta=${this.outputVolumeSinceReset - beforeOutput}`)
       this.notify()
@@ -1110,7 +1201,7 @@ export class AutopilotProStateMachine {
       return
     }
     const reply = this.runtime.permissionReplies[verdict]
-    this.opts.writeToPty(this.opts.terminalId, reply)
+    this.sendToDoer(reply, `permission-${verdict}`, false)
     this.state.permissionRequest = null
     this.appendActivity('orchestrator-reply', `permission ${verdict}`)
     this.notify()
@@ -1145,7 +1236,7 @@ export class AutopilotProStateMachine {
     if (idx >= 0) this.state.researchInFlight.pendingTopics.splice(idx, 1)
     this.recordResearchHistory(slug, spent, 'overrun')
     this.appendActivity('research-overrun', `${slug}: $${spent.toFixed(3)} exceeded budget*1.5`)
-    this.opts.writeToPty(this.opts.terminalId, `Research on ${slug} exceeded budget; skip to next topic / write what you have so far if useful.\r`)
+    this.sendToDoer(`Research on ${slug} exceeded budget; skip to next topic / write what you have so far if useful.`, 'research-overrun')
   }
 
   private notify(): void {

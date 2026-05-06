@@ -31,7 +31,7 @@ interface AutopilotState {
   recentLog: ActivityEntry[]
   escalationReason: string | null
   liveStatus: string | null
-  lastMarker: { kind: string; subgoalId?: string; status?: string; receivedAt: number } | null
+  lastMarker: { kind: string; text?: string; question?: string; subgoalId?: string; status?: string; receivedAt: number } | null
   permissionRequest: { text: string; detectedAt: number } | null
 }
 interface OutputInspection {
@@ -90,6 +90,15 @@ export function shouldAllowAttachDraft(state: AutopilotState | null): boolean {
   return runStates.every((value) => value === 'idle' || value === 'stopped' || value === 'completed')
 }
 
+export function shouldShowManualReply(
+  state: AutopilotState | null,
+  flags: { isPaused: boolean; isAwaitingReview: boolean; isEscalated: boolean },
+): boolean {
+  if (!state) return false
+  const isWaitingForReply = state.lastMarker?.kind === 'WAITING' || state.liveStatus?.toLowerCase().includes('waiting')
+  return flags.isPaused || flags.isAwaitingReview || flags.isEscalated || Boolean(isWaitingForReply)
+}
+
 export function getAttachStatusLabel(status: AttachStatus | null): string {
   if (!status) return 'not attached'
   return `${status.status}: ${status.message}`
@@ -124,6 +133,8 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
   const [checkingOutput, setCheckingOutput] = useState(false)
   const [inspection, setInspection] = useState<OutputInspection | null>(null)
   const [inspectionError, setInspectionError] = useState<string | null>(null)
+  const [manualReplyBusy, setManualReplyBusy] = useState(false)
+  const [manualReplyError, setManualReplyError] = useState<string | null>(null)
   const [attachAnswer, setAttachAnswer] = useState('')
   const [attachUseLlm, setAttachUseLlm] = useState(true)
   const [attachDraft, setAttachDraft] = useState<AttachDraft | null>(null)
@@ -181,6 +192,18 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
     }
   }, [terminalId, attachStatus?.status])
 
+  useEffect(() => {
+    if (shouldAllowAttachDraft(state)) return
+    attachDraftSeq.current += 1
+    activeAttachDraftSeq.current = null
+    attachConfirmSeq.current += 1
+    activeAttachConfirmSeq.current = null
+    setAttachDraft(null)
+    setAttachStatus(null)
+    setAttachError(null)
+    setAttachBusy(false)
+  }, [state?.phase, state?.stage, state?.control])
+
   const pct = useMemo(() => {
     if (!state) return 0
     return state.costCapUsd > 0 ? (state.costUsd / state.costCapUsd) * 100 : 0
@@ -192,6 +215,8 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
   const { isPaused, isAwaitingReview, isEscalated, canPause, canResume } = flags
   const milestones = state?.milestones ?? []
   const councilSummary = getCouncilPanelSummary(state)
+  const canAttach = shouldAllowAttachDraft(state)
+  const showManualReply = shouldShowManualReply(state, flags)
   const clearAttachDraft = () => {
     attachDraftSeq.current += 1
     setAttachDraft(null)
@@ -276,6 +301,24 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
         activeAttachConfirmSeq.current = null
         setAttachBusy(false)
       }
+    }
+  }
+  const sendManualReply = async () => {
+    const text = manualReply.trim()
+    if (!text) return
+    setManualReplyBusy(true)
+    setManualReplyError(null)
+    try {
+      const result = await window.api.autopilotReplyToWaiting(terminalId, text)
+      if (!result?.ok) {
+        setManualReplyError(result?.error ?? 'Failed to send reply.')
+        return
+      }
+      setManualReply('')
+    } catch (e: any) {
+      setManualReplyError(e?.message ?? 'Failed to send reply.')
+    } finally {
+      setManualReplyBusy(false)
     }
   }
 
@@ -516,91 +559,93 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
         )}
       </div>
 
-      <div style={{
-        background: '#111827',
-        border: '1px solid #2d2d2d',
-        borderRadius: 4,
-        padding: 8,
-      }}>
-        <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 6 }}>
-          ATTACH AUTOPILOT
-        </div>
-        <textarea
-          value={attachAnswer}
-          onChange={(e) => {
-            const answer = e.target.value
-            setAttachAnswer(answer)
-            attachInputsRef.current = { answer, useLlm: attachUseLlm }
-            clearAttachDraft()
-          }}
-          placeholder="Optional answer to the CLI's current prompt..."
-          style={{
-            width: '100%',
-            minHeight: 54,
-            background: '#0d1117',
-            border: '1px solid #2d2d2d',
-            borderRadius: 4,
-            padding: 8,
-            color: '#ccc',
-            fontSize: 11,
-            fontFamily: 'monospace',
-            resize: 'vertical',
-            boxSizing: 'border-box',
-          }}
-        />
-        <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, color: '#aaa', fontSize: 11 }}>
-          <input
-            type="checkbox"
-            checked={attachUseLlm}
+      {canAttach && (
+        <div style={{
+          background: '#111827',
+          border: '1px solid #2d2d2d',
+          borderRadius: 4,
+          padding: 8,
+        }}>
+          <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 6 }}>
+            ATTACH AUTOPILOT
+          </div>
+          <textarea
+            value={attachAnswer}
             onChange={(e) => {
-              const useLlm = e.target.checked
-              setAttachUseLlm(useLlm)
-              attachInputsRef.current = { answer: attachAnswer, useLlm }
+              const answer = e.target.value
+              setAttachAnswer(answer)
+              attachInputsRef.current = { answer, useLlm: attachUseLlm }
               clearAttachDraft()
             }}
+            placeholder="Optional answer to the CLI's current prompt..."
+            style={{
+              width: '100%',
+              minHeight: 54,
+              background: '#0d1117',
+              border: '1px solid #2d2d2d',
+              borderRadius: 4,
+              padding: 8,
+              color: '#ccc',
+              fontSize: 11,
+              fontFamily: 'monospace',
+              resize: 'vertical',
+              boxSizing: 'border-box',
+            }}
           />
-          Use Autopilot LLM to interpret current state
-        </label>
-        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-          <button
-            onClick={draftAttach}
-            disabled={attachBusy || !shouldAllowAttachDraft(state)}
-            style={smallBtn}
-          >
-            {attachBusy ? 'Working...' : 'Draft bridge'}
-          </button>
-          <button
-            onClick={confirmAttach}
-            disabled={attachBusy || !attachDraft}
-            style={primaryBtn}
-          >
-            Attach
-          </button>
-        </div>
-        {attachError && <div style={{ color: '#f87171', fontSize: 11, marginTop: 6 }}>{attachError}</div>}
-        {attachDraft && (
-          <div style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 10, color: '#aaa' }}>
-            <div style={{ color: '#86efac' }}>
-              {attachDraft.usedLlm ? 'LLM-assisted' : 'Deterministic'} · {attachDraft.classification}
-              {typeof attachDraft.estimatedCostUsd === 'number' && ` · $${attachDraft.estimatedCostUsd.toFixed(4)}`}
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, color: '#aaa', fontSize: 11 }}>
+            <input
+              type="checkbox"
+              checked={attachUseLlm}
+              onChange={(e) => {
+                const useLlm = e.target.checked
+                setAttachUseLlm(useLlm)
+                attachInputsRef.current = { answer: attachAnswer, useLlm }
+                clearAttachDraft()
+              }}
+            />
+            Use Autopilot LLM to interpret current state
+          </label>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button
+              onClick={draftAttach}
+              disabled={attachBusy}
+              style={smallBtn}
+            >
+              {attachBusy ? 'Working...' : 'Draft bridge'}
+            </button>
+            <button
+              onClick={confirmAttach}
+              disabled={attachBusy || !attachDraft}
+              style={primaryBtn}
+            >
+              Attach
+            </button>
+          </div>
+          {attachError && <div style={{ color: '#f87171', fontSize: 11, marginTop: 6 }}>{attachError}</div>}
+          {attachDraft && (
+            <div style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 10, color: '#aaa' }}>
+              <div style={{ color: '#86efac' }}>
+                {attachDraft.usedLlm ? 'LLM-assisted' : 'Deterministic'} · {attachDraft.classification}
+                {typeof attachDraft.estimatedCostUsd === 'number' && ` · $${attachDraft.estimatedCostUsd.toFixed(4)}`}
+              </div>
+              {attachDraft.error && <div style={{ color: '#fbbf24' }}>{attachDraft.error}</div>}
+              <pre style={{
+                margin: '6px 0 0',
+                maxHeight: 160,
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                color: '#777',
+              }}>{attachDraft.bridgePrompt}</pre>
             </div>
-            {attachDraft.error && <div style={{ color: '#fbbf24' }}>{attachDraft.error}</div>}
-            <pre style={{
-              margin: '6px 0 0',
-              maxHeight: 160,
-              overflow: 'auto',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              color: '#777',
-            }}>{attachDraft.bridgePrompt}</pre>
-          </div>
-        )}
-        {attachStatus && (
-          <div style={{ marginTop: 8, fontSize: 11, color: '#a78bfa' }}>
-            {getAttachStatusLabel(attachStatus)}
-          </div>
-        )}
-      </div>
+          )}
+          {attachStatus && (
+            <div style={{ marginTop: 8, fontSize: 11, color: '#a78bfa' }}>
+              {getAttachStatusLabel(attachStatus)}
+            </div>
+          )}
+        </div>
+      )}
 
       {state && isAwaitingReview && (
         <div style={{ background: 'rgba(167,139,250,0.08)', padding: 10, borderRadius: 4, fontSize: 11 }}>
@@ -629,13 +674,13 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
         </div>
       )}
 
-      {state && (isPaused || isEscalated || isAwaitingReview) && (
+      {state && showManualReply && (
         <div>
-          <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4 }}>MANUAL REPLY</div>
+          <div style={{ color: '#888', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4 }}>REPLY TO ACTIVE AUTOPILOT</div>
           <textarea
             value={manualReply}
             onChange={(e) => setManualReply(e.target.value)}
-            placeholder="Type a message to the doer..."
+            placeholder="Type a reply to the doer..."
             style={{
               width: '100%', minHeight: 60, background: '#0d1117', border: '1px solid #2d2d2d',
               borderRadius: 4, padding: 8, color: '#ccc', fontSize: 11, fontFamily: 'monospace',
@@ -643,13 +688,11 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
             }}
           />
           <button
-            onClick={() => {
-              if (!manualReply.trim()) return
-              window.api.autopilotReplyToWaiting(terminalId, manualReply)
-              setManualReply('')
-            }}
+            onClick={sendManualReply}
+            disabled={manualReplyBusy || !manualReply.trim()}
             style={{ ...primaryBtn, marginTop: 6 }}
-          >Send</button>
+          >{manualReplyBusy ? 'Sending...' : 'Send'}</button>
+          {manualReplyError && <div style={{ color: '#f87171', fontSize: 11, marginTop: 6 }}>{manualReplyError}</div>}
         </div>
       )}
     </div>

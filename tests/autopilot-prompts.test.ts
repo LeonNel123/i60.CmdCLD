@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DOER_SYSTEM_PROMPT, buildDecisionPrompt, buildDoerSystemPrompt, buildWizardKickoff, DEBUG_SYSTEM_PROMPT, buildDebugPrompt } from '../src/main/autopilot/prompts'
+import { DOER_SYSTEM_PROMPT, buildDecisionPrompt, buildDoerSystemPrompt, buildExecutionKickoff, buildWizardKickoff, DEBUG_SYSTEM_PROMPT, buildDebugPrompt } from '../src/main/autopilot/prompts'
 import type { Goal, Milestone, SettledSnapshot, ActivityEntry, ValidationCommands, SteeringDocs } from '../src/main/autopilot/types'
 
 describe('DOER_SYSTEM_PROMPT', () => {
@@ -38,6 +38,14 @@ describe('DOER_SYSTEM_PROMPT', () => {
     expect(DOER_SYSTEM_PROMPT).toMatch(/RED_PHASE/)
   })
 
+  it('defines the file-based control channel as primary', () => {
+    expect(DOER_SYSTEM_PROMPT).toContain('.autopilot/outbox/marker.json')
+    expect(DOER_SYSTEM_PROMPT).toContain('.autopilot/inbox/reply.txt')
+    expect(DOER_SYSTEM_PROMPT).toMatch(/primary machine channel is file-based/i)
+    expect(DOER_SYSTEM_PROMPT).toMatch(/Terminal markers are a human-visible fallback/i)
+    expect(DOER_SYSTEM_PROMPT).toMatch(/schemaVersion/)
+  })
+
   it('mentions the boundary block on subgoals', () => {
     expect(DOER_SYSTEM_PROMPT).toMatch(/boundary\.allowed/)
     expect(DOER_SYSTEM_PROMPT).toMatch(/boundary\.forbidden/)
@@ -46,6 +54,13 @@ describe('DOER_SYSTEM_PROMPT', () => {
 
   it('mentions learnings.md as append-only', () => {
     expect(DOER_SYSTEM_PROMPT).toMatch(/learnings\.md/)
+  })
+
+  it('forbids moving the orchestrator state directory during scaffolding', () => {
+    expect(DOER_SYSTEM_PROMPT).toContain('ORCHESTRATOR STATE LOCK')
+    expect(DOER_SYSTEM_PROMPT).toMatch(/never move, rename, delete/)
+    expect(DOER_SYSTEM_PROMPT).toMatch(/create-next-app refuses/)
+    expect(DOER_SYSTEM_PROMPT).toMatch(/Manually create the needed project files/)
   })
 
   it('mentions steering files as authoritative', () => {
@@ -72,6 +87,21 @@ describe('DOER_SYSTEM_PROMPT', () => {
     expect(codexPrompt).toMatch(/Codex runtime guardrails/i)
     expect(codexPrompt).toMatch(/DO NOT commit/i)
     expect(codexPrompt).toMatch(/proposed commit/i)
+  })
+
+  it('switches Classic to no-git policy when the project root has no git metadata', () => {
+    const prompt = buildDoerSystemPrompt('claude', { gitAvailable: false })
+    expect(prompt).toMatch(/NO-GIT WORKSPACE GUARDRAILS/)
+    expect(prompt).toMatch(/DO NOT run git add, git commit, git tag, or git push/)
+    expect(prompt).toMatch(/proposed commit message/)
+  })
+
+  it('builds an execution kickoff that starts the current milestone immediately', () => {
+    const kickoff = buildExecutionKickoff('m1', false)
+    expect(kickoff).toMatch(/Begin Phase 2 execution now/)
+    expect(kickoff).toMatch(/\.autopilot\/milestones\/m1\.md/)
+    expect(kickoff).toMatch(/Do NOT run git commands/)
+    expect(kickoff).toMatch(/\[ORCH:PROGRESS\]/)
   })
 })
 

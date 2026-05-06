@@ -59,6 +59,7 @@ interface StructuredFields {
   blocker?: string
   question?: string
   // also picks up SUBGOAL / PROGRESS_STATUS for cross-check
+  statusStructured?: 'waiting' | 'progress' | 'goal_ready' | 'stuck'
   subgoalIdStructured?: string
   progressStatusStructured?: 'done' | 'partial' | 'blocked'
 }
@@ -94,12 +95,16 @@ function parseStructuredBlock(lines: string[]): StructuredFields {
         case 'BLOCKER': out.blocker = val; break
         case 'QUESTION': out.question = val; break
         case 'SUBGOAL': out.subgoalIdStructured = val; break
+        case 'STATUS':
+          if (val === 'waiting' || val === 'progress' || val === 'goal_ready' || val === 'stuck') {
+            out.statusStructured = val
+          }
+          break
         case 'PROGRESS_STATUS':
           if (val === 'done' || val === 'partial' || val === 'blocked') {
             out.progressStatusStructured = val
           }
           break
-        // STATUS is not stored — kind is already extracted from the marker line
       }
     }
 
@@ -144,11 +149,14 @@ export function findLastMarker(text: string): { marker: DoerMarker; before: stri
     // Look at the lines AFTER the marker for a structured block
     const after = tail.includes(':') ? [tail, ...lines.slice(i + 1)] : lines.slice(i + 1)
     const struct = parseStructuredBlock(after)
-    // Cross-check: if marker was bare PROGRESS but structured block has SUBGOAL / PROGRESS_STATUS, use those
-    if (kind === 'PROGRESS' && !subgoalId && struct.subgoalIdStructured) {
+    // Cross-check: if the structured block includes progress metadata, preserve
+    // it even when the final marker is WAITING. Many CLIs emit one final
+    // WAITING marker with STATUS: progress / SUBGOAL / PROGRESS_STATUS after
+    // completing work; dropping those fields loses completed subgoals.
+    if (!subgoalId && struct.subgoalIdStructured) {
       subgoalId = struct.subgoalIdStructured
     }
-    if (kind === 'PROGRESS' && !status && struct.progressStatusStructured) {
+    if (!status && struct.progressStatusStructured) {
       status = struct.progressStatusStructured
     }
     const markerText = tail.includes(':') ? (struct.question || '') : (tail || struct.question || '')

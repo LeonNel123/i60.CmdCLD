@@ -7,7 +7,7 @@ describe('Autopilot PTY input queue', () => {
 
     expect(chunks.length).toBeGreaterThan(1)
     expect(chunks.join('')).toBe('\x1b[200~hello\nworld\x1b[201~\r')
-    expect(chunks.at(-1)?.endsWith('\r')).toBe(true)
+    expect(chunks.at(-1)).toBe('\r')
   })
 
   it('separates multiline paste submit from the bracketed-paste end marker', () => {
@@ -33,10 +33,18 @@ describe('Autopilot PTY input queue', () => {
       await vi.advanceTimersByTimeAsync(5)
       expect(writes).toEqual(['abcd', 'efgh'])
       await vi.advanceTimersByTimeAsync(5)
-      expect(writes).toEqual(['abcd', 'efgh', 'ijkl', 'XYZ\r'])
+      expect(writes).toEqual(['abcd', 'efgh', 'ijkl', 'XYZ'])
+      await vi.advanceTimersByTimeAsync(300)
+      expect(writes).toEqual(['abcd', 'efgh', 'ijkl', 'XYZ', '\r'])
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('separates single-line submit from the text body', () => {
+    const chunks = chunkPtyInput('Please emit [ORCH:WAITING]\r', { chunkThreshold: 1000 })
+
+    expect(chunks).toEqual(['Please emit [ORCH:WAITING]', '\r'])
   })
 
   it('delays the submit key after a multiline bracketed paste', async () => {

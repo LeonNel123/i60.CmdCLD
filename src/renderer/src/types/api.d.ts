@@ -209,7 +209,7 @@ export interface ElectronAPI {
   autopilotResume: (terminalId: string) => Promise<void>
   autopilotStop: (terminalId: string) => Promise<void>
   autopilotApproveGoal: (terminalId: string) => Promise<void>
-  autopilotReplyToWaiting: (terminalId: string, text: string) => Promise<void>
+  autopilotReplyToWaiting: (terminalId: string, text: string) => Promise<{ ok: boolean; error?: string }>
   autopilotPermissionAllow: (terminalId: string) => Promise<void>
   autopilotPermissionDeny: (terminalId: string) => Promise<void>
   autopilotGetStatus: (terminalId: string) => Promise<unknown>

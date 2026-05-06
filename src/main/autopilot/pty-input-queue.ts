@@ -18,18 +18,19 @@ export function chunkPtyInput(data: string, opts: PtyInputChunkOptions = {}): st
   const formatted = formatPtyWrite(data)
   const chunkSize = opts.chunkSize ?? DEFAULT_CHUNK_SIZE
   const chunkThreshold = opts.chunkThreshold ?? DEFAULT_CHUNK_THRESHOLD
-  const hasMultilineSubmit = data.endsWith('\r') && data.includes('\n') && formatted.endsWith('\x1b[201~\r')
-  const body = hasMultilineSubmit ? formatted.slice(0, -1) : formatted
+  const hasSubmit = data.endsWith('\r')
+  const shouldSeparateSubmit = hasSubmit && formatted.endsWith('\r') && formatted.length > 1
+  const body = shouldSeparateSubmit ? formatted.slice(0, -1) : formatted
 
   if (body.length <= chunkThreshold) {
-    return hasMultilineSubmit ? [body, '\r'] : [body]
+    return shouldSeparateSubmit ? [body, '\r'] : [body]
   }
 
   const chunks: string[] = []
   for (let i = 0; i < body.length; i += chunkSize) {
     chunks.push(body.slice(i, i + chunkSize))
   }
-  if (hasMultilineSubmit) chunks.push('\r')
+  if (shouldSeparateSubmit) chunks.push('\r')
   return chunks
 }
 

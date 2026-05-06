@@ -93,6 +93,45 @@ describe('AutopilotProStateMachine', () => {
       await flush()
       expect(writes.some((w) => w.includes('continue working'))).toBe(true)
     })
+
+    it('skips the planner for direct greenlight prompts', async () => {
+      const writes: string[] = []
+      const api = fakeChatClient(() => ({ shape: 'reply', text: '' }))
+      const sm = makeSm(api, writes)
+      await sm.start()
+      writes.length = 0
+      sm.feedPty('[ORCH:WAITING] m2 complete - greenlight m3/s1?\nDECISION_SHAPE: reply\n')
+      await flush()
+      expect(writes).toContain('Yes, proceed with m3/s1.\r')
+      expect(api.chat).not.toHaveBeenCalled()
+    })
+
+    it('does not send blank Enter when the planner returns an empty reply', async () => {
+      const writes: string[] = []
+      const api = fakeChatClient(() => ({ shape: 'reply', text: '' }))
+      const sm = makeSm(api, writes)
+      await sm.start()
+      writes.length = 0
+      sm.feedPty('[ORCH:WAITING] What next?\nDECISION_SHAPE: reply\n')
+      await flush()
+      expect(writes).toContain('Proceed with the safest next step implied by this question: What next?\r')
+      expect(api.chat).toHaveBeenCalledTimes(1)
+    })
+
+    it('writes Pro debug events for marker, planner skip, and doer write', async () => {
+      const writes: string[] = []
+      const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: '' })), writes)
+      await sm.start()
+      writes.length = 0
+      sm.feedPty('[ORCH:WAITING] m2 complete - greenlight m3/s1?\nDECISION_SHAPE: reply\n')
+      await flush()
+      const debugPath = join(TMP, '.autopilot-pro', 'debug', 'events.jsonl')
+      expect(existsSync(debugPath)).toBe(true)
+      const events = readFileSync(debugPath, 'utf-8').trim().split('\n').map((line) => JSON.parse(line))
+      expect(events.some((e) => e.kind === 'doer-settled')).toBe(true)
+      expect(events.some((e) => e.kind === 'planner-skipped' && e.reason === 'direct-greenlight')).toBe(true)
+      expect(events.some((e) => e.kind === 'doer-write' && e.reason === 'direct-greenlight')).toBe(true)
+    })
   })
 
   describe('choose shape dispatch', () => {

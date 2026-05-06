@@ -651,10 +651,17 @@ ipcMain.handle('autopilot:approveGoal', (_event, terminalId: string) => {
   autopilots.get(terminalId)?.approveGoal()
   // PRO doesn't use a goal-approve gate — approval is via DECISION_SHAPE: approve.
 })
-ipcMain.handle('autopilot:replyToWaiting', (_event, terminalId: string, text: string) => {
-  autopilots.get(terminalId)?.replyToWaiting(text)
-  autopilotPros.get(terminalId)?.replyToWaiting(text)
-  autopilotCouncils.get(terminalId)?.replyToWaiting(text)
+ipcMain.handle('autopilot:replyToWaiting', async (_event, terminalId: string, text: string) => {
+  const handles = [
+    autopilots.get(terminalId),
+    autopilotPros.get(terminalId),
+    autopilotCouncils.get(terminalId),
+  ].filter(Boolean)
+  if (handles.length === 0) {
+    return { ok: false, error: 'No active Autopilot run is attached to this terminal.' }
+  }
+  await Promise.all(handles.map((handle: any) => Promise.resolve(handle.replyToWaiting(text))))
+  return { ok: true }
 })
 ipcMain.handle('autopilot:permissionAllow', (_event, terminalId: string) => {
   autopilots.get(terminalId)?.respondToPermission('allow')

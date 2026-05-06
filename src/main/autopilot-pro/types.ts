@@ -78,7 +78,15 @@ export interface ProState {
   subagentRunning: boolean
   subagentEtaMs: number  // 0 if no subagent running
   liveStatus: string | null
-  lastMarker: { kind: string; subgoalId?: string; receivedAt: number } | null
+  lastMarker: {
+    kind: string
+    text?: string
+    question?: string
+    shape?: DecisionShape
+    subgoalId?: string
+    status?: 'done' | 'partial' | 'blocked'
+    receivedAt: number
+  } | null
   permissionRequest: { text: string; detectedAt: number } | null
   researchInFlight?: {
     triggerStage: ProStage

@@ -48,6 +48,14 @@ describe('DOER_SYSTEM_PROMPT_PRO', () => {
     expect(DOER_SYSTEM_PROMPT_PRO).toMatch(/state\.json.*orchestrator owns it/i)
   })
 
+  it('forbids moving orchestrator state directories during scaffolding', () => {
+    expect(DOER_SYSTEM_PROMPT_PRO).toContain('ORCHESTRATOR STATE LOCK')
+    expect(DOER_SYSTEM_PROMPT_PRO).toMatch(/never move, rename, delete/)
+    expect(DOER_SYSTEM_PROMPT_PRO).toMatch(/\.autopilot\/ or \.autopilot-pro\//)
+    expect(DOER_SYSTEM_PROMPT_PRO).toMatch(/create-next-app refuses/)
+    expect(DOER_SYSTEM_PROMPT_PRO).toMatch(/Manually create the needed project files/)
+  })
+
   it('embeds the principles block', () => {
     for (const name of ['TDD', 'YAGNI', 'VERIFICATION', 'SECURITY', 'BOUNDARY', 'RESEARCH']) {
       expect(DOER_SYSTEM_PROMPT_PRO).toContain(name)

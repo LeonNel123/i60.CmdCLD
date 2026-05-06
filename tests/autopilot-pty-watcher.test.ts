@@ -161,6 +161,30 @@ describe('PtyWatcher', () => {
     vi.useRealTimers()
   })
 
+  it('preserves progress metadata from a final WAITING marker structured block', async () => {
+    vi.useFakeTimers()
+    const events: SettledSnapshot[] = []
+    const w = new PtyWatcher({ idleMs: IDLE_MS, nudgeMs: NUDGE_MS, onSettle: (s) => events.push(s) })
+    w.feed([
+      '[ORCH:WAITING]\n',
+      'STATUS: progress\n',
+      'SUBGOAL: m1/s1\n',
+      'PROGRESS_STATUS: done\n',
+      'FILES_CHANGED:\n',
+      '  - package.json\n',
+      'TESTS: npm run build passed\n',
+      'BOUNDARY_OK: yes\n',
+      'QUESTION: Proceed to m1/s2?\n',
+    ].join(''))
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(events).toHaveLength(1)
+    expect(events[0].marker.kind).toBe('WAITING')
+    expect(events[0].marker.subgoalId).toBe('m1/s1')
+    expect(events[0].marker.status).toBe('done')
+    expect(events[0].marker.question).toBe('Proceed to m1/s2?')
+    vi.useRealTimers()
+  })
+
   it('falls back to single-line marker when no structured block follows', async () => {
     vi.useFakeTimers()
     const events: SettledSnapshot[] = []

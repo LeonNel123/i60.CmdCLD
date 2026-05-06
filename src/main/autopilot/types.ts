@@ -82,7 +82,14 @@ export interface AutopilotState {
   escalationReason: string | null
   validation: ValidationCommands   // NEW; default {}
   liveStatus: string | null
-  lastMarker: { kind: MarkerKind; subgoalId?: string; status?: 'done' | 'partial' | 'blocked'; receivedAt: number } | null
+  lastMarker: {
+    kind: MarkerKind
+    text?: string
+    question?: string
+    subgoalId?: string
+    status?: 'done' | 'partial' | 'blocked'
+    receivedAt: number
+  } | null
   permissionRequest: { text: string; detectedAt: number } | null
 }
 

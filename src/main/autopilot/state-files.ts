@@ -246,6 +246,19 @@ export function appendTranscript(projectPath: string, blockMarkdown: string): vo
   appendFileSync(path, blockMarkdown.endsWith('\n') ? blockMarkdown : blockMarkdown + '\n')
 }
 
+// ---- debug/events.jsonl (machine-readable trace) ----
+
+export function appendDebugEvent(projectPath: string, kind: string, data: Record<string, unknown>): void {
+  const path = join(projectPath, DIR, 'debug', 'events.jsonl')
+  mkdirSync(dirname(path), { recursive: true })
+  const line = JSON.stringify({
+    at: new Date().toISOString(),
+    kind,
+    ...data,
+  })
+  appendFileSync(path, `${line}\n`)
+}
+
 // ---- state.md (overwrite each time) ----
 
 export function readState(projectPath: string): string {
