@@ -83,6 +83,21 @@ describe('DOER_SYSTEM_PROMPT_PRO', () => {
     expect(PRINCIPLES_BLOCK).toContain('soft')
     expect((PRINCIPLES_BLOCK.match(/\*\*/g) ?? []).length).toBeGreaterThanOrEqual(12) // 2 stars per name * 6
   })
+
+  it('teaches the doer to use .autopilot-pro/outbox/marker.json as primary channel', () => {
+    const p = buildDoerSystemPromptPro('claude')
+    expect(p).toMatch(/\.autopilot-pro\/outbox\/marker\.json/)
+    expect(p).toMatch(/\.autopilot-pro\/inbox\/reply\.txt/)
+    expect(p).toMatch(/PRIMARY MACHINE CHANNEL/i)
+    expect(p).toMatch(/schemaVersion.*1/)
+    expect(p).toMatch(/DECISION_SHAPE/)  // existing PRO field still present
+  })
+
+  it('accepts a custom controlDir for Council reuse', () => {
+    const p = buildDoerSystemPromptPro('claude', { controlDir: '.autopilot-council' })
+    expect(p).toMatch(/\.autopilot-council\/outbox\/marker\.json/)
+    expect(p).not.toMatch(/\.autopilot-pro\/outbox\/marker\.json/)
+  })
 })
 
 describe('buildPlannerPrompt — per-shape system prompts', () => {
