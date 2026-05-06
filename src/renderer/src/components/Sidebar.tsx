@@ -99,7 +99,7 @@ const RecentRow = memo(function RecentRow({
         fontSize: '12px',
         borderRadius: '3px',
       }}
-      title={isOpen ? `${folder.path} (already open)` : folder.path}
+      title={isOpen ? `${folder.path} (already open — right-click to add another CLI)` : folder.path}
     >
       <span
         onClick={(e) => { e.stopPropagation(); onToggleFavorite(folder.path) }}

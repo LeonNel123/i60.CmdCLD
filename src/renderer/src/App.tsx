@@ -17,7 +17,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { CommandPalette } from './components/CommandPalette'
 import { AutopilotPanel } from './components/AutopilotPanel'
 import { AutopilotKickoff } from './components/AutopilotKickoff'
-import { FolderOpen, AppWindow, Star, FolderSearch, Code, Copy, Trash2, Sparkles } from './components/icons'
+import { AppWindow, Star, FolderSearch, Code, Copy, Trash2, Sparkles, TerminalSquare } from './components/icons'
 import { assignColor } from './utils/colors'
 import { calculateLayout, getRowCount } from './utils/grid-layout'
 import { onActivityChange } from './utils/terminal-activity'
@@ -256,10 +256,13 @@ export default function App() {
     }).catch(() => {})
   }, [defaultAgentCli, defaultViewMode, terminals])
 
-  // Start the folder-open flow (may show dialog or launch directly)
-  const startAddFolder = useCallback((folderPath: string) => {
+  // Start the folder-open flow (may show dialog or launch directly).
+  // Pass agentOverride to force a specific CLI — used by the right-click
+  // menu so a project can have both a Claude and a Codex session running
+  // side by side.
+  const startAddFolder = useCallback((folderPath: string, agentOverride?: AgentCli) => {
     const name = folderPath.split(/[\\/]/).pop() || folderPath
-    const agentCli = defaultAgentCli
+    const agentCli = agentOverride ?? defaultAgentCli
     const argsByAgent = { claude: claudeArgs, codex: codexArgs }
     const args = getArgsForAgent(agentCli, { claudeArgs, codexArgs })
     if (askBeforeLaunch) {
@@ -751,14 +754,21 @@ export default function App() {
       {contextMenu && (() => {
         const path = contextMenu.path
         const isFav = favoriteFolders.includes(path)
-        const isOpen = terminals.some((t) => t.path === path)
+        const runningAgents = new Set(
+          terminals
+            .filter((t) => t.path === path && !t.isPlainShell)
+            .map((t) => normalizeAgentCli(t.agentCli)),
+        )
+        const claudeRunning = runningAgents.has('claude')
+        const codexRunning = runningAgents.has('codex')
         return (
           <ContextMenu
             x={contextMenu.x}
             y={contextMenu.y}
             onClose={() => setContextMenu(null)}
             items={[
-              { label: 'Open', icon: FolderOpen, onClick: () => handleOpenRecent(path), disabled: isOpen },
+              { label: claudeRunning ? 'Open another Claude' : 'Open with Claude', icon: TerminalSquare, onClick: () => startAddFolder(path, 'claude') },
+              { label: codexRunning ? 'Open another Codex' : 'Open with Codex', icon: TerminalSquare, onClick: () => startAddFolder(path, 'codex') },
               { label: 'Open in new window', icon: AppWindow, onClick: () => { window.api.windowCreate().catch(() => {}) } },
               { label: 'Start with Autopilot', icon: Sparkles, onClick: () => {
                 // Open the project (this creates a terminal), then trigger kickoff for that terminal.
@@ -769,6 +779,7 @@ export default function App() {
                   if (t) setAutopilotKickoffFor(t.id)
                 }, 200)
               }},
+              { label: '', divider: true, onClick: () => {} },
               { label: isFav ? 'Remove from favorites' : 'Add to favorites', icon: Star, onClick: () => handleToggleFavorite(path) },
               { label: 'Open in Explorer', icon: FolderSearch, onClick: () => { window.api.openInExplorer(path).catch(() => {}) } },
               { label: 'Open in Editor', icon: Code, onClick: () => { window.api.openInEditor(path).catch(() => {}) } },
