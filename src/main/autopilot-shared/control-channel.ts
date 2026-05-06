@@ -97,9 +97,6 @@ export interface ControlChannelOptions<M extends BaseControlMarker> {
 export interface ControlChannel<M extends BaseControlMarker> {
   readControlMarker(projectPath: string): ControlMarkerRead<M> | ControlMarkerValidationError | null
   writeInboxReply(projectPath: string, text: string): void
-  markerToSnapshot<S extends { text: string; marker: M; receivedAt: number }>(
-    marker: M, receivedAt?: number,
-  ): S
 }
 
 export function makeControlChannel<M extends BaseControlMarker = BaseControlMarker>(
@@ -130,9 +127,6 @@ export function makeControlChannel<M extends BaseControlMarker = BaseControlMark
       const path = join(projectPath, inboxPath)
       mkdirSync(dirname(path), { recursive: true })
       writeFileSync(path, text.endsWith('\n') ? text : `${text}\n`)
-    },
-    markerToSnapshot(marker, receivedAt = Date.now()) {
-      return { text: 'file-control-channel', marker, receivedAt } as any
     },
   }
 }

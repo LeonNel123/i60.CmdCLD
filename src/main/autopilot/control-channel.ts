@@ -9,11 +9,11 @@ import {
 const channel = makeControlChannel<DoerMarker>({ dir: '.autopilot' })
 
 export type { ControlMarkerValidationError }
-export interface ClassicControlMarkerRead extends ControlMarkerRead<DoerMarker> {}
+export type ClassicControlMarkerRead = ControlMarkerRead<DoerMarker>
 
 export function readControlMarker(projectPath: string):
   ClassicControlMarkerRead | ControlMarkerValidationError | null {
-  return channel.readControlMarker(projectPath) as any
+  return channel.readControlMarker(projectPath)
 }
 
 export function writeInboxReply(projectPath: string, text: string): void {
