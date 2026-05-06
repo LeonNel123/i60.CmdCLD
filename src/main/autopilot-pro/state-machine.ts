@@ -479,10 +479,14 @@ export class AutopilotProStateMachine {
     if (!this.canProcessPty()) return
     const m = snap.marker
 
-    const isFileControl = (snap as any).text === 'file-control-channel'
-    const sig = this.markerSignature(snap.marker as any)
+    const isFileControl = snap.text === 'file-control-channel'
+    const sig = this.markerSignature(snap.marker)
     if (!isFileControl && sig === this.lastFileControlMarkerSignature && Date.now() - this.lastFileControlMarkerAt < 2000) {
       return
+    }
+    if (isFileControl) {
+      this.lastFileControlMarkerSignature = sig
+      this.lastFileControlMarkerAt = Date.now()
     }
 
     this.markerFallbackPromptCount = 0
@@ -1310,9 +1314,7 @@ export class AutopilotProStateMachine {
       const progressTail = m.subgoalId ? ` ${m.subgoalId}${m.status ? ` ${m.status}` : ''}` : ''
       this.appendActivity('doer-marker', `file-control ${m.kind}${progressTail}`)
       this.appendDebug('control-marker-read', { id: control.id, marker: m, mtimeMs: control.mtimeMs })
-      this.lastFileControlMarkerSignature = this.markerSignature(m as any)
-      this.lastFileControlMarkerAt = Date.now()
-      await this.onSettled(markerToProSnapshot(control.marker) as any)
+      await this.onSettled(markerToProSnapshot(control.marker))
     }
   }
 

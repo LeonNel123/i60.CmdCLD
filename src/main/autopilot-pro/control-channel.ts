@@ -2,7 +2,7 @@ import {
   asString, asStringArray, makeControlChannel,
   type BaseControlMarker, type ControlMarkerValidationError,
 } from '../autopilot-shared/control-channel'
-import { ALL_DECISION_SHAPES, type DecisionShape, type ProMarker } from './types'
+import { ALL_DECISION_SHAPES, type DecisionShape, type ProMarker, type ProSettledSnapshot } from './types'
 
 function validateOptionsRationale(value: unknown):
   ProMarker['optionsRationale'] | undefined {
@@ -71,6 +71,6 @@ const proChannel = makeControlChannel<ProMarker>({
 export const readProControlMarker = proChannel.readControlMarker
 export const writeProInboxReply = proChannel.writeInboxReply
 
-export function markerToProSnapshot(marker: ProMarker, receivedAt = Date.now()) {
+export function markerToProSnapshot(marker: ProMarker, receivedAt = Date.now()): ProSettledSnapshot {
   return { text: 'file-control-channel', marker, receivedAt }
 }
