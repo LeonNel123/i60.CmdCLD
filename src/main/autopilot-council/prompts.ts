@@ -19,7 +19,7 @@ CODEX COUNCIL IMPLEMENTER GUARDRAIL:
 `
 
 export function buildCouncilImplementerPrompt(agentCli: AgentCli): string {
-  const base = buildDoerSystemPromptPro(agentCli)
+  const base = buildDoerSystemPromptPro(agentCli, { controlDir: '.autopilot-council' })
   return base + COUNCIL_IMPLEMENTER_BLOCK + (agentCli === 'codex' ? CODEX_COUNCIL_IMPLEMENTER_BLOCK : '')
 }
 
