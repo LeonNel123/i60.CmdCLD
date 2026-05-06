@@ -5,6 +5,9 @@ import { PtyWatcher } from '../autopilot/pty-watcher'
 import { enrichProMarker } from '../autopilot-pro/state-machine'
 import { stage0Kickoff } from '../autopilot-pro/prompts'
 import { arbitrateCouncilReview } from './arbitration'
+import {
+  readCouncilControlMarker, writeCouncilInboxReply, markerToCouncilSnapshot,
+} from './control-channel'
 import { buildReviewPacket, formatReviewPacketForReviewer } from './packets'
 import { buildCouncilImplementerPrompt } from './prompts'
 import { CouncilReviewerSession, type ReviewerSessionResult } from './reviewer-session'
@@ -18,6 +21,7 @@ import {
   type CouncilState,
   type ProMarker,
 } from './types'
+import type { ActivityEntry } from '../autopilot/types'
 
 const IMPLEMENTER_INSTRUCTION_LIMIT = 2400
 const MANUAL_REPLY_LIMIT = 4000
@@ -47,6 +51,11 @@ export class AutopilotCouncilStateMachine {
   private lifecycleGeneration = 0
   private startPromise: Promise<void> | null = null
   private state: CouncilState
+  private controlPollTimer: ReturnType<typeof setInterval> | null = null
+  private lastControlMarkerId: string | null = null
+  private lastControlValidationReason: string | null = null
+  private lastFileControlMarkerSignature: string | null = null
+  private lastFileControlMarkerAt = 0
 
   constructor(opts: AutopilotCouncilOptions, reviewerOverride?: CouncilReviewer) {
     this.opts = opts
@@ -133,6 +142,7 @@ export class AutopilotCouncilStateMachine {
           this.watcher.feed(data)
         })
       }
+      this.startControlWatchdog()
 
       if (!this.kickoffSent) {
         this.writeImplementer(buildCouncilImplementerPrompt(this.opts.implementerCli))
@@ -188,6 +198,7 @@ export class AutopilotCouncilStateMachine {
     this.state.liveStatus = 'stopped'
     this.detachPty?.()
     this.detachPty = null
+    this.stopControlWatchdog()
     this.watcher.reset()
     this.reviewer.stop()
     this.opts.stopReviewer()
@@ -249,6 +260,16 @@ export class AutopilotCouncilStateMachine {
 
   private async onSettled(marker: ProMarker, terminalTail: string): Promise<void> {
     if (this.state.control !== 'running') return
+
+    const isFileControl = terminalTail === 'file-control-channel'
+    const sig = this.markerSignature(marker)
+    if (!isFileControl && sig === this.lastFileControlMarkerSignature && Date.now() - this.lastFileControlMarkerAt < 2000) {
+      return
+    }
+    if (isFileControl) {
+      this.lastFileControlMarkerSignature = sig
+      this.lastFileControlMarkerAt = Date.now()
+    }
 
     this.state.lastMarker = {
       kind: marker.kind,
@@ -500,7 +521,67 @@ export class AutopilotCouncilStateMachine {
   }
 
   private writeImplementer(text: string): void {
+    try {
+      writeCouncilInboxReply(this.opts.projectPath, text)
+    } catch (error: any) {
+      this.appendActivity('escalation', `control inbox write failed: ${error?.message ?? 'unknown'}`)
+    }
     this.opts.writeToPty(this.opts.terminalId, text.endsWith('\r') ? text : `${text}\r`)
+  }
+
+  private appendActivity(kind: ActivityEntry['kind'], summary: string): void {
+    const e: ActivityEntry = { at: Date.now(), kind, summary }
+    this.state.recentLog.push(e)
+    if (this.state.recentLog.length > 10) this.state.recentLog.shift()
+  }
+
+  private startControlWatchdog(): void {
+    this.stopControlWatchdog()
+    this.controlPollTimer = setInterval(() => {
+      void this.pollControlChannel()
+    }, 1000)
+    if (typeof (this.controlPollTimer as any)?.unref === 'function') {
+      (this.controlPollTimer as any).unref()
+    }
+    void this.pollControlChannel()
+  }
+
+  private stopControlWatchdog(): void {
+    if (this.controlPollTimer) {
+      clearInterval(this.controlPollTimer)
+      this.controlPollTimer = null
+    }
+  }
+
+  private async pollControlChannel(): Promise<void> {
+    if (this.state.control !== 'running') return
+
+    const control = readCouncilControlMarker(this.opts.projectPath)
+    if (control && 'reason' in control) {
+      if (control.reason !== this.lastControlValidationReason) {
+        this.lastControlValidationReason = control.reason
+        this.appendActivity('escalation', `control marker invalid: ${control.reason}`)
+        this.notify()
+      }
+    } else if (control && control.id !== this.lastControlMarkerId) {
+      this.lastControlMarkerId = control.id
+      this.lastControlValidationReason = null
+      const m = control.marker
+      const progressTail = m.subgoalId ? ` ${m.subgoalId}${m.status ? ` ${m.status}` : ''}` : ''
+      this.appendActivity('doer-marker', `file-control ${m.kind}${progressTail}`)
+      const snap = markerToCouncilSnapshot(control.marker)
+      void this.onSettled(control.marker, snap.text)
+    }
+  }
+
+  private markerSignature(marker: ProMarker): string {
+    return [
+      marker.kind,
+      marker.subgoalId ?? '',
+      marker.status ?? '',
+      marker.question ?? '',
+      marker.text ?? '',
+    ].join('|')
   }
 
   private notify(): void {

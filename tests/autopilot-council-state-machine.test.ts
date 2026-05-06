@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join } from 'path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -1000,5 +1000,71 @@ describe('AutopilotCouncilStateMachine', () => {
     expect(startReviewer).toHaveBeenCalledTimes(2)
     expect(handle.getState().control).toBe('running')
     expect(handle.getState().reviewerStatus).toBe('idle')
+  })
+
+  describe('file-based control channel', () => {
+    it('uses .autopilot-council/outbox/marker.json as the primary control channel', async () => {
+      const root = project()
+      const writes: string[] = []
+      const sm = new AutopilotCouncilStateMachine(opts({
+        projectPath: root,
+        writeToPty: (_id, data) => { writes.push(data) },
+      }), reviewer(decision({
+        verdict: 'approve',
+        risk: 'low',
+        findings: [],
+        recommended_instruction: '',
+        rationale: 'ok',
+      })))
+      await sm.start()
+      writes.length = 0  // discard kickoff
+
+      mkdirSync(join(root, '.autopilot-council', 'outbox'), { recursive: true })
+      writeFileSync(join(root, '.autopilot-council', 'outbox', 'marker.json'), JSON.stringify({
+        schemaVersion: 1,
+        id: 'council-waiting-1',
+        kind: 'WAITING',
+        text: 'review please',
+        question: 'review please',
+        shape: 'reply',
+      }))
+
+      await new Promise((r) => setTimeout(r, 1200))
+
+      expect(writes.length).toBeGreaterThan(0)
+      const inboxPath = join(root, '.autopilot-council', 'inbox', 'reply.txt')
+      expect(existsSync(inboxPath)).toBe(true)
+      expect(readFileSync(inboxPath, 'utf-8').length).toBeGreaterThan(0)
+    })
+
+    it('rejects invalid Council marker.json without writing to PTY', async () => {
+      const root = project()
+      const writes: string[] = []
+      const sm = new AutopilotCouncilStateMachine(opts({
+        projectPath: root,
+        writeToPty: (_id, data) => { writes.push(data) },
+      }), reviewer(decision({
+        verdict: 'approve',
+        risk: 'low',
+        findings: [],
+        recommended_instruction: '',
+        rationale: 'should-not-be-called',
+      })))
+      await sm.start()
+      writes.length = 0
+
+      mkdirSync(join(root, '.autopilot-council', 'outbox'), { recursive: true })
+      writeFileSync(join(root, '.autopilot-council', 'outbox', 'marker.json'), JSON.stringify({
+        schemaVersion: 1,
+        id: 'bad',
+        kind: 'WAITING',
+        shape: 'wat',
+      }))
+
+      await new Promise((r) => setTimeout(r, 1200))
+
+      expect(writes).toEqual([])
+      expect(sm.getState().recentLog.some((entry) => entry.summary.includes('control marker invalid'))).toBe(true)
+    })
   })
 })
