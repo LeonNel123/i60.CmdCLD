@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync, existsSync, readFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { AutopilotProStateMachine, enrichProMarker } from '../src/main/autopilot-pro/state-machine'
@@ -282,6 +282,58 @@ describe('AutopilotProStateMachine', () => {
       const transcript = readFileSync(join(TMP, '.autopilot-pro', 'transcript.md'), 'utf-8')
       expect(transcript).toContain('user-manual')
       expect(transcript).toContain('use port 8080')
+    })
+  })
+
+  describe('file-based control channel', () => {
+    it('uses .autopilot-pro/outbox/marker.json as the primary control channel', async () => {
+      writeArtifact(TMP, 'spec', '# spec'); markApproved(TMP, 'spec')
+      writeArtifact(TMP, 'plan', '# plan'); markApproved(TMP, 'plan')
+      const writes: string[] = []
+      const api = fakeChatClient(() => ({ shape: 'reply', text: 'continue working' }))
+      const sm = makeSm(api, writes)
+      await sm.start()
+      writes.length = 0  // discard kickoff
+
+      mkdirSync(join(TMP, '.autopilot-pro', 'outbox'), { recursive: true })
+      writeFileSync(join(TMP, '.autopilot-pro', 'outbox', 'marker.json'), JSON.stringify({
+        schemaVersion: 1,
+        id: 'pro-waiting-1',
+        kind: 'WAITING',
+        text: 'review please',
+        question: 'review please',
+        shape: 'reply',
+      }))
+
+      await new Promise((r) => setTimeout(r, 1200))
+
+      expect(writes.length).toBeGreaterThan(0)
+      const inboxPath = join(TMP, '.autopilot-pro', 'inbox', 'reply.txt')
+      expect(existsSync(inboxPath)).toBe(true)
+      expect(readFileSync(inboxPath, 'utf-8').length).toBeGreaterThan(0)
+    })
+
+    it('rejects invalid PRO marker.json without writing to PTY', async () => {
+      writeArtifact(TMP, 'spec', '# spec'); markApproved(TMP, 'spec')
+      writeArtifact(TMP, 'plan', '# plan'); markApproved(TMP, 'plan')
+      const writes: string[] = []
+      const api = fakeChatClient(() => ({ shape: 'reply', text: 'should-not-be-called' }))
+      const sm = makeSm(api, writes)
+      await sm.start()
+      writes.length = 0
+
+      mkdirSync(join(TMP, '.autopilot-pro', 'outbox'), { recursive: true })
+      writeFileSync(join(TMP, '.autopilot-pro', 'outbox', 'marker.json'), JSON.stringify({
+        schemaVersion: 1,
+        id: 'bad',
+        kind: 'PROGRESS',
+        status: 'done',  // missing subgoalId
+      }))
+
+      await new Promise((r) => setTimeout(r, 1200))
+
+      expect(writes).toEqual([])
+      expect(sm.state.recentLog.some((entry) => entry.summary.includes('control marker invalid'))).toBe(true)
     })
   })
 })
