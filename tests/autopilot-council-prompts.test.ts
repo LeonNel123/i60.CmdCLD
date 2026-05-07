@@ -35,4 +35,11 @@ describe('autopilot council prompts', () => {
     expect(match).not.toBeNull()
     expect(() => JSON.parse(match?.[1] ?? '')).not.toThrow()
   })
+
+  it("points the Implementer at .autopilot-council's control dir, not .autopilot-pro", () => {
+    const p = buildCouncilImplementerPrompt('claude')
+    expect(p).toMatch(/\.autopilot-council\/outbox\/marker\.json/)
+    expect(p).toMatch(/\.autopilot-council\/inbox\/reply\.txt/)
+    expect(p).not.toMatch(/\.autopilot-pro\/outbox\/marker\.json/)
+  })
 })

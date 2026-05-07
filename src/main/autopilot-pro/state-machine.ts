@@ -30,6 +30,9 @@ import { saveRuntime, loadRuntime } from './runtime-state'
 import { detectResearchSignals } from './research-signals'
 import { recordSpend } from '../autopilot/budget-tracker'
 import { getAutopilotRuntime, type AutopilotRuntime } from '../autopilot/runtime'
+import {
+  readProControlMarker, writeProInboxReply, markerToProSnapshot,
+} from './control-channel'
 import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 
@@ -226,6 +229,11 @@ export class AutopilotProStateMachine {
   // structured block AFTER the marker line. The classic SettledSnapshot.text
   // contains only the text BEFORE the marker, which is too narrow for PRO.
   private proBuffer = ''
+  private controlPollTimer: ReturnType<typeof setInterval> | null = null
+  private lastControlMarkerId: string | null = null
+  private lastControlValidationReason: string | null = null
+  private lastFileControlMarkerSignature: string | null = null
+  private lastFileControlMarkerAt = 0
   private phaseTrackerEscalated = false
   private stage3KickoffSentForPhase: string | null = null
   private stage4KickoffSent = false
@@ -359,6 +367,7 @@ export class AutopilotProStateMachine {
       this.proBuffer += data
       this.watcher.feed(data)
     })
+    this.startControlWatchdog()
 
     this.state.validation = discoverValidation(this.opts.projectPath)
 
@@ -430,6 +439,7 @@ export class AutopilotProStateMachine {
   stop(): void {
     this.state.control = 'stopped'
     if (this.detachPty) { this.detachPty(); this.detachPty = null }
+    this.stopControlWatchdog()
     this.clearSilenceTimer()
     this.state.liveStatus = null
     // Reset Wave 3.1 lifecycle flags so a subsequent start() re-fires kickoffs.
@@ -468,6 +478,16 @@ export class AutopilotProStateMachine {
   private async onSettled(snap: ProSettledSnapshot): Promise<void> {
     if (!this.canProcessPty()) return
     const m = snap.marker
+
+    const isFileControl = snap.text === 'file-control-channel'
+    const sig = this.markerSignature(snap.marker)
+    if (!isFileControl && sig === this.lastFileControlMarkerSignature && Date.now() - this.lastFileControlMarkerAt < 2000) {
+      return
+    }
+    if (isFileControl) {
+      this.lastFileControlMarkerSignature = sig
+      this.lastFileControlMarkerAt = Date.now()
+    }
 
     this.markerFallbackPromptCount = 0
 
@@ -691,6 +711,11 @@ export class AutopilotProStateMachine {
   // ---- shape-specific dispatch ----
 
   private sendToDoer(text: string, reason: string, appendCarriageReturn = true): void {
+    try {
+      writeProInboxReply(this.opts.projectPath, text)
+    } catch (error: any) {
+      this.appendActivity('escalation', `control inbox write failed: ${error?.message ?? 'unknown'}`)
+    }
     const data = appendCarriageReturn ? (text.endsWith('\r') ? text : text + '\r') : text
     this.appendDebug('doer-write', {
       reason,
@@ -1251,6 +1276,56 @@ export class AutopilotProStateMachine {
         outputVolumeSinceReset: this.outputVolumeSinceReset,
       })
     }
+  }
+
+  private startControlWatchdog(): void {
+    this.stopControlWatchdog()
+    this.controlPollTimer = setInterval(() => {
+      void this.pollControlChannel()
+    }, 1000)
+    if (typeof (this.controlPollTimer as any)?.unref === 'function') {
+      (this.controlPollTimer as any).unref()
+    }
+    void this.pollControlChannel()
+  }
+
+  private stopControlWatchdog(): void {
+    if (this.controlPollTimer) {
+      clearInterval(this.controlPollTimer)
+      this.controlPollTimer = null
+    }
+  }
+
+  private async pollControlChannel(): Promise<void> {
+    if (this.state.control !== 'running') return
+
+    const control = readProControlMarker(this.opts.projectPath)
+    if (control && 'reason' in control) {
+      if (control.reason !== this.lastControlValidationReason) {
+        this.lastControlValidationReason = control.reason
+        this.appendActivity('escalation', `control marker invalid: ${control.reason}`)
+        this.appendDebug('control-marker-invalid', { reason: control.reason })
+        this.notify()
+      }
+    } else if (control && control.id !== this.lastControlMarkerId) {
+      this.lastControlMarkerId = control.id
+      this.lastControlValidationReason = null
+      const m = control.marker
+      const progressTail = m.subgoalId ? ` ${m.subgoalId}${m.status ? ` ${m.status}` : ''}` : ''
+      this.appendActivity('doer-marker', `file-control ${m.kind}${progressTail}`)
+      this.appendDebug('control-marker-read', { id: control.id, marker: m, mtimeMs: control.mtimeMs })
+      await this.onSettled(markerToProSnapshot(control.marker))
+    }
+  }
+
+  private markerSignature(marker: ProMarker): string {
+    return [
+      marker.kind,
+      marker.subgoalId ?? '',
+      marker.status ?? '',
+      marker.question ?? '',
+      marker.text ?? '',
+    ].join('|')
   }
 
   // ---- silence timer ----

@@ -66,14 +66,18 @@ Key files: `state-machine.ts`, `prompts.ts`, `phases.ts`, `adr.ts`, `artifacts.t
 
 Doer emits `DoerMarker` events of kind `WAITING | PROGRESS | GOAL_READY | STUCK`.
 
-**Two channels**, by design redundant:
+**Two channels per orchestrator**, by design redundant:
 
 1. **File-based (primary, machine-readable):**
-   - Doer writes `.autopilot/outbox/marker.json` (validated against schemaVersion 1 in `control-channel.ts`).
-   - Orchestrator writes `.autopilot/inbox/reply.txt`.
-   - Validation lives in `validateControlMarkerObject()` — `kind` mandatory; PROGRESS additionally requires `subgoalId` and `status ∈ {done, partial, blocked}`.
-   - `reconcileMilestoneState(memory, disk)` merges disk-side subgoal status into memory.
-2. **Terminal-visible (fallback, human-readable):** literal `[ORCH:KIND]` line followed by structured `KEY: value` lines (`STATUS`, `SUBGOAL`, `PROGRESS_STATUS`, `FILES_CHANGED`, `TESTS`, `RED_PHASE`, `BOUNDARY_OK`, `EVIDENCE`, `BLOCKER`, `QUESTION`).
+   - Doer writes `<dir>/outbox/marker.json` (validated against schemaVersion 1).
+   - Orchestrator writes `<dir>/inbox/reply.txt`.
+   - Per-orchestrator dirs: `.autopilot/` (Classic), `.autopilot-pro/` (PRO), `.autopilot-council/` (Council).
+   - Shared IO + base-field validator: `src/main/autopilot-shared/control-channel.ts` — `makeControlChannel({ dir, validateExtra })`. Base validation enforces `schemaVersion === 1`, mandatory `kind`, and PROGRESS-requires-subgoalId+status.
+   - Per-orchestrator wrappers: `src/main/autopilot/control-channel.ts`, `src/main/autopilot-pro/control-channel.ts`, `src/main/autopilot-council/control-channel.ts`. Classic also owns `reconcileMilestoneState` (memory ↔ disk subgoal status reconciliation).
+   - PRO and Council schemas are strict supersets of Classic — they additionally validate `shape`, `proStatus`, `artifactPath`, `options`, `assumption`, `delta`, `optionsRationale`, `researchTopics`, `researchTopic`, `researchForce`, `subagentEtaMin`. Council reuses PRO's validator verbatim — only the dir differs.
+   - Each state machine polls its own outbox at 1 Hz (`startControlWatchdog` / `pollControlChannel`). When a file marker arrives, `markerSignature` + a 2 s window suppresses the duplicate terminal echo via the dedupe block at the top of `onSettled`.
+   - The PRO doer prompt is parameterised by `controlDir` (`buildDoerSystemPromptPro(agentCli, { controlDir })`); Council passes `.autopilot-council` to reuse the same prompt body.
+2. **Terminal-visible (fallback, human-readable):** literal `[ORCH:KIND]` line followed by structured `KEY: value` lines (`STATUS`, `SUBGOAL`, `PROGRESS_STATUS`, `FILES_CHANGED`, `TESTS`, `RED_PHASE`, `BOUNDARY_OK`, `EVIDENCE`, `BLOCKER`, `QUESTION`, plus PRO's `DECISION_SHAPE`, `ARTIFACT`, `OPTIONS`, …).
    - Parsed by `MARKER_LINE_RE` in `pty-watcher.ts`.
    - The regex now tolerates leading shell prompt chars (`>|│┃║╎╏┆┇┊┋▌▍▎▏›❯•◦●○`).
    - **Beware:** the indent-tolerance also matches plain space-indented lines. `looksLikeIndentedProtocolExample()` only filters tails that contain `<…>` or em-dashes — see "Known issue" below.
@@ -102,8 +106,8 @@ In `state-machine.ts handleMissingMarker()`:
 
 - **Always run `npm test`** after touching anything in `src/main/autopilot*/` or `tests/autopilot-*`. The marker regex and state machine are heavily tested and easy to break in subtle ways.
 - The Windows checkout has CRLF line endings; git will warn `LF will be replaced by CRLF` — this is expected, not a bug to fix.
-- New code intended to live in the orchestrator goes in `src/main/autopilot/` (classic) or `src/main/autopilot-pro/` (PRO) — keep them separate.
-- When changing the marker protocol, update **all four** of: `pty-watcher.ts` (parser), `control-channel.ts` (JSON schema), `prompts.ts` (doer contract), and `attach-session.ts` (bridge prompt examples). They drift easily.
+- New code intended to live in the orchestrator goes in `src/main/autopilot/` (classic), `src/main/autopilot-pro/` (PRO), or `src/main/autopilot-council/` (Council) — keep them separate.
+- When changing the marker protocol, update **all** of: `pty-watcher.ts` (parser), the relevant per-orchestrator `control-channel.ts` (JSON schema) plus `autopilot-shared/control-channel.ts` if the change is base-level, the relevant `prompts.ts` (doer contract), and `attach-session.ts` (bridge prompt examples for Classic). They drift easily.
 - Don't add backwards-compat shims for marker schema changes — bump `schemaVersion` and reject old payloads.
 
 ## Bridge-prompt vs marker-parser disambiguation
