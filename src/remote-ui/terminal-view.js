@@ -145,6 +145,19 @@
         }
       })
 
+      // Desktop: let Ctrl+V (and Cmd+V on Mac) fall through to the browser's
+      // native paste flow instead of being captured by xterm as a ^V keystroke.
+      // Without this, dictation tools and Ctrl+V are silently dropped because
+      // xterm calls preventDefault on keydown before the browser can fire a
+      // paste event on the textarea. Right-click → Paste already works because
+      // it bypasses keydown entirely.
+      term.attachCustomKeyEventHandler(function (ev) {
+        if (ev.type === 'keydown' && (ev.ctrlKey || ev.metaKey) && !ev.altKey && (ev.key === 'v' || ev.key === 'V')) {
+          return false
+        }
+        return true
+      })
+
       // Desktop: intercept image-only paste (let xterm handle text paste natively).
       // Many clipboards carry both text and image formats simultaneously
       // (copying from VS Code, browsers, Office). Prefer text — only upload
