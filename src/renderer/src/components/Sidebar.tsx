@@ -270,6 +270,10 @@ export function Sidebar({
             <button
               key={t.id}
               onClick={() => onSelectTerminal(t.id)}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                onContextMenu(t.path, e.clientX, e.clientY)
+              }}
               style={btnStyle(isActive)}
               className="sidebar-btn"
               title={t.name}
