@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Menu, powerSaveBlocker, safeStorage, screen } from 'electron'
-import { join } from 'path'
+import { join, resolve as resolvePath, sep as pathSep } from 'path'
 import { fileURLToPath } from 'url'
 import { spawn, execSync } from 'child_process'
 import { appendFileSync, existsSync, statSync, writeFileSync, readFileSync, mkdirSync } from 'fs'
@@ -229,6 +229,8 @@ try {
   ptyManager.on('exit', ({ id }: { id: string }) => clearAttachSession(id))
   autopilotPtyWriter = new QueuedPtyWriter((terminalId, data) => {
     ptyManager.write(terminalId, data)
+  }, {
+    existsRaw: (terminalId) => ptyManager.has(terminalId),
   })
   store = new Store(join(app.getPath('userData'), 'sessions.json'))
   recentDB = new RecentDB(join(app.getPath('userData'), 'recent.db'))
@@ -321,9 +323,18 @@ function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: s
     win.setMenuBarVisibility(false)
   }
 
-  // Open external URLs in the system browser, not in Electron
+  // Open external URLs in the system browser, not in Electron. Match the
+  // protocol allowlist used by the shell:openExternal IPC handler so a
+  // window.open() from web content can't sneak file:// or javascript:// past.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        shell.openExternal(url)
+      }
+    } catch {
+      // Invalid URL — silently deny.
+    }
     return { action: 'deny' }
   })
 
@@ -356,14 +367,35 @@ function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: s
   win.on('resize', saveBounds)
   win.on('move', saveBounds)
 
-  // Confirmation handler — runs FIRST. Only blocks close when the window
-  // owns active terminals; otherwise close proceeds straight through.
-  // After the user confirms, we mark the window so the second close event
-  // (triggered by win.close() below) skips this dialog.
-  win.on('close', (e) => {
-    if (confirmedClose.has(win)) return
+  // Close handler — combines confirmation prompt with cleanup. These used to
+  // be two separate listeners, which was a bug: preventDefault on one listener
+  // does NOT stop other listeners on the same event, so the cleanup listener
+  // killed every PTY before the user even saw the dialog. Cancelling then left
+  // a zombie window whose terminals looked alive but couldn't accept input.
+  // Now cleanup only runs on the close that actually proceeds.
+  const performCloseCleanup = (): void => {
+    clearTimeout(boundsTimer)
+    if (!win.isDestroyed()) {
+      store.saveWindowBounds(id, win.getBounds())
+    }
     const owned = ptyManager.listByWebContents(win.webContents)
-    if (owned.length === 0) return // nothing running, allow close
+    for (const meta of owned) {
+      clearAttachSession(meta.id)
+      ptyManager.kill(meta.id)
+    }
+    registry.unregister(id)
+  }
+
+  win.on('close', (e) => {
+    if (confirmedClose.has(win)) {
+      performCloseCleanup()
+      return
+    }
+    const owned = ptyManager.listByWebContents(win.webContents)
+    if (owned.length === 0) {
+      performCloseCleanup()
+      return
+    }
 
     e.preventDefault()
     dialog.showMessageBox(win, {
@@ -380,20 +412,6 @@ function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: s
         win.close()
       }
     }).catch(() => {})
-  })
-
-  win.on('close', () => {
-    clearTimeout(boundsTimer)
-    // Save final bounds
-    if (!win.isDestroyed()) {
-      store.saveWindowBounds(id, win.getBounds())
-    }
-    const owned = ptyManager.listByWebContents(win.webContents)
-    for (const meta of owned) {
-      clearAttachSession(meta.id)
-      ptyManager.kill(meta.id)
-    }
-    registry.unregister(id)
   })
 
   win.on('closed', () => {
@@ -682,15 +700,16 @@ ipcMain.handle('autopilot:approveGoal', (_event, terminalId: string) => {
   // PRO doesn't use a goal-approve gate — approval is via DECISION_SHAPE: approve.
 })
 ipcMain.handle('autopilot:replyToWaiting', async (_event, terminalId: string, text: string) => {
-  const handles = [
+  type Replyer = { replyToWaiting: (text: string) => void | Promise<{ ok: boolean; error?: string }> }
+  const handles: Replyer[] = [
     autopilots.get(terminalId),
     autopilotPros.get(terminalId),
     autopilotCouncils.get(terminalId),
-  ].filter(Boolean)
+  ].filter((h): h is Replyer => h != null)
   if (handles.length === 0) {
     return { ok: false, error: 'No active Autopilot run is attached to this terminal.' }
   }
-  await Promise.all(handles.map((handle: any) => Promise.resolve(handle.replyToWaiting(text))))
+  await Promise.all(handles.map((handle) => Promise.resolve(handle.replyToWaiting(text))))
   return { ok: true }
 })
 ipcMain.handle('autopilot:permissionAllow', (_event, terminalId: string) => {
@@ -1061,9 +1080,31 @@ ipcMain.handle('app:getVersion', () => {
   return app.getVersion()
 })
 
-// Read file contents (for markdown viewer)
+// Read file contents (for markdown viewer).
+// Restricted to paths inside one of the currently-open PTY working
+// directories — every legitimate caller (TerminalPanel resolving a clicked
+// file path against its project folder) lives under an active terminal's
+// root. Without this guard, the renderer could ask main to read any file
+// the process has permission to access.
+function isPathUnderActivePtyRoot(filePath: string): boolean {
+  const caseFold = process.platform === 'win32'
+  const normalize = (p: string): string => {
+    const abs = resolvePath(p)
+    return caseFold ? abs.toLowerCase() : abs
+  }
+  const target = normalize(filePath)
+  for (const meta of ptyManager.listAll()) {
+    const root = normalize(meta.path)
+    const rootWithSep = root.endsWith(pathSep) ? root : root + pathSep
+    if (target === root || target.startsWith(rootWithSep)) return true
+  }
+  return false
+}
+
 ipcMain.handle('file:read', (_event, filePath: string) => {
   try {
+    if (typeof filePath !== 'string' || !filePath) return null
+    if (!isPathUnderActivePtyRoot(filePath)) return null
     if (!existsSync(filePath) || statSync(filePath).isDirectory()) return null
     return readFileSync(filePath, 'utf-8')
   } catch {
