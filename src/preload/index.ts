@@ -168,7 +168,7 @@ contextBridge.exposeInMainWorld('api', {
   remoteToggle: (enabled: boolean): Promise<{ ok: boolean; urls?: string[]; port?: number; error?: string }> =>
     ipcRenderer.invoke('remote:toggle', enabled),
 
-  remoteStatus: (): Promise<{ running: boolean; port: number }> =>
+  remoteStatus: (): Promise<{ running: boolean; port: number; urls: string[] }> =>
     ipcRenderer.invoke('remote:status'),
 
   // Tailscale HTTPS exposure

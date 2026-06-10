@@ -16,6 +16,11 @@
   var currentId = null
   var currentSocket = null
   var remoteResizeHandler = null
+  // Track the resize-fit pair across open()/close() so they can be torn down.
+  // Without this, each open() leaked a window-resize listener and a
+  // ResizeObserver per session switch.
+  var safeFitHandler = null
+  var resizeObs = null
 
   function isMobile() {
     return window.innerWidth <= 768
@@ -123,14 +128,15 @@
 
       if (window.ResizeObserver) {
         var resizeTimer = null
-        var resizeObs = new ResizeObserver(function () {
+        resizeObs = new ResizeObserver(function () {
           if (resizeTimer) clearTimeout(resizeTimer)
           resizeTimer = setTimeout(safeFit, 60)
         })
         resizeObs.observe(container)
       }
 
-      window.addEventListener('resize', safeFit)
+      safeFitHandler = safeFit
+      window.addEventListener('resize', safeFitHandler)
     }
 
     if (scrollback) {
@@ -203,6 +209,14 @@
   }
 
   function close() {
+    if (safeFitHandler) {
+      window.removeEventListener('resize', safeFitHandler)
+      safeFitHandler = null
+    }
+    if (resizeObs) {
+      try { resizeObs.disconnect() } catch (e) {}
+      resizeObs = null
+    }
     if (term) {
       term.dispose()
       term = null
