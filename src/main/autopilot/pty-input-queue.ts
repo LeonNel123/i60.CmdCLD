@@ -12,6 +12,11 @@ export interface PtyInputChunkOptions {
 export interface QueuedPtyWriterOptions extends PtyInputChunkOptions {
   chunkDelayMs?: number
   submitDelayMs?: number
+  // If provided, the writer checks this between chunks. If the PTY no longer
+  // exists (terminal killed mid-multi-chunk-write), it aborts the remaining
+  // chunks instead of silently dropping them through ptyManager.write's
+  // optional-chaining no-op.
+  existsRaw?: (terminalId: string) => boolean
 }
 
 export function chunkPtyInput(data: string, opts: PtyInputChunkOptions = {}): string[] {
@@ -40,6 +45,7 @@ export class QueuedPtyWriter {
   private chunkThreshold: number
   private chunkDelayMs: number
   private submitDelayMs: number
+  private existsRaw?: (terminalId: string) => boolean
 
   constructor(
     private writeRaw: (terminalId: string, data: string) => void,
@@ -49,6 +55,7 @@ export class QueuedPtyWriter {
     this.chunkThreshold = opts.chunkThreshold ?? DEFAULT_CHUNK_THRESHOLD
     this.chunkDelayMs = opts.chunkDelayMs ?? DEFAULT_CHUNK_DELAY_MS
     this.submitDelayMs = opts.submitDelayMs ?? 300
+    this.existsRaw = opts.existsRaw
   }
 
   write(terminalId: string, data: string): Promise<void> {
@@ -72,6 +79,7 @@ export class QueuedPtyWriter {
       chunkThreshold: this.chunkThreshold,
     })
     for (let i = 0; i < chunks.length; i += 1) {
+      if (this.existsRaw && !this.existsRaw(terminalId)) return
       this.writeRaw(terminalId, chunks[i])
       if (i < chunks.length - 1 && this.chunkDelayMs > 0) {
         const nextChunkIsSubmit = chunks[i + 1] === '\r'

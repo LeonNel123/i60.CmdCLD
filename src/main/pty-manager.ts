@@ -34,9 +34,20 @@ export class ScrollbackBuffer {
     this.chunks.push(data)
     this.totalLength += data.length
     this.totalWritten += data.length
-    while (this.totalLength > this.maxSize && this.chunks.length > 1) {
-      const removed = this.chunks.shift()!
-      this.totalLength -= removed.length
+    while (this.totalLength > this.maxSize) {
+      if (this.chunks.length > 1) {
+        const removed = this.chunks.shift()!
+        this.totalLength -= removed.length
+      } else {
+        // Single chunk exceeds maxSize — trim it in place so memory stays
+        // bounded. Without this, a >maxSize burst from the PTY would be
+        // retained indefinitely.
+        const chunk = this.chunks[0]
+        const trimmed = chunk.slice(chunk.length - this.maxSize)
+        this.chunks[0] = trimmed
+        this.totalLength = trimmed.length
+        break
+      }
     }
   }
 
@@ -231,9 +242,23 @@ export class PtyManager extends EventEmitter {
   kill(id: string): void {
     const entry = this.ptys.get(id)
     if (entry) {
+      // Flush any buffered bytes before tearing down so clients see the
+      // final output before the close. Mirrors the onExit path above.
       if (entry.flushTimer) {
         clearTimeout(entry.flushTimer)
         entry.flushTimer = null
+      }
+      if (entry.pendingData) {
+        const data = entry.pendingData
+        entry.pendingData = ''
+        this.emit('data', { id, data })
+        try {
+          if (!entry.webContents.isDestroyed()) {
+            entry.webContents.send(`pty:data:${id}`, data)
+          }
+        } catch {}
+        const localSet = this.localOutputListeners.get(id)
+        if (localSet) for (const l of localSet) { try { l(data) } catch {} }
       }
       entry.dataDisposable?.dispose()
       entry.exitDisposable?.dispose()
