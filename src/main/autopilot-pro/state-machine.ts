@@ -223,6 +223,7 @@ export class AutopilotProStateMachine {
   private watcher: PtyWatcher
   private detachPty: (() => void) | null = null
   private silenceTimer: ReturnType<typeof setTimeout> | null = null
+  private markerNudgeObserveTimer: ReturnType<typeof setTimeout> | null = null
   private maxSilenceMs: number
   private baseMaxSilenceMs: number
   // PRO maintains its own raw buffer so enrichProMarker can scan the full
@@ -441,6 +442,10 @@ export class AutopilotProStateMachine {
     if (this.detachPty) { this.detachPty(); this.detachPty = null }
     this.stopControlWatchdog()
     this.clearSilenceTimer()
+    if (this.markerNudgeObserveTimer) {
+      clearTimeout(this.markerNudgeObserveTimer)
+      this.markerNudgeObserveTimer = null
+    }
     this.state.liveStatus = null
     // Reset Wave 3.1 lifecycle flags so a subsequent start() re-fires kickoffs.
     this.phaseTrackerEscalated = false
@@ -1203,13 +1208,17 @@ export class AutopilotProStateMachine {
     void Promise.resolve(writeResult).then(() => {
       this.appendActivity('orchestrator-reply', `diagnostic marker-nudge-write-complete count=${this.markerFallbackPromptCount}/2 ms=${Date.now() - startedAt} outputDelta=${this.outputVolumeSinceReset - beforeOutput}`)
       this.notify()
-      const observeTimer = setTimeout(() => {
+      if (this.markerNudgeObserveTimer) {
+        clearTimeout(this.markerNudgeObserveTimer)
+      }
+      this.markerNudgeObserveTimer = setTimeout(() => {
+        this.markerNudgeObserveTimer = null
         if (!this.canProcessPty()) return
         this.appendActivity('orchestrator-reply', `diagnostic marker-nudge-observe count=${this.markerFallbackPromptCount}/2 afterMs=5000 outputDelta=${this.outputVolumeSinceReset - beforeOutput}`)
         this.notify()
       }, 5000)
-      if (typeof (observeTimer as any)?.unref === 'function') {
-        (observeTimer as any).unref()
+      if (typeof (this.markerNudgeObserveTimer as any)?.unref === 'function') {
+        (this.markerNudgeObserveTimer as any).unref()
       }
     }).catch((error) => {
       this.appendActivity('escalation', `diagnostic marker-nudge-write-failed: ${error?.message ?? 'unknown'}`)

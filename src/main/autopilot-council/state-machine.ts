@@ -179,6 +179,7 @@ export class AutopilotCouncilStateMachine {
     this.buffer = ''
     this.watcher.reset()
     this.reviewer.stop()
+    this.stopControlWatchdog()
     this.notify()
   }
 
