@@ -74,15 +74,17 @@ const RecentRow = memo(function RecentRow({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '6px',
-        width: '100%',
-        padding: '6px 10px',
+        gap: '8px',
+        width: 'auto',
+        padding: '8px 12px',
+        margin: '0 4px',
         background: 'none',
         cursor: isOpen ? 'default' : 'pointer',
-        opacity: isOpen ? 0.5 : 1,
+        opacity: isOpen ? 0.55 : 1,
         fontFamily: 'inherit',
-        fontSize: '12px',
-        borderRadius: '3px',
+        fontSize: '13px',
+        borderRadius: '6px',
+        transition: 'background 80ms ease',
       }}
       title={isOpen ? `${folder.path} (already open — right-click to add another CLI)` : folder.path}
     >
@@ -111,7 +113,7 @@ const RecentRow = memo(function RecentRow({
       }}>
         {folder.name}
       </span>
-      <span style={{ color: '#666', fontSize: '10px', flexShrink: 0, fontFamily: 'Menlo, Consolas, monospace' }}>
+      <span style={{ color: '#5a5a5a', fontSize: '10px', flexShrink: 0, fontFamily: 'Menlo, Consolas, monospace' }}>
         {formatRelativeTime(folder.lastOpened)}
       </span>
     </div>
@@ -224,35 +226,39 @@ export function Sidebar({
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    width: '100%',
-    padding: collapsed ? '6px 0' : '6px 10px',
+    width: 'auto',
+    padding: collapsed ? '8px 0' : '8px 12px',
+    margin: '0 4px',
     justifyContent: collapsed ? 'center' : 'flex-start',
-    background: active ? 'rgba(255,255,255,0.10)' : 'none',
+    background: active ? 'rgba(255,255,255,0.08)' : 'none',
     border: 'none',
-    color: disabled ? '#444' : '#ccc',
+    color: disabled ? '#444' : '#d8d8d8',
     cursor: disabled ? 'default' : 'pointer',
-    fontSize: '12px',
+    fontSize: '13px',
     fontFamily: 'inherit',
-    borderRadius: '3px',
+    borderRadius: '6px',
     textAlign: 'left',
     opacity: disabled ? 0.5 : 1,
+    transition: 'background 80ms ease',
+    position: 'relative',
   })
 
   const sectionHeadingStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    width: '100%',
-    padding: '5px 10px',
+    width: 'auto',
+    padding: '6px 12px',
+    margin: '14px 4px 2px',
     background: 'none',
     border: 'none',
-    color: '#777',
-    fontSize: '10px',
+    color: '#6e6e6e',
+    fontSize: '11px',
     fontFamily: 'inherit',
     fontWeight: 600,
-    letterSpacing: '0.06em',
+    letterSpacing: '0.08em',
     cursor: 'pointer',
-    borderRadius: '3px',
+    borderRadius: '6px',
     textAlign: 'left',
   }
 
@@ -262,8 +268,8 @@ export function Sidebar({
       width,
       minWidth: width,
       height: '100%',
-      background: '#181818',
-      borderRight: '1px solid #2d2d2d',
+      background: '#1a1a1a',
+      borderRight: '1px solid #2a2a2a',
       display: 'flex',
       flexDirection: 'column',
       transition: resizing ? 'none' : 'width 150ms ease',
@@ -273,9 +279,19 @@ export function Sidebar({
     }}>
       <style>{`
         .recent-row:hover .recent-star { opacity: 1 !important; }
-        .recent-row:hover { background: rgba(255,255,255,0.06); }
-        .sidebar-btn:hover { background: rgba(255,255,255,0.06) !important; }
+        .recent-row:hover { background: rgba(255,255,255,0.05); }
+        .sidebar-btn:hover { background: rgba(255,255,255,0.05) !important; }
         .sidebar-resize-handle:hover { background: rgba(255,255,255,0.14); }
+        .sidebar-btn.active-session::before {
+          content: '';
+          position: absolute;
+          left: -4px;
+          top: 8px;
+          bottom: 8px;
+          width: 2px;
+          border-radius: 1px;
+          background: var(--accent, #6b9bff);
+        }
       `}</style>
 
       {/* Primary actions (formerly the icon rail) */}
@@ -329,8 +345,11 @@ export function Sidebar({
                 e.preventDefault()
                 onContextMenu(t.path, e.clientX, e.clientY)
               }}
-              style={btnStyle(isActive)}
-              className="sidebar-btn"
+              style={{
+                ...btnStyle(isActive),
+                ...(isActive ? { '--accent': t.color } as React.CSSProperties : {}),
+              }}
+              className={'sidebar-btn' + (isActive ? ' active-session' : '')}
               title={t.name}
             >
               {t.isPlainShell ? (
@@ -344,12 +363,14 @@ export function Sidebar({
                 }}>&gt;_</span>
               ) : (
                 <span style={{
-                  width: '8px',
-                  height: '8px',
+                  width: '10px',
+                  height: '10px',
                   borderRadius: '50%',
                   background: t.color,
                   flexShrink: 0,
-                  boxShadow: busy ? `0 0 6px 2px ${t.color}80` : 'none',
+                  boxShadow: busy
+                    ? `0 0 8px 2px ${t.color}80, 0 0 0 2px rgba(255,255,255,0.04)`
+                    : '0 0 0 2px rgba(255,255,255,0.04)',
                   animation: busy ? 'pulse 1.5s ease-in-out infinite' : 'none',
                 }} />
               )}
@@ -375,7 +396,7 @@ export function Sidebar({
         return (
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {favorites.length > 0 && (
-              <div style={{ borderTop: '1px solid #2d2d2d' }}>
+              <div>
                 <button
                   onClick={toggleFavorites}
                   style={sectionHeadingStyle}
@@ -399,7 +420,7 @@ export function Sidebar({
               </div>
             )}
             {recents.length > 0 && (
-              <div style={{ borderTop: '1px solid #2d2d2d' }}>
+              <div>
                 <button
                   onClick={toggleRecent}
                   style={sectionHeadingStyle}
@@ -433,7 +454,7 @@ export function Sidebar({
       {(collapsed || recentFolders.length === 0) && <div style={{ flex: 1 }} />}
 
       {/* Bottom actions */}
-      <div style={{ padding: '6px 4px', borderTop: '1px solid #2d2d2d', flexShrink: 0 }}>
+      <div style={{ padding: '8px 4px', borderTop: '1px solid #2a2a2a', flexShrink: 0 }}>
         <button onClick={onShowAll} style={btnStyle(viewMode.type === 'grid')} className="sidebar-btn" title="Show All">
           <LayoutGrid width={14} height={14} />
           {!collapsed && <span>Show All</span>}
