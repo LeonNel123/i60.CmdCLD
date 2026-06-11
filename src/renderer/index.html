@@ -19,6 +19,20 @@
       font-style: normal;
       font-display: swap;
     }
+    @font-face {
+      font-family: 'JetBrains Mono';
+      src: url('./fonts/JetBrainsMono-Regular.woff2') format('woff2');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'JetBrains Mono';
+      src: url('./fonts/JetBrainsMono-Bold.woff2') format('woff2');
+      font-weight: 700;
+      font-style: normal;
+      font-display: swap;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     /* Interface scale — applied to UI chrome surfaces (sidebar, dialog panels,
@@ -87,7 +101,7 @@
       background: #2d2d2d;
       padding: 2px 6px;
       border-radius: 3px;
-      font-family: Cascadia Code, Menlo, Consolas, monospace;
+      font-family: 'JetBrains Mono', Cascadia Code, Menlo, Consolas, monospace;
       font-size: 0.9em;
       color: #e5e5e5;
     }

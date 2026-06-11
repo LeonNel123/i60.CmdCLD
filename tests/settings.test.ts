@@ -55,12 +55,12 @@ describe('Settings agent CLI defaults', () => {
 })
 
 describe('Settings terminal font', () => {
-  it('defaults a legacy settings file to the Windows Terminal font (Cascadia Mono, 12)', () => {
+  it('defaults a legacy settings file to the bundled JetBrains Mono at 12pt', () => {
     writeFileSync(FILE, JSON.stringify({ claudeArgs: '--continue' }))
     const settings = new Settings(FILE)
 
     expect(settings.get('terminalFontFamily')).toBe(DEFAULT_TERMINAL_FONT_FAMILY)
-    expect(settings.get('terminalFontFamily')).toContain('Cascadia Mono')
+    expect(settings.get('terminalFontFamily')).toContain('JetBrains Mono')
     expect(settings.get('terminalFontSize')).toBe(DEFAULT_TERMINAL_FONT_SIZE)
     expect(settings.get('terminalFontSize')).toBe(12)
   })
