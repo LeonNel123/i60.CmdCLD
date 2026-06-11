@@ -252,11 +252,11 @@ export function Sidebar({
     margin: '14px 4px 2px',
     background: 'none',
     border: 'none',
-    color: '#6e6e6e',
-    fontSize: '11px',
+    color: '#5e5e5e',
+    fontSize: '12px',
     fontFamily: 'inherit',
-    fontWeight: 600,
-    letterSpacing: '0.08em',
+    fontWeight: 500,
+    letterSpacing: 'normal',
     cursor: 'pointer',
     borderRadius: '6px',
     textAlign: 'left',
@@ -402,7 +402,7 @@ export function Sidebar({
                   style={sectionHeadingStyle}
                   className="sidebar-btn"
                 >
-                  <span>FAVORITES</span>
+                  <span>favorites</span>
                   {favoritesExpanded ? <ChevronDown width={12} height={12} /> : <ChevronRight width={12} height={12} />}
                 </button>
                 {favoritesExpanded && favorites.map((f) => (
@@ -426,7 +426,7 @@ export function Sidebar({
                   style={sectionHeadingStyle}
                   className="sidebar-btn"
                 >
-                  <span>RECENT</span>
+                  <span>recents</span>
                   {recentExpanded ? <ChevronDown width={12} height={12} /> : <ChevronRight width={12} height={12} />}
                 </button>
                 {recentExpanded && recents.map((f) => (
@@ -453,23 +453,36 @@ export function Sidebar({
           the bottom instead of riding up under the terminals. */}
       {(collapsed || recentFolders.length === 0) && <div style={{ flex: 1 }} />}
 
-      {/* Bottom actions */}
-      <div style={{ padding: '8px 4px', borderTop: '1px solid #2a2a2a', flexShrink: 0 }}>
-        <button onClick={onShowAll} style={btnStyle(viewMode.type === 'grid')} className="sidebar-btn" title="Show All">
+      {/* Bottom actions — elevated card group when expanded; the card's 8px
+          margins don't fit the 36px collapsed rail, so collapsed keeps the
+          flat divider look. */}
+      <div style={collapsed ? {
+        padding: '8px 4px',
+        borderTop: '1px solid #2a2a2a',
+        flexShrink: 0,
+      } : {
+        margin: '8px',
+        padding: '4px',
+        background: '#202020',
+        border: '1px solid #2a2a2a',
+        borderRadius: '8px',
+        flexShrink: 0,
+      }}>
+        <button onClick={onShowAll} style={{ ...btnStyle(viewMode.type === 'grid'), margin: 0 }} className="sidebar-btn" title="Show All">
           <LayoutGrid width={14} height={14} />
           {!collapsed && <span>Show All</span>}
         </button>
         {terminals.length > 0 && (
-          <button onClick={onCloseAll} style={btnStyle()} className="sidebar-btn" title="Close All">
+          <button onClick={onCloseAll} style={{ ...btnStyle(), margin: 0 }} className="sidebar-btn" title="Close All">
             <X width={14} height={14} style={{ color: '#f14c4c' }} />
             {!collapsed && <span>Close All</span>}
           </button>
         )}
-        <button onClick={onOpenSettings} style={btnStyle()} className="sidebar-btn" title="Settings">
+        <button onClick={onOpenSettings} style={{ ...btnStyle(), margin: 0 }} className="sidebar-btn" title="Settings">
           <span style={{ color: '#aaa', display: 'flex', flexShrink: 0 }}><Settings width={14} height={14} /></span>
           {!collapsed && <span>Settings</span>}
         </button>
-        <button onClick={toggleCollapsed} style={btnStyle()} className="sidebar-btn" title={collapsed ? 'Expand' : 'Collapse'}>
+        <button onClick={toggleCollapsed} style={{ ...btnStyle(), margin: 0 }} className="sidebar-btn" title={collapsed ? 'Expand' : 'Collapse'}>
           {collapsed ? <ChevronRight width={14} height={14} /> : <ChevronLeft width={14} height={14} />}
           {!collapsed && <span>Collapse</span>}
         </button>
