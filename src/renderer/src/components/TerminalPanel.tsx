@@ -8,6 +8,14 @@ import '@xterm/xterm/css/xterm.css'
 import { onTerminalDataReceived, removeTerminalActivity } from '../utils/terminal-activity'
 import { formatPaths } from '../utils/format-paths'
 import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
+import {
+  DEFAULT_TERMINAL_FONT_SIZE,
+  TERMINAL_FONT_SIZE_MAX,
+  TERMINAL_FONT_SIZE_MIN,
+  clampTerminalFontSize,
+  pointsToPixels,
+  resolveTerminalFontFamily,
+} from '../../../shared/terminal-font'
 
 // Global set of PTY IDs that have been created — prevents duplicates on remount
 const activePtys = new Set<string>()
@@ -57,6 +65,8 @@ interface TerminalPanelProps {
   claudeArgs?: string
   codexArgs?: string
   isPlainShell?: boolean
+  fontFamily?: string
+  fontSize?: number
   onClose: () => void
   onSpawnShell?: () => void
   onOpenMarkdown?: (filePath: string) => void
@@ -74,6 +84,8 @@ export function TerminalPanel({
   claudeArgs,
   codexArgs,
   isPlainShell,
+  fontFamily,
+  fontSize,
   onClose,
   onSpawnShell,
   onOpenMarkdown,
@@ -85,6 +97,15 @@ export function TerminalPanel({
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const searchAddonRef = useRef<SearchAddon | null>(null)
+  // Resolve the global terminal-font setting (with defaults) and keep it in a
+  // ref so the mount effect can construct the xterm with the current font
+  // WITHOUT adding font to its deps — that would tear down and recreate the
+  // whole terminal on every font change. Live font changes are applied to the
+  // existing instance by the effect below instead.
+  const fontFamilyResolved = resolveTerminalFontFamily(fontFamily)
+  const fontSizeResolved = clampTerminalFontSize(fontSize ?? DEFAULT_TERMINAL_FONT_SIZE)
+  const fontRef = useRef({ family: fontFamilyResolved, size: fontSizeResolved })
+  fontRef.current = { family: fontFamilyResolved, size: fontSizeResolved }
   const cleanupRef = useRef<{ removeData: () => void; removeExit: () => void; removePaste: () => void; removeResize: () => void; removeDragDrop: () => void } | null>(null)
   // Tracks the last dims we received from the PTY (via pty:resize events).
   // When the local ResizeObserver fires after a remote-driven resize, we
@@ -142,8 +163,10 @@ export function TerminalPanel({
         brightCyan: '#29b8db',
         brightWhite: '#e5e5e5',
       },
-      fontFamily: 'Cascadia Code, Menlo, Monaco, Consolas, "Courier New", monospace',
-      fontSize: 13,
+      fontFamily: fontRef.current.family,
+      // fontRef.current.size is in points (matches Windows Terminal); xterm's
+      // fontSize is CSS px, so convert at this boundary.
+      fontSize: pointsToPixels(fontRef.current.size),
     })
     const fitAddon = new FitAddon()
     const webLinksAddon = new WebLinksAddon((_event, uri) => {
@@ -340,22 +363,24 @@ export function TerminalPanel({
         setTimeout(() => searchInputRef.current?.focus(), 50)
         return false
       }
-      // Mod+= / Mod+-: font zoom
+      // Mod+= / Mod+-: font zoom (ephemeral, per-terminal). term.options.fontSize
+      // is in CSS px; the shared bounds are in points, so convert them so zoom
+      // and the settings picker agree on the limits.
       if (e.type === 'keydown' && modKey(e) && (e.key === '=' || e.key === '+')) {
-        const newSize = Math.min(term.options.fontSize! + 1, 28)
+        const newSize = Math.min(term.options.fontSize! + 1, pointsToPixels(TERMINAL_FONT_SIZE_MAX))
         term.options.fontSize = newSize
         fitAddon.fit()
         return false
       }
       if (e.type === 'keydown' && modKey(e) && e.key === '-') {
-        const newSize = Math.max(term.options.fontSize! - 1, 8)
+        const newSize = Math.max(term.options.fontSize! - 1, pointsToPixels(TERMINAL_FONT_SIZE_MIN))
         term.options.fontSize = newSize
         fitAddon.fit()
         return false
       }
-      // Mod+0: reset font size
+      // Mod+0: reset zoom back to the configured size (converted points -> px)
       if (e.type === 'keydown' && modKey(e) && e.key === '0') {
-        term.options.fontSize = 13
+        term.options.fontSize = pointsToPixels(fontRef.current.size)
         fitAddon.fit()
         return false
       }
@@ -441,6 +466,23 @@ export function TerminalPanel({
       try { term.dispose() } catch {}
     }
   }, [id, folderPath, agentCli, claudeArgs, codexArgs, isPlainShell])
+
+  // Live-apply font-setting changes to the existing terminal, no re-mount.
+  // Skips the first run: the mount effect above already built the terminal
+  // with the current font and fits it after layout (via requestAnimationFrame).
+  // Fitting here before that initial layout would compute a bogus size.
+  const fontApplyDoneRef = useRef(false)
+  useEffect(() => {
+    if (!fontApplyDoneRef.current) { fontApplyDoneRef.current = true; return }
+    const term = terminalRef.current
+    if (!term) return
+    term.options.fontFamily = fontFamilyResolved
+    term.options.fontSize = pointsToPixels(fontSizeResolved)
+    // Same mutate-then-fit pattern the zoom shortcuts use; fit() reflows
+    // cols/rows for the new cell size and (per the ResizeObserver above) syncs
+    // the PTY.
+    try { fitAddonRef.current?.fit() } catch {}
+  }, [fontFamilyResolved, fontSizeResolved])
 
   // Load editor info once
   useEffect(() => {
