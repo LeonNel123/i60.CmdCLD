@@ -29,6 +29,12 @@ import {
   stripResumeArgsForQuickLaunch,
   type AgentCli,
 } from '../../shared/agent-cli'
+import {
+  DEFAULT_TERMINAL_FONT_FAMILY,
+  DEFAULT_TERMINAL_FONT_SIZE,
+  clampTerminalFontSize,
+  resolveTerminalFontFamily,
+} from '../../shared/terminal-font'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
@@ -77,6 +83,10 @@ export default function App() {
   const [autopilotRunning, setAutopilotRunning] = useState<Set<string>>(new Set())
   const [autopilotPanelFor, setAutopilotPanelFor] = useState<string | null>(null)
   const [autopilotDefaults, setAutopilotDefaults] = useState({ costCap: 1.0, maxIterations: 40 })
+  // Terminal font is a global setting applied to every xterm panel. Held here
+  // so a change in Settings live-applies to all open terminals via props.
+  const [terminalFontFamily, setTerminalFontFamily] = useState<string>(DEFAULT_TERMINAL_FONT_FAMILY)
+  const [terminalFontSize, setTerminalFontSize] = useState<number>(DEFAULT_TERMINAL_FONT_SIZE)
 
   // Track terminal busy/idle state + notification sound
   const notifyRef = useRef(false)
@@ -123,6 +133,8 @@ export default function App() {
         setDefaultViewMode(settings.defaultViewMode)
         setFavoriteFolders(settings.favoriteFolders ?? [])
         setRestoreSessionEnabled(settings.restoreSessionEnabled ?? false)
+        setTerminalFontFamily(resolveTerminalFontFamily(settings.terminalFontFamily))
+        setTerminalFontSize(clampTerminalFontSize(settings.terminalFontSize))
         setAutopilotDefaults({
           costCap: settings.autopilotDefaultCostCap ?? 1.0,
           maxIterations: settings.autopilotDefaultMaxIterations ?? 40,
@@ -499,6 +511,8 @@ export default function App() {
       setNotifyOnIdle(s.notifyOnIdle)
       setProjectsRoot(s.projectsRoot)
       setDefaultViewMode(s.defaultViewMode)
+      setTerminalFontFamily(resolveTerminalFontFamily(s.terminalFontFamily))
+      setTerminalFontSize(clampTerminalFontSize(s.terminalFontSize))
     }).catch(() => {})
   }, [])
 
@@ -652,6 +666,8 @@ export default function App() {
                   claudeArgs={t.claudeArgs}
                   codexArgs={t.codexArgs}
                   isPlainShell={t.isPlainShell}
+                  fontFamily={terminalFontFamily}
+                  fontSize={terminalFontSize}
                   onClose={() => handleRequestClose(t.id)}
                   onSpawnShell={() => handleSpawnShell(t.path, t.color)}
                   onOpenMarkdown={setMarkdownFile}
@@ -683,6 +699,8 @@ export default function App() {
               claudeArgs={t.claudeArgs}
               codexArgs={t.codexArgs}
               isPlainShell={t.isPlainShell}
+              fontFamily={terminalFontFamily}
+              fontSize={terminalFontSize}
               onClose={() => handleRequestClose(t.id)}
               onSpawnShell={() => handleSpawnShell(t.path, t.color)}
               onOpenMarkdown={setMarkdownFile}

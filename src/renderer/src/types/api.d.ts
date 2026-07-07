@@ -153,7 +153,7 @@ export interface ElectronAPI {
   getHomeDir: () => Promise<string>
   getVersion: () => Promise<string>
   projectCreate: (folderName: string) => Promise<string | null>
-  settingsGetAll: () => Promise<{ editor: string; defaultAgentCli: 'claude' | 'codex'; claudeArgs: string; codexArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; favoriteFolders: string[]; restoreSessionEnabled: boolean; autopilotApiProvider: 'anthropic' | 'openrouter'; autopilotPlannerModel: string; autopilotDefaultCostCap: number; autopilotDefaultMaxIterations: number }>
+  settingsGetAll: () => Promise<{ editor: string; defaultAgentCli: 'claude' | 'codex'; claudeArgs: string; codexArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; favoriteFolders: string[]; restoreSessionEnabled: boolean; terminalFontFamily: string; terminalFontSize: number; autopilotApiProvider: 'anthropic' | 'openrouter'; autopilotPlannerModel: string; autopilotDefaultCostCap: number; autopilotDefaultMaxIterations: number }>
   settingsSet: (key: string, value: unknown) => Promise<void>
   agentCliAvailability: () => Promise<Record<'claude' | 'codex', { available: boolean; path: string | null }>>
   settingsGetBudgetState: (projectPath: string) => Promise<{

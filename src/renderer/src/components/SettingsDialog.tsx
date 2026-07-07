@@ -7,6 +7,16 @@ import {
   type AgentCli,
 } from '../../../shared/agent-cli'
 import { AgentLaunchOptions } from './AgentLaunchOptions'
+import {
+  DEFAULT_TERMINAL_FONT_FAMILY,
+  DEFAULT_TERMINAL_FONT_SIZE,
+  TERMINAL_FONT_PRESETS,
+  TERMINAL_FONT_SIZE_MAX,
+  TERMINAL_FONT_SIZE_MIN,
+  clampTerminalFontSize,
+  pointsToPixels,
+  resolveTerminalFontFamily,
+} from '../../../shared/terminal-font'
 
 interface SettingsDialogProps {
   onClose: () => void
@@ -24,6 +34,8 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
   const [notifyOnIdle, setNotifyOnIdle] = useState(false)
   const [restoreSessionEnabled, setRestoreSessionEnabled] = useState(false)
+  const [terminalFontFamily, setTerminalFontFamily] = useState<string>(DEFAULT_TERMINAL_FONT_FAMILY)
+  const [terminalFontSize, setTerminalFontSize] = useState<number>(DEFAULT_TERMINAL_FONT_SIZE)
   const [projectsRoot, setProjectsRoot] = useState('')
   const [loaded, setLoaded] = useState(false)
   const [remoteAccess, setRemoteAccess] = useState(false)
@@ -98,6 +110,8 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
       setRemotePort(s.remotePort ?? 3456)
       setFavoriteFolders(s.favoriteFolders ?? [])
       setRestoreSessionEnabled(s.restoreSessionEnabled ?? false)
+      setTerminalFontFamily(resolveTerminalFontFamily(s.terminalFontFamily))
+      setTerminalFontSize(clampTerminalFontSize(s.terminalFontSize))
       setApProvider((s.autopilotApiProvider as any) ?? 'anthropic')
       setApModel(s.autopilotPlannerModel ?? 'claude-sonnet-4-6')
       setApCostCap(s.autopilotDefaultCostCap ?? 1.0)
@@ -230,6 +244,8 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
       // Clear the saved file so the next launch behaves like a fresh install.
       window.api.sessionClearLast().catch(() => {})
     }
+    window.api.settingsSet('terminalFontFamily', resolveTerminalFontFamily(terminalFontFamily))
+    window.api.settingsSet('terminalFontSize', clampTerminalFontSize(terminalFontSize))
     window.api.settingsSet('autopilotApiProvider', apProvider)
     window.api.settingsSet('autopilotPlannerModel', apModel)
     window.api.settingsSet('autopilotDefaultCostCap', apCostCap)
@@ -465,6 +481,97 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
           </div>
           <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '4px' }}>
             These flags are passed to `{AGENT_CLI_COMMANDS[agentArgsTab]}` when opening a new terminal
+          </div>
+        </div>
+
+        {/* Terminal font */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
+            Terminal Font
+          </label>
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+            <select
+              value={TERMINAL_FONT_PRESETS.some((p) => p.value === terminalFontFamily) ? terminalFontFamily : '__custom__'}
+              onChange={(e) => { if (e.target.value !== '__custom__') setTerminalFontFamily(e.target.value) }}
+              style={{
+                flex: 1,
+                background: '#0d1117',
+                border: '1px solid #333',
+                borderRadius: '4px',
+                padding: '8px 10px',
+                color: '#e0e0e0',
+                fontSize: '12px',
+                fontFamily: 'inherit',
+                outline: 'none',
+              }}
+            >
+              {TERMINAL_FONT_PRESETS.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+              <option value="__custom__">Custom…</option>
+            </select>
+            <button
+              onClick={() => setTerminalFontSize((s) => clampTerminalFontSize(s - 1))}
+              title="Smaller"
+              style={{ background: '#333', border: '1px solid #444', borderRadius: '4px', width: '30px', color: '#ccc', fontSize: '14px', cursor: 'pointer', flexShrink: 0 }}
+            >−</button>
+            <input
+              type="number"
+              min={TERMINAL_FONT_SIZE_MIN}
+              max={TERMINAL_FONT_SIZE_MAX}
+              value={terminalFontSize}
+              onChange={(e) => setTerminalFontSize(clampTerminalFontSize(Number(e.target.value)))}
+              title="Font size in points (matches Windows Terminal)"
+              style={{ width: '52px', background: '#0d1117', border: '1px solid #333', borderRadius: '4px', padding: '8px 6px', color: '#e0e0e0', fontSize: '12px', fontFamily: 'inherit', outline: 'none', textAlign: 'center', flexShrink: 0 }}
+            />
+            <button
+              onClick={() => setTerminalFontSize((s) => clampTerminalFontSize(s + 1))}
+              title="Larger"
+              style={{ background: '#333', border: '1px solid #444', borderRadius: '4px', width: '30px', color: '#ccc', fontSize: '14px', cursor: 'pointer', flexShrink: 0 }}
+            >+</button>
+            <span style={{ color: '#666', fontSize: '11px', fontFamily: 'inherit', alignSelf: 'center', flexShrink: 0 }}>pt</span>
+          </div>
+          <input
+            type="text"
+            value={terminalFontFamily}
+            onChange={(e) => setTerminalFontFamily(e.target.value)}
+            placeholder={DEFAULT_TERMINAL_FONT_FAMILY}
+            spellCheck={false}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              background: '#0d1117',
+              border: '1px solid #333',
+              borderRadius: '4px',
+              padding: '8px 10px',
+              color: '#e0e0e0',
+              fontSize: '12px',
+              fontFamily: 'Menlo, Consolas, monospace',
+              outline: 'none',
+              marginBottom: '6px',
+            }}
+          />
+          <div
+            style={{
+              background: '#1e1e1e',
+              border: '1px solid #333',
+              borderRadius: '4px',
+              padding: '8px 10px',
+              color: '#cccccc',
+              fontFamily: resolveTerminalFontFamily(terminalFontFamily),
+              fontSize: `${pointsToPixels(clampTerminalFontSize(terminalFontSize))}px`,
+              lineHeight: 1.4,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {'The quick brown fox  0O1lI|  => != >=  {}[]()'}
+          </div>
+          <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '4px' }}>
+            Size is in points, matching Windows Terminal ({clampTerminalFontSize(terminalFontSize)} pt ≈ {pointsToPixels(clampTerminalFontSize(terminalFontSize))} px).
+            Applies to all terminals. Zoom any terminal live with {window.api.platform === 'darwin' ? '⌘' : 'Ctrl'}
+            {' +'} / {window.api.platform === 'darwin' ? '⌘' : 'Ctrl'} −, reset with {window.api.platform === 'darwin' ? '⌘' : 'Ctrl'} 0.
           </div>
         </div>
 
