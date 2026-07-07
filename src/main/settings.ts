@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { dirname } from 'path'
 import { DEFAULT_AGENT_CLI, normalizeAgentCli, type AgentCli } from '../shared/agent-cli'
 import { DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE } from '../shared/terminal-font'
+import { DEFAULT_APP_FONT_FAMILY } from '../shared/app-font'
 
 export interface AppSettings {
   editor: string
@@ -18,6 +19,7 @@ export interface AppSettings {
   restoreSessionEnabled: boolean
   terminalFontFamily: string
   terminalFontSize: number
+  appFontFamily: string
   autopilotApiProvider: 'anthropic' | 'openrouter'
   autopilotPlannerModel: string
   autopilotDefaultCostCap: number
@@ -39,6 +41,7 @@ const DEFAULTS: AppSettings = {
   restoreSessionEnabled: false,
   terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
   terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
+  appFontFamily: DEFAULT_APP_FONT_FAMILY,
   autopilotApiProvider: 'anthropic',
   autopilotPlannerModel: 'claude-sonnet-4-6',
   autopilotDefaultCostCap: 1.0,

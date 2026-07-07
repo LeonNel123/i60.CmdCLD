@@ -82,7 +82,7 @@ contextBridge.exposeInMainWorld('api', {
   projectCreate: (folderName: string): Promise<string | null> =>
     ipcRenderer.invoke('project:create', folderName),
 
-  settingsGetAll: (): Promise<{ editor: string; defaultAgentCli: 'claude' | 'codex'; claudeArgs: string; codexArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; favoriteFolders: string[]; terminalFontFamily: string; terminalFontSize: number }> =>
+  settingsGetAll: (): Promise<{ editor: string; defaultAgentCli: 'claude' | 'codex'; claudeArgs: string; codexArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; favoriteFolders: string[]; terminalFontFamily: string; terminalFontSize: number; appFontFamily: string }> =>
     ipcRenderer.invoke('settings:getAll'),
 
   settingsSet: (key: string, value: unknown): Promise<void> =>
