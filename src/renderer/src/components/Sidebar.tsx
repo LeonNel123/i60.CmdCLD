@@ -1,7 +1,10 @@
 import { useState, memo, useEffect, useRef } from 'react'
 import type { RecentFolder } from '../types/api'
 import { formatRelativeTime } from '../utils/format-relative-time'
-import { ChevronLeft, ChevronRight, ChevronDown, Star, X, LayoutGrid } from './icons'
+import {
+  ChevronLeft, ChevronRight, ChevronDown, Star, X, LayoutGrid,
+  FolderOpen, Sparkles, TerminalSquare, AppWindow, FolderPlus, Settings,
+} from './icons'
 
 interface TerminalEntry {
   id: string
@@ -25,10 +28,19 @@ interface SidebarProps {
   favoriteFolders: string[]
   onToggleFavorite: (path: string) => void
   onContextMenu: (path: string, x: number, y: number) => void
+  onAddFolder: () => void
+  onQuickAgent: () => void
+  onQuickShell: () => void
+  onNewWindow: () => void
+  onNewProject: () => void
+  onOpenSettings: () => void
+  hasProjectsRoot: boolean
 }
 
-const EXPANDED_WIDTH = 180
 const COLLAPSED_WIDTH = 36
+const DEFAULT_EXPANDED_WIDTH = 200
+const MIN_EXPANDED_WIDTH = 150
+const MAX_EXPANDED_WIDTH = 420
 
 interface RecentRowProps {
   folder: RecentFolder
@@ -165,6 +177,13 @@ export function Sidebar({
   favoriteFolders,
   onToggleFavorite,
   onContextMenu,
+  onAddFolder,
+  onQuickAgent,
+  onQuickShell,
+  onNewWindow,
+  onNewProject,
+  onOpenSettings,
+  hasProjectsRoot,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -172,6 +191,15 @@ export function Sidebar({
       return saved === null ? true : saved === 'true'
     } catch { return true }
   })
+
+  const [expandedWidth, setExpandedWidth] = useState<number>(() => {
+    try {
+      const saved = parseInt(localStorage.getItem('sidebar-width') || '', 10)
+      if (Number.isFinite(saved)) return Math.min(Math.max(saved, MIN_EXPANDED_WIDTH), MAX_EXPANDED_WIDTH)
+    } catch {}
+    return DEFAULT_EXPANDED_WIDTH
+  })
+  const [resizing, setResizing] = useState(false)
 
   const [recentExpanded, setRecentExpanded] = useState(() => {
     try {
@@ -203,7 +231,34 @@ export function Sidebar({
     try { localStorage.setItem('sidebar-favorites-expanded', String(next)) } catch {}
   }
 
-  const width = collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH
+  // Drag the right edge to resize the expanded panel. Width is clamped and
+  // persisted; the container's width transition is disabled mid-drag so it
+  // tracks the pointer instead of lagging behind.
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = expandedWidth
+    let latest = startW
+    setResizing(true)
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+    const onMove = (ev: MouseEvent) => {
+      latest = Math.min(Math.max(startW + (ev.clientX - startX), MIN_EXPANDED_WIDTH), MAX_EXPANDED_WIDTH)
+      setExpandedWidth(latest)
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+      setResizing(false)
+      try { localStorage.setItem('sidebar-width', String(latest)) } catch {}
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
+
+  const width = collapsed ? COLLAPSED_WIDTH : expandedWidth
   const activePaths = new Set(terminals.map((t) => t.path))
 
   const btnStyle = (active = false, disabled = false): React.CSSProperties => ({
@@ -252,15 +307,44 @@ export function Sidebar({
       borderRight: '1px solid #2d2d2d',
       display: 'flex',
       flexDirection: 'column',
-      transition: 'width 150ms ease',
+      transition: resizing ? 'none' : 'width 150ms ease',
       overflow: 'hidden',
       flexShrink: 0,
+      position: 'relative',
     }}>
       <style>{`
         .recent-row:hover .recent-star { opacity: 1 !important; }
         .recent-row:hover { background: rgba(255,255,255,0.06); }
         .sidebar-btn:hover { background: rgba(255,255,255,0.06) !important; }
+        .sidebar-resize-handle:hover { background: rgba(255,255,255,0.14); }
       `}</style>
+
+      {/* Primary actions (formerly the icon rail) */}
+      <div style={{ padding: '4px', borderBottom: '1px solid #2d2d2d', flexShrink: 0 }}>
+        <button onClick={onAddFolder} style={btnStyle()} className="sidebar-btn" title="Open Project — pick a folder to launch the default agent in">
+          <span style={{ color: '#22c55e', display: 'flex', flexShrink: 0 }}><FolderOpen width={14} height={14} /></span>
+          {!collapsed && <span>Open Project</span>}
+        </button>
+        <button onClick={onQuickAgent} style={btnStyle()} className="sidebar-btn" title="Quick Agent (home folder)">
+          <span style={{ color: '#fb923c', display: 'flex', flexShrink: 0 }}><Sparkles width={14} height={14} /></span>
+          {!collapsed && <span>Quick Agent</span>}
+        </button>
+        <button onClick={onQuickShell} style={btnStyle()} className="sidebar-btn" title="Quick Shell — plain shell in your home folder">
+          <span style={{ color: '#94a3b8', display: 'flex', flexShrink: 0 }}><TerminalSquare width={14} height={14} /></span>
+          {!collapsed && <span>Quick Shell</span>}
+        </button>
+        <button onClick={onNewWindow} style={btnStyle()} className="sidebar-btn" title="New Window">
+          <span style={{ color: '#aaa', display: 'flex', flexShrink: 0 }}><AppWindow width={14} height={14} /></span>
+          {!collapsed && <span>New Window</span>}
+        </button>
+        {hasProjectsRoot && (
+          <button onClick={onNewProject} style={btnStyle()} className="sidebar-btn" title="New Project">
+            <span style={{ color: '#38bdf8', display: 'flex', flexShrink: 0 }}><FolderPlus width={14} height={14} /></span>
+            {!collapsed && <span>New Project</span>}
+          </button>
+        )}
+      </div>
+
       {/* Active terminals */}
       <div style={{ overflowY: 'auto', padding: '4px', flexShrink: 0 }}>
         {[...terminals].sort((a, b) => a.name.localeCompare(b.name)).map((t) => {
@@ -383,11 +467,34 @@ export function Sidebar({
             {!collapsed && <span>Close All</span>}
           </button>
         )}
+        <button onClick={onOpenSettings} style={btnStyle()} className="sidebar-btn" title="Settings">
+          <span style={{ color: '#aaa', display: 'flex', flexShrink: 0 }}><Settings width={14} height={14} /></span>
+          {!collapsed && <span>Settings</span>}
+        </button>
         <button onClick={toggleCollapsed} style={btnStyle()} className="sidebar-btn" title={collapsed ? 'Expand' : 'Collapse'}>
           {collapsed ? <ChevronRight width={14} height={14} /> : <ChevronLeft width={14} height={14} />}
           {!collapsed && <span>Collapse</span>}
         </button>
       </div>
+
+      {/* Right-edge resize handle (expanded only) */}
+      {!collapsed && (
+        <div
+          onMouseDown={startResize}
+          onDoubleClick={() => { setExpandedWidth(DEFAULT_EXPANDED_WIDTH); try { localStorage.setItem('sidebar-width', String(DEFAULT_EXPANDED_WIDTH)) } catch {} }}
+          className="sidebar-resize-handle"
+          title="Drag to resize · double-click to reset"
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: '5px',
+            height: '100%',
+            cursor: 'col-resize',
+            zIndex: 10,
+          }}
+        />
+      )}
     </div>
   )
 }

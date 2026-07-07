@@ -3,7 +3,6 @@ import { Responsive, WidthProvider, Layout } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { Sidebar } from './components/Sidebar'
-import { IconRail } from './components/IconRail'
 import { TerminalPanel, killPty } from './components/TerminalPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { SettingsDialog } from './components/SettingsDialog'
@@ -622,15 +621,6 @@ export default function App() {
 
   return (
     <div style={{ height: '100vh', display: 'flex', background: '#1e1e1e' }}>
-      <IconRail
-        onAddFolder={handleAddFolder}
-        onQuickAgent={handleQuickAgent}
-        onQuickShell={handleQuickShell}
-        onNewWindow={handleNewWindow}
-        onNewProject={() => setShowNewProject(true)}
-        onOpenSettings={() => setShowSettings(true)}
-        hasProjectsRoot={Boolean(projectsRoot)}
-      />
       <Sidebar
         terminals={terminals}
         viewMode={viewMode}
@@ -643,6 +633,13 @@ export default function App() {
         favoriteFolders={favoriteFolders}
         onToggleFavorite={handleToggleFavorite}
         onContextMenu={(path, x, y) => setContextMenu({ path, x, y })}
+        onAddFolder={handleAddFolder}
+        onQuickAgent={handleQuickAgent}
+        onQuickShell={handleQuickShell}
+        onNewWindow={handleNewWindow}
+        onNewProject={() => setShowNewProject(true)}
+        onOpenSettings={() => setShowSettings(true)}
+        hasProjectsRoot={Boolean(projectsRoot)}
       />
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         <ErrorBoundary>
