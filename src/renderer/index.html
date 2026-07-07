@@ -20,7 +20,10 @@
       font-display: swap;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { overflow: hidden; font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; }
+    /* Interface font is driven by the --app-font-family CSS variable (set from
+       settings by the renderer). The fallback is the default app stack so the
+       first paint looks right before JS applies the persisted value. */
+    body { overflow: hidden; font-family: var(--app-font-family, 'Cascadia Mono', 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif); }
 
     /* Thin, auto-hide scrollbars */
     ::-webkit-scrollbar {

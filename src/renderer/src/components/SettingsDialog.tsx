@@ -17,6 +17,7 @@ import {
   pointsToPixels,
   resolveTerminalFontFamily,
 } from '../../../shared/terminal-font'
+import { APP_FONT_PRESETS, DEFAULT_APP_FONT_FAMILY, resolveAppFontFamily } from '../../../shared/app-font'
 
 interface SettingsDialogProps {
   onClose: () => void
@@ -36,6 +37,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   const [restoreSessionEnabled, setRestoreSessionEnabled] = useState(false)
   const [terminalFontFamily, setTerminalFontFamily] = useState<string>(DEFAULT_TERMINAL_FONT_FAMILY)
   const [terminalFontSize, setTerminalFontSize] = useState<number>(DEFAULT_TERMINAL_FONT_SIZE)
+  const [appFontFamily, setAppFontFamily] = useState<string>(DEFAULT_APP_FONT_FAMILY)
   const [projectsRoot, setProjectsRoot] = useState('')
   const [loaded, setLoaded] = useState(false)
   const [remoteAccess, setRemoteAccess] = useState(false)
@@ -112,6 +114,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
       setRestoreSessionEnabled(s.restoreSessionEnabled ?? false)
       setTerminalFontFamily(resolveTerminalFontFamily(s.terminalFontFamily))
       setTerminalFontSize(clampTerminalFontSize(s.terminalFontSize))
+      setAppFontFamily(resolveAppFontFamily(s.appFontFamily))
       setApProvider((s.autopilotApiProvider as any) ?? 'anthropic')
       setApModel(s.autopilotPlannerModel ?? 'claude-sonnet-4-6')
       setApCostCap(s.autopilotDefaultCostCap ?? 1.0)
@@ -246,6 +249,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
     }
     window.api.settingsSet('terminalFontFamily', resolveTerminalFontFamily(terminalFontFamily))
     window.api.settingsSet('terminalFontSize', clampTerminalFontSize(terminalFontSize))
+    window.api.settingsSet('appFontFamily', resolveAppFontFamily(appFontFamily))
     window.api.settingsSet('autopilotApiProvider', apProvider)
     window.api.settingsSet('autopilotPlannerModel', apModel)
     window.api.settingsSet('autopilotDefaultCostCap', apCostCap)
@@ -572,6 +576,75 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
             Size is in points, matching Windows Terminal ({clampTerminalFontSize(terminalFontSize)} pt ≈ {pointsToPixels(clampTerminalFontSize(terminalFontSize))} px).
             Applies to all terminals. Zoom any terminal live with {window.api.platform === 'darwin' ? '⌘' : 'Ctrl'}
             {' +'} / {window.api.platform === 'darwin' ? '⌘' : 'Ctrl'} −, reset with {window.api.platform === 'darwin' ? '⌘' : 'Ctrl'} 0.
+          </div>
+        </div>
+
+        {/* Interface font */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
+            Interface Font
+          </label>
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+            <select
+              value={APP_FONT_PRESETS.some((p) => p.value === appFontFamily) ? appFontFamily : '__custom__'}
+              onChange={(e) => { if (e.target.value !== '__custom__') setAppFontFamily(e.target.value) }}
+              style={{
+                flex: 1,
+                background: '#0d1117',
+                border: '1px solid #333',
+                borderRadius: '4px',
+                padding: '8px 10px',
+                color: '#e0e0e0',
+                fontSize: '12px',
+                fontFamily: 'inherit',
+                outline: 'none',
+              }}
+            >
+              {APP_FONT_PRESETS.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+              <option value="__custom__">Custom…</option>
+            </select>
+          </div>
+          <input
+            type="text"
+            value={appFontFamily}
+            onChange={(e) => setAppFontFamily(e.target.value)}
+            placeholder={DEFAULT_APP_FONT_FAMILY}
+            spellCheck={false}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              background: '#0d1117',
+              border: '1px solid #333',
+              borderRadius: '4px',
+              padding: '8px 10px',
+              color: '#e0e0e0',
+              fontSize: '12px',
+              fontFamily: 'Menlo, Consolas, monospace',
+              outline: 'none',
+              marginBottom: '6px',
+            }}
+          />
+          <div
+            style={{
+              background: '#1e1e1e',
+              border: '1px solid #333',
+              borderRadius: '4px',
+              padding: '8px 10px',
+              color: '#cccccc',
+              fontFamily: resolveAppFontFamily(appFontFamily),
+              fontSize: '13px',
+              lineHeight: 1.5,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {'The quick brown fox — Sidebar, dialogs, buttons. 0123456789'}
+          </div>
+          <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '4px' }}>
+            Font for the app interface (sidebar, dialogs, menus). Terminals use the Terminal Font above. Applies when you save.
           </div>
         </div>
 

@@ -11,6 +11,7 @@ import {
   pointsToPixels,
   resolveTerminalFontFamily,
 } from '../src/shared/terminal-font'
+import { DEFAULT_APP_FONT_FAMILY, resolveAppFontFamily } from '../src/shared/app-font'
 
 const TMP = join(__dirname, '.tmp-settings-test')
 const FILE = join(TMP, 'settings.json')
@@ -63,6 +64,33 @@ describe('Settings terminal font', () => {
     const reloaded = new Settings(FILE)
     expect(reloaded.get('terminalFontFamily')).toBe('Fira Code, monospace')
     expect(reloaded.get('terminalFontSize')).toBe(16)
+  })
+})
+
+describe('Settings interface (app) font', () => {
+  it('defaults a legacy settings file to the Cascadia Mono interface font', () => {
+    writeFileSync(FILE, JSON.stringify({ claudeArgs: '--continue' }))
+    const settings = new Settings(FILE)
+
+    expect(settings.get('appFontFamily')).toBe(DEFAULT_APP_FONT_FAMILY)
+    expect(settings.get('appFontFamily')).toContain('Cascadia Mono')
+  })
+
+  it('persists a custom interface font family', () => {
+    const settings = new Settings(FILE)
+    settings.set('appFontFamily', 'Inter, sans-serif')
+
+    const reloaded = new Settings(FILE)
+    expect(reloaded.get('appFontFamily')).toBe('Inter, sans-serif')
+  })
+})
+
+describe('resolveAppFontFamily', () => {
+  it('keeps a non-empty family and falls back for blank/undefined', () => {
+    expect(resolveAppFontFamily('Inter, sans-serif')).toBe('Inter, sans-serif')
+    expect(resolveAppFontFamily('   ')).toBe(DEFAULT_APP_FONT_FAMILY)
+    expect(resolveAppFontFamily(undefined)).toBe(DEFAULT_APP_FONT_FAMILY)
+    expect(resolveAppFontFamily(null)).toBe(DEFAULT_APP_FONT_FAMILY)
   })
 })
 

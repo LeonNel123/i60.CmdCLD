@@ -35,6 +35,7 @@ import {
   clampTerminalFontSize,
   resolveTerminalFontFamily,
 } from '../../shared/terminal-font'
+import { DEFAULT_APP_FONT_FAMILY, resolveAppFontFamily } from '../../shared/app-font'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
@@ -87,6 +88,17 @@ export default function App() {
   // so a change in Settings live-applies to all open terminals via props.
   const [terminalFontFamily, setTerminalFontFamily] = useState<string>(DEFAULT_TERMINAL_FONT_FAMILY)
   const [terminalFontSize, setTerminalFontSize] = useState<number>(DEFAULT_TERMINAL_FONT_SIZE)
+  // Interface (UI chrome) font — applied to <body> via the --app-font-family
+  // CSS variable, so everything that inherits follows it. Independent of the
+  // terminal font; xterm sets its own font and is unaffected.
+  const [appFontFamily, setAppFontFamily] = useState<string>(DEFAULT_APP_FONT_FAMILY)
+
+  // Push the interface font onto :root as --app-font-family; body and every
+  // element using font-family: inherit picks it up. Runs on mount and whenever
+  // the setting changes (after Settings is saved/closed).
+  useEffect(() => {
+    document.documentElement.style.setProperty('--app-font-family', appFontFamily)
+  }, [appFontFamily])
 
   // Track terminal busy/idle state + notification sound
   const notifyRef = useRef(false)
@@ -135,6 +147,7 @@ export default function App() {
         setRestoreSessionEnabled(settings.restoreSessionEnabled ?? false)
         setTerminalFontFamily(resolveTerminalFontFamily(settings.terminalFontFamily))
         setTerminalFontSize(clampTerminalFontSize(settings.terminalFontSize))
+        setAppFontFamily(resolveAppFontFamily(settings.appFontFamily))
         setAutopilotDefaults({
           costCap: settings.autopilotDefaultCostCap ?? 1.0,
           maxIterations: settings.autopilotDefaultMaxIterations ?? 40,
@@ -513,6 +526,7 @@ export default function App() {
       setDefaultViewMode(s.defaultViewMode)
       setTerminalFontFamily(resolveTerminalFontFamily(s.terminalFontFamily))
       setTerminalFontSize(clampTerminalFontSize(s.terminalFontSize))
+      setAppFontFamily(resolveAppFontFamily(s.appFontFamily))
     }).catch(() => {})
   }, [])
 
