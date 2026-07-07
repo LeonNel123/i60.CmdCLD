@@ -23,6 +23,7 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+.vs/
 *.code-workspace
 
 # Superpowers
