@@ -69,8 +69,9 @@ export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup
       mode: 'single',
       options: [
         { id: 'claude-model-sonnet', label: 'Sonnet', args: '--model sonnet' },
-        { id: 'claude-model-opus', label: 'Opus', args: '--model opus' },
+        { id: 'claude-model-opus', label: 'Opus', args: '--model opus[1m]' },
         { id: 'claude-model-haiku', label: 'Haiku', args: '--model haiku' },
+        { id: 'claude-model-fable', label: 'Fable', args: '--model claude-fable-5' },
       ],
     },
     {
@@ -83,6 +84,8 @@ export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup
         { id: 'claude-effort-high', label: 'High', args: '--effort high' },
         { id: 'claude-effort-xhigh', label: 'XHigh', args: '--effort xhigh' },
         { id: 'claude-effort-max', label: 'Max', args: '--effort max' },
+        { id: 'claude-effort-ultracode', label: 'Ultracode', args: '--effort ultracode' },
+        { id: 'claude-effort-auto', label: 'Auto', args: '--effort auto' },
       ],
     },
     {
