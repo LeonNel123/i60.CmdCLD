@@ -46,7 +46,7 @@ const DEFAULTS: AppSettings = {
   appFontFamily: DEFAULT_APP_FONT_FAMILY,
   uiScalePct: DEFAULT_UI_SCALE_PCT,
   autopilotApiProvider: 'anthropic',
-  autopilotPlannerModel: 'claude-sonnet-4-6',
+  autopilotPlannerModel: 'claude-sonnet-5',
   autopilotDefaultCostCap: 1.0,
   autopilotDefaultMaxIterations: 40,
 }
