@@ -601,6 +601,24 @@ ipcMain.handle('clipboard:writeText', (_event, text: string) => {
   if (typeof text === 'string') clipboard.writeText(text)
 })
 
+// Open a file/folder with the OS default program (like double-clicking in
+// Explorer). Accepts a plain path, a file:// URL, or a "///C:/…" form.
+ipcMain.handle('shell:openPath', async (_event, target: string) => {
+  if (typeof target !== 'string' || !target) return { ok: false, error: 'empty target' }
+  let p = target
+  if (/^file:/i.test(p)) {
+    try { p = fileURLToPath(p) } catch { /* not a valid file URL — try as-is */ }
+  } else if (/^\/{2,}[A-Za-z]:/.test(p)) {
+    p = p.replace(/^\/+/, '') // strip leading slashes off a "///C:/…" path
+  }
+  try {
+    const err = await shell.openPath(p)
+    return { ok: !err, error: err || undefined }
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+})
+
 // Settings
 ipcMain.handle('settings:getAll', () => {
   return settings.getAll()
