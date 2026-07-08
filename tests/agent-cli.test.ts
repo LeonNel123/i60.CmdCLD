@@ -126,10 +126,10 @@ describe('agent CLI utilities', () => {
     args = applyAgentCliLaunchOption('claude', args, 'claude-permission-plan')
     args = applyAgentCliLaunchOption('claude', args, 'claude-model-opus')
     args = applyAgentCliLaunchOption('claude', args, 'claude-effort-high')
-    expect(args).toBe('--continue --permission-mode plan --model opus --effort high')
+    expect(args).toBe('--continue --permission-mode plan --model opus[1m] --effort high')
 
     args = applyAgentCliLaunchOption('claude', args, 'claude-skip-permissions')
-    expect(args).toBe('--continue --model opus --effort high --dangerously-skip-permissions')
+    expect(args).toBe('--continue --model opus[1m] --effort high --dangerously-skip-permissions')
   })
 })
 
