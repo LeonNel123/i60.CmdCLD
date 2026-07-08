@@ -56,14 +56,14 @@ export function killPty(id: string): void {
   window.api.killTerminal(id)
 }
 
-// File extensions that open in the code editor when a terminal link is clicked.
-// `.md` opens in the in-app markdown viewer; everything else (pdf, images,
-// archives, html, data files, …) and any file:// link opens with the OS
-// default program.
+// Source/config extensions that open in the code editor when a terminal link
+// is clicked. `.md` opens in the in-app markdown viewer; everything else —
+// data/query/markup files (sql, xml, csv, …), pdf, images, archives, html, and
+// any file:// link — opens with the OS default program.
 const EDITOR_EXTS = new Set([
   'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'json', 'jsonc', 'yaml', 'yml', 'toml',
   'css', 'scss', 'less', 'py', 'rs', 'go', 'java', 'kt', 'kts', 'c', 'cc', 'cpp',
-  'h', 'hpp', 'cs', 'rb', 'php', 'swift', 'sh', 'bash', 'zsh', 'ps1', 'sql', 'xml',
+  'h', 'hpp', 'cs', 'rb', 'php', 'swift', 'sh', 'bash', 'zsh', 'ps1',
   'env', 'cfg', 'ini', 'conf', 'gradle', 'vue', 'svelte',
 ])
 
@@ -171,6 +171,13 @@ export function TerminalPanel({
       }
     }
 
+    // Require Ctrl+click (Cmd+click on macOS) to follow a terminal link, so a
+    // stray plain click never launches a file, app, or browser — same gesture
+    // as VS Code's integrated terminal. (On macOS, Ctrl+click is a right-click,
+    // so we require Cmd there instead.)
+    const isLinkActivation = (event?: MouseEvent | null): boolean =>
+      !event || (window.api.platform === 'darwin' ? event.metaKey : event.ctrlKey)
+
     const term = new Terminal({
       cursorBlink: true,
       cursorStyle: 'bar',
@@ -202,11 +209,11 @@ export function TerminalPanel({
       // fontSize is CSS px, so convert at this boundary.
       fontSize: pointsToPixels(fontRef.current.size),
       // Handle OSC 8 hyperlinks (ESC]8;;<uri>) that terminal programs emit.
-      linkHandler: { activate: (_event, uri) => openTarget(uri) },
+      linkHandler: { activate: (event, uri) => { if (isLinkActivation(event)) openTarget(uri) } },
     })
     const fitAddon = new FitAddon()
-    const webLinksAddon = new WebLinksAddon((_event, uri) => {
-      openTarget(uri)
+    const webLinksAddon = new WebLinksAddon((event, uri) => {
+      if (isLinkActivation(event)) openTarget(uri)
     })
     const searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
@@ -245,8 +252,8 @@ export function TerminalPanel({
             end: { x: l.startIndex + l.length + 1, y: bufferLineNumber },
           },
           text: l.text,
-          activate() {
-            openTarget(l.text)
+          activate(event) {
+            if (isLinkActivation(event)) openTarget(l.text)
           },
         })))
       },
