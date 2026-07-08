@@ -226,6 +226,27 @@ export function TerminalPanel({
       },
     })
 
+    // OSC 52 clipboard: terminal programs (Claude Code, tmux, vim, …) copy to
+    // the host clipboard by emitting ESC]52;c;<base64>BEL. xterm ignores this by
+    // default, so decode it and write to the OS clipboard via the main process
+    // (reliable, unlike navigator.clipboard). Payload is "<Pc>;<Pd>"; Pd is
+    // base64, or "?" for a read request (which we ignore).
+    term.parser.registerOscHandler(52, (data) => {
+      const sep = data.indexOf(';')
+      if (sep === -1) return true
+      const payload = data.slice(sep + 1)
+      if (payload === '' || payload === '?') return true
+      try {
+        const binary = atob(payload)
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+        window.api.clipboardWriteText(new TextDecoder().decode(bytes))
+      } catch {
+        // malformed base64 — ignore
+      }
+      return true
+    })
+
     terminalRef.current = term
     fitAddonRef.current = fitAddon
     searchAddonRef.current = searchAddon
@@ -329,7 +350,7 @@ export function TerminalPanel({
 
     term.attachCustomKeyEventHandler((e) => {
       if (e.type === 'keydown' && modKey(e) && e.key === 'c' && term.hasSelection()) {
-        navigator.clipboard.writeText(term.getSelection()).catch(() => {})
+        window.api.clipboardWriteText(term.getSelection())
         return false
       }
       if (e.type === 'keydown' && modKey(e) && e.key === 'v') {

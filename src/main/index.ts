@@ -594,6 +594,13 @@ function readClipboardFilePaths(): string[] | null {
 
 ipcMain.handle('clipboard:readFiles', () => readClipboardFilePaths())
 
+// Write text to the OS clipboard from the renderer. Uses Electron's main-process
+// clipboard (always works) rather than navigator.clipboard (focus/permission
+// flaky in Electron). Used by the terminal's OSC 52 handler and Ctrl+C copy.
+ipcMain.handle('clipboard:writeText', (_event, text: string) => {
+  if (typeof text === 'string') clipboard.writeText(text)
+})
+
 // Settings
 ipcMain.handle('settings:getAll', () => {
   return settings.getAll()

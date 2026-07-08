@@ -67,6 +67,10 @@ contextBridge.exposeInMainWorld('api', {
   clipboardReadFiles: (): Promise<string[] | null> =>
     ipcRenderer.invoke('clipboard:readFiles'),
 
+  // Write plain text to the OS clipboard (reliable main-process path)
+  clipboardWriteText: (text: string): Promise<void> =>
+    ipcRenderer.invoke('clipboard:writeText', text),
+
   // File reading (for markdown viewer)
   readFile: (filePath: string): Promise<string | null> =>
     ipcRenderer.invoke('file:read', filePath),
