@@ -62,4 +62,24 @@ describe('Store multi-window', () => {
     const reloaded = new Store(TEST_FILE)
     expect(reloaded.getWindowBounds('primary')).toEqual(bounds)
   })
+
+  it('persists the maximized flag alongside restored bounds', () => {
+    const store = new Store(TEST_FILE)
+    const restored = { x: 200, y: 120, width: 1000, height: 700 }
+
+    store.saveWindowBounds('primary', restored, true)
+
+    const reloaded = new Store(TEST_FILE)
+    expect(reloaded.getWindowMaximized('primary')).toBe(true)
+    // bounds still hold the restored (un-maximized) size
+    expect(reloaded.getWindowBounds('primary')).toEqual(restored)
+  })
+
+  it('defaults maximized to false (unknown id or legacy record without the flag)', () => {
+    const store = new Store(TEST_FILE)
+    expect(store.getWindowMaximized('nope')).toBe(false)
+
+    store.saveWindowBounds('primary', { x: 0, y: 0, width: 1200, height: 800 })
+    expect(new Store(TEST_FILE).getWindowMaximized('primary')).toBe(false)
+  })
 })

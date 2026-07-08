@@ -323,6 +323,12 @@ function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: s
     win.setMenuBarVisibility(false)
   }
 
+  // Restore the maximized state. `bounds` above holds the restored (un-maximized)
+  // size, so maximizing here still lets the user un-maximize back to it.
+  if (store.getWindowMaximized(id)) {
+    win.maximize()
+  }
+
   // Open external URLs in the system browser, not in Electron. Match the
   // protocol allowlist used by the shell:openExternal IPC handler so a
   // window.open() from web content can't sneak file:// or javascript:// past.
@@ -360,12 +366,16 @@ function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: s
     clearTimeout(boundsTimer)
     boundsTimer = setTimeout(() => {
       if (!win.isDestroyed()) {
-        store.saveWindowBounds(id, win.getBounds())
+        // getNormalBounds() = the restored size even while maximized, so the
+        // saved bounds are never the maximized-overhang rectangle.
+        store.saveWindowBounds(id, win.getNormalBounds(), win.isMaximized())
       }
     }, 500)
   }
   win.on('resize', saveBounds)
   win.on('move', saveBounds)
+  win.on('maximize', saveBounds)
+  win.on('unmaximize', saveBounds)
 
   // Close handler — combines confirmation prompt with cleanup. These used to
   // be two separate listeners, which was a bug: preventDefault on one listener
@@ -376,7 +386,7 @@ function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: s
   const performCloseCleanup = (): void => {
     clearTimeout(boundsTimer)
     if (!win.isDestroyed()) {
-      store.saveWindowBounds(id, win.getBounds())
+      store.saveWindowBounds(id, win.getNormalBounds(), win.isMaximized())
     }
     const owned = ptyManager.listByWebContents(win.webContents)
     for (const meta of owned) {
