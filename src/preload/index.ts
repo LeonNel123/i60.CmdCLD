@@ -71,6 +71,10 @@ contextBridge.exposeInMainWorld('api', {
   clipboardWriteText: (text: string): Promise<void> =>
     ipcRenderer.invoke('clipboard:writeText', text),
 
+  // Open a file/folder with the OS default program (path or file:// URL)
+  openPath: (target: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('shell:openPath', target),
+
   // File reading (for markdown viewer)
   readFile: (filePath: string): Promise<string | null> =>
     ipcRenderer.invoke('file:read', filePath),

@@ -56,6 +56,17 @@ export function killPty(id: string): void {
   window.api.killTerminal(id)
 }
 
+// File extensions that open in the code editor when a terminal link is clicked.
+// `.md` opens in the in-app markdown viewer; everything else (pdf, images,
+// archives, html, data files, …) and any file:// link opens with the OS
+// default program.
+const EDITOR_EXTS = new Set([
+  'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'json', 'jsonc', 'yaml', 'yml', 'toml',
+  'css', 'scss', 'less', 'py', 'rs', 'go', 'java', 'kt', 'kts', 'c', 'cc', 'cpp',
+  'h', 'hpp', 'cs', 'rb', 'php', 'swift', 'sh', 'bash', 'zsh', 'ps1', 'sql', 'xml',
+  'env', 'cfg', 'ini', 'conf', 'gradle', 'vue', 'svelte',
+])
+
 interface TerminalPanelProps {
   id: string
   folderPath: string
@@ -137,6 +148,29 @@ export function TerminalPanel({
   useEffect(() => {
     if (!termRef.current) return
 
+    // Route a clicked terminal link/path: http(s) -> system browser; .md ->
+    // in-app viewer; source/config files -> editor; everything else (incl.
+    // file:// links) -> the OS default program (like double-clicking it).
+    const openTarget = (raw: string): void => {
+      if (/^https?:/i.test(raw)) { window.api.openExternal(raw); return }
+      const isFileUrl = /^file:/i.test(raw)
+      let filePart = raw.replace(/:\d+(:\d+)?$/, '') // strip trailing :line[:col]
+      if (!isFileUrl && !filePart.includes('/') && !filePart.includes('\\')) {
+        const sep = window.api.platform === 'win32' ? '\\' : '/'
+        filePart = folderPath + sep + filePart
+      }
+      const base = filePart.split(/[\\/]/).pop() || ''
+      const dotIdx = base.lastIndexOf('.')
+      const ext = dotIdx > 0 ? base.slice(dotIdx + 1).toLowerCase() : ''
+      if (!isFileUrl && ext === 'md' && onOpenMarkdown) {
+        onOpenMarkdown(filePart)
+      } else if (!isFileUrl && EDITOR_EXTS.has(ext)) {
+        window.api.openInEditor(filePart)
+      } else {
+        window.api.openPath(isFileUrl ? raw : filePart)
+      }
+    }
+
     const term = new Terminal({
       cursorBlink: true,
       cursorStyle: 'bar',
@@ -167,10 +201,12 @@ export function TerminalPanel({
       // fontRef.current.size is in points (matches Windows Terminal); xterm's
       // fontSize is CSS px, so convert at this boundary.
       fontSize: pointsToPixels(fontRef.current.size),
+      // Handle OSC 8 hyperlinks (ESC]8;;<uri>) that terminal programs emit.
+      linkHandler: { activate: (_event, uri) => openTarget(uri) },
     })
     const fitAddon = new FitAddon()
     const webLinksAddon = new WebLinksAddon((_event, uri) => {
-      window.api.openExternal(uri)
+      openTarget(uri)
     })
     const searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
@@ -198,7 +234,7 @@ export function TerminalPanel({
         const text = line.translateToString()
         const links: Array<{ startIndex: number; length: number; text: string }> = []
         // Match: Windows absolute paths, Unix absolute paths (not inside URLs), relative paths with / or \, and bare filenames with extensions
-        const pathRegex = /(?:[A-Z]:\\[\w\\.-]+(?::\d+)?|(?<!\/)\/[\w./-]+(?::\d+(?::\d+)?)?|(?:\.[\\/]|\.\.[\\/]|[\w][\w/\\.-]*[\\/][\w.-]+)(?::\d+(?::\d+)?)?|[\w.-]+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|toml|css|html|py|rs|go|java|sh|sql|xml|csv|txt|log|env|cfg|ini|conf)(?::\d+(?::\d+)?)?)/gi
+        const pathRegex = /(?:file:\/\/[^\s'"<>|)\]]+|[A-Z]:\\[\w\\.-]+(?::\d+)?|(?<!\/)\/[\w./-]+(?::\d+(?::\d+)?)?|(?:\.[\\/]|\.\.[\\/]|[\w][\w/\\.-]*[\\/][\w.-]+)(?::\d+(?::\d+)?)?|[\w.-]+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|toml|css|html|py|rs|go|java|sh|sql|xml|csv|txt|log|env|cfg|ini|conf)(?::\d+(?::\d+)?)?)/gi
         let match
         while ((match = pathRegex.exec(text)) !== null) {
           links.push({ startIndex: match.index, length: match[0].length, text: match[0] })
@@ -210,17 +246,7 @@ export function TerminalPanel({
           },
           text: l.text,
           activate() {
-            let filePart = l.text.replace(/:\d+(:\d+)?$/, '')
-            // Resolve bare filenames relative to the terminal's folder
-            if (!filePart.includes('/') && !filePart.includes('\\')) {
-              const sep = window.api.platform === 'win32' ? '\\' : '/'
-              filePart = folderPath + sep + filePart
-            }
-            if (filePart.toLowerCase().endsWith('.md') && onOpenMarkdown) {
-              onOpenMarkdown(filePart)
-            } else {
-              window.api.openInEditor(filePart)
-            }
+            openTarget(l.text)
           },
         })))
       },

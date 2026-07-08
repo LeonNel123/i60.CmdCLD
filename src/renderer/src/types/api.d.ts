@@ -151,6 +151,7 @@ export interface ElectronAPI {
   clipboardSaveImage: (cwd: string) => Promise<string | null>
   clipboardReadFiles: () => Promise<string[] | null>
   clipboardWriteText: (text: string) => Promise<void>
+  openPath: (target: string) => Promise<{ ok: boolean; error?: string }>
   getHomeDir: () => Promise<string>
   getVersion: () => Promise<string>
   projectCreate: (folderName: string) => Promise<string | null>
