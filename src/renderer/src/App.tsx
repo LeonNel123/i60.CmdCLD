@@ -35,6 +35,7 @@ import {
   resolveTerminalFontFamily,
 } from '../../shared/terminal-font'
 import { DEFAULT_APP_FONT_FAMILY, resolveAppFontFamily } from '../../shared/app-font'
+import { DEFAULT_UI_SCALE_PCT, clampUiScalePct, chromeScale } from '../../shared/ui-scale'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
@@ -91,6 +92,9 @@ export default function App() {
   // CSS variable, so everything that inherits follows it. Independent of the
   // terminal font; xterm sets its own font and is unaffected.
   const [appFontFamily, setAppFontFamily] = useState<string>(DEFAULT_APP_FONT_FAMILY)
+  // Interface scale (%) applied to UI chrome via the --ui-scale CSS variable
+  // and the .ui-scaled class. Terminals never carry that class, so unaffected.
+  const [uiScalePct, setUiScalePct] = useState<number>(DEFAULT_UI_SCALE_PCT)
 
   // Push the interface font onto :root as --app-font-family; body and every
   // element using font-family: inherit picks it up. Runs on mount and whenever
@@ -98,6 +102,12 @@ export default function App() {
   useEffect(() => {
     document.documentElement.style.setProperty('--app-font-family', appFontFamily)
   }, [appFontFamily])
+
+  // Push the interface scale onto :root as --ui-scale (a zoom factor). 100% is
+  // rebased to match the terminal, so this is chromeScale, not the raw percent.
+  useEffect(() => {
+    document.documentElement.style.setProperty('--ui-scale', String(chromeScale(uiScalePct)))
+  }, [uiScalePct])
 
   // Track terminal busy/idle state + notification sound
   const notifyRef = useRef(false)
@@ -147,6 +157,7 @@ export default function App() {
         setTerminalFontFamily(resolveTerminalFontFamily(settings.terminalFontFamily))
         setTerminalFontSize(clampTerminalFontSize(settings.terminalFontSize))
         setAppFontFamily(resolveAppFontFamily(settings.appFontFamily))
+        setUiScalePct(clampUiScalePct(settings.uiScalePct))
         setAutopilotDefaults({
           costCap: settings.autopilotDefaultCostCap ?? 1.0,
           maxIterations: settings.autopilotDefaultMaxIterations ?? 40,
@@ -526,6 +537,7 @@ export default function App() {
       setTerminalFontFamily(resolveTerminalFontFamily(s.terminalFontFamily))
       setTerminalFontSize(clampTerminalFontSize(s.terminalFontSize))
       setAppFontFamily(resolveAppFontFamily(s.appFontFamily))
+      setUiScalePct(clampUiScalePct(s.uiScalePct))
     }).catch(() => {})
   }, [])
 
@@ -640,6 +652,7 @@ export default function App() {
         onNewProject={() => setShowNewProject(true)}
         onOpenSettings={() => setShowSettings(true)}
         hasProjectsRoot={Boolean(projectsRoot)}
+        uiScale={chromeScale(uiScalePct)}
       />
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         <ErrorBoundary>

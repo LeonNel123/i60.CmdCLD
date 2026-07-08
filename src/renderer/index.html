@@ -20,6 +20,11 @@
       font-display: swap;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    /* Interface scale — applied to UI chrome surfaces (sidebar, dialog panels,
+       welcome/empty). Driven by the --ui-scale variable set from settings.
+       The terminal grid never carries this class, so terminals are unaffected. */
+    .ui-scaled { zoom: var(--ui-scale, 1); }
     /* Interface font is driven by the --app-font-family CSS variable (set from
        settings by the renderer). The fallback is the default app stack so the
        first paint looks right before JS applies the persisted value. */
