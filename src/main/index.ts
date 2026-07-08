@@ -613,8 +613,12 @@ ipcMain.handle('shell:openPath', async (_event, target: string) => {
   }
   try {
     const err = await shell.openPath(p)
+    // No associated app / open failed — reveal it in Explorer so the click
+    // still does something visible rather than silently no-op.
+    if (err) { try { shell.showItemInFolder(p) } catch {} }
     return { ok: !err, error: err || undefined }
   } catch (e) {
+    try { shell.showItemInFolder(p) } catch {}
     return { ok: false, error: String(e) }
   }
 })
