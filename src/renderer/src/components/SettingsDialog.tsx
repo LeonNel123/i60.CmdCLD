@@ -18,6 +18,7 @@ import {
   resolveTerminalFontFamily,
 } from '../../../shared/terminal-font'
 import { APP_FONT_PRESETS, DEFAULT_APP_FONT_FAMILY, resolveAppFontFamily } from '../../../shared/app-font'
+import { DEFAULT_UI_SCALE_PCT, UI_SCALE_PCT_MAX, UI_SCALE_PCT_MIN, UI_SCALE_PCT_STEP, clampUiScalePct } from '../../../shared/ui-scale'
 
 interface SettingsDialogProps {
   onClose: () => void
@@ -38,6 +39,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   const [terminalFontFamily, setTerminalFontFamily] = useState<string>(DEFAULT_TERMINAL_FONT_FAMILY)
   const [terminalFontSize, setTerminalFontSize] = useState<number>(DEFAULT_TERMINAL_FONT_SIZE)
   const [appFontFamily, setAppFontFamily] = useState<string>(DEFAULT_APP_FONT_FAMILY)
+  const [uiScalePct, setUiScalePct] = useState<number>(DEFAULT_UI_SCALE_PCT)
   const [projectsRoot, setProjectsRoot] = useState('')
   const [loaded, setLoaded] = useState(false)
   const [remoteAccess, setRemoteAccess] = useState(false)
@@ -115,6 +117,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
       setTerminalFontFamily(resolveTerminalFontFamily(s.terminalFontFamily))
       setTerminalFontSize(clampTerminalFontSize(s.terminalFontSize))
       setAppFontFamily(resolveAppFontFamily(s.appFontFamily))
+      setUiScalePct(clampUiScalePct(s.uiScalePct))
       setApProvider((s.autopilotApiProvider as any) ?? 'anthropic')
       setApModel(s.autopilotPlannerModel ?? 'claude-sonnet-4-6')
       setApCostCap(s.autopilotDefaultCostCap ?? 1.0)
@@ -250,6 +253,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
     window.api.settingsSet('terminalFontFamily', resolveTerminalFontFamily(terminalFontFamily))
     window.api.settingsSet('terminalFontSize', clampTerminalFontSize(terminalFontSize))
     window.api.settingsSet('appFontFamily', resolveAppFontFamily(appFontFamily))
+    window.api.settingsSet('uiScalePct', clampUiScalePct(uiScalePct))
     window.api.settingsSet('autopilotApiProvider', apProvider)
     window.api.settingsSet('autopilotPlannerModel', apModel)
     window.api.settingsSet('autopilotDefaultCostCap', apCostCap)
@@ -645,6 +649,39 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
           </div>
           <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '4px' }}>
             Font for the app interface (sidebar, dialogs, menus). Terminals use the Terminal Font above. Applies when you save.
+          </div>
+        </div>
+
+        {/* Interface size */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
+            Interface Size
+          </label>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <button
+              onClick={() => setUiScalePct((v) => clampUiScalePct(v - UI_SCALE_PCT_STEP))}
+              title="Smaller"
+              style={{ background: '#333', border: '1px solid #444', borderRadius: '4px', width: '30px', color: '#ccc', fontSize: '14px', cursor: 'pointer', flexShrink: 0 }}
+            >−</button>
+            <input
+              type="number"
+              min={UI_SCALE_PCT_MIN}
+              max={UI_SCALE_PCT_MAX}
+              step={UI_SCALE_PCT_STEP}
+              value={uiScalePct}
+              onChange={(e) => setUiScalePct(clampUiScalePct(Number(e.target.value)))}
+              title="Interface size (percent)"
+              style={{ width: '64px', background: '#0d1117', border: '1px solid #333', borderRadius: '4px', padding: '8px 6px', color: '#e0e0e0', fontSize: '12px', fontFamily: 'inherit', outline: 'none', textAlign: 'center', flexShrink: 0 }}
+            />
+            <button
+              onClick={() => setUiScalePct((v) => clampUiScalePct(v + UI_SCALE_PCT_STEP))}
+              title="Larger"
+              style={{ background: '#333', border: '1px solid #444', borderRadius: '4px', width: '30px', color: '#ccc', fontSize: '14px', cursor: 'pointer', flexShrink: 0 }}
+            >+</button>
+            <span style={{ color: '#666', fontSize: '11px', fontFamily: 'inherit', flexShrink: 0 }}>%</span>
+          </div>
+          <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '4px' }}>
+            Scales the interface so text and controls grow together (this first cut scales the sidebar). Terminals are never affected. Applies when you save.
           </div>
         </div>
 

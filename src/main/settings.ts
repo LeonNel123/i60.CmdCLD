@@ -3,6 +3,7 @@ import { dirname } from 'path'
 import { DEFAULT_AGENT_CLI, normalizeAgentCli, type AgentCli } from '../shared/agent-cli'
 import { DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE } from '../shared/terminal-font'
 import { DEFAULT_APP_FONT_FAMILY } from '../shared/app-font'
+import { DEFAULT_UI_SCALE_PCT } from '../shared/ui-scale'
 
 export interface AppSettings {
   editor: string
@@ -20,6 +21,7 @@ export interface AppSettings {
   terminalFontFamily: string
   terminalFontSize: number
   appFontFamily: string
+  uiScalePct: number
   autopilotApiProvider: 'anthropic' | 'openrouter'
   autopilotPlannerModel: string
   autopilotDefaultCostCap: number
@@ -42,6 +44,7 @@ const DEFAULTS: AppSettings = {
   terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
   terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
   appFontFamily: DEFAULT_APP_FONT_FAMILY,
+  uiScalePct: DEFAULT_UI_SCALE_PCT,
   autopilotApiProvider: 'anthropic',
   autopilotPlannerModel: 'claude-sonnet-4-6',
   autopilotDefaultCostCap: 1.0,

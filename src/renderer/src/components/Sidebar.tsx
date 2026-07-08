@@ -35,6 +35,7 @@ interface SidebarProps {
   onNewProject: () => void
   onOpenSettings: () => void
   hasProjectsRoot: boolean
+  uiScale?: number
 }
 
 const COLLAPSED_WIDTH = 36
@@ -184,6 +185,7 @@ export function Sidebar({
   onNewProject,
   onOpenSettings,
   hasProjectsRoot,
+  uiScale = 1,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -243,7 +245,11 @@ export function Sidebar({
     document.body.style.userSelect = 'none'
     document.body.style.cursor = 'col-resize'
     const onMove = (ev: MouseEvent) => {
-      latest = Math.min(Math.max(startW + (ev.clientX - startX), MIN_EXPANDED_WIDTH), MAX_EXPANDED_WIDTH)
+      // The panel box is zoomed by uiScale, so a pointer move of dx real px
+      // corresponds to dx/uiScale of unscaled width. Divide so the edge tracks
+      // the cursor 1:1 at any interface scale.
+      const dx = (ev.clientX - startX) / (uiScale || 1)
+      latest = Math.min(Math.max(startW + dx, MIN_EXPANDED_WIDTH), MAX_EXPANDED_WIDTH)
       setExpandedWidth(latest)
     }
     const onUp = () => {
@@ -299,7 +305,7 @@ export function Sidebar({
 
 
   return (
-    <div style={{
+    <div className="ui-scaled" style={{
       width,
       minWidth: width,
       height: '100%',
@@ -454,6 +460,12 @@ export function Sidebar({
           </div>
         )
       })()}
+
+      {/* Keep a flexible spacer whenever the Favorites/Recent section (which
+          normally provides the flex:1 growth) isn't rendered — e.g. when
+          collapsed or with no recents — so the bottom actions stay pinned to
+          the bottom instead of riding up under the terminals. */}
+      {(collapsed || recentFolders.length === 0) && <div style={{ flex: 1 }} />}
 
       {/* Bottom actions */}
       <div style={{ padding: '6px 4px', borderTop: '1px solid #2d2d2d', flexShrink: 0 }}>

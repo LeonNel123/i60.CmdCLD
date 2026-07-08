@@ -12,6 +12,15 @@ import {
   resolveTerminalFontFamily,
 } from '../src/shared/terminal-font'
 import { DEFAULT_APP_FONT_FAMILY, resolveAppFontFamily } from '../src/shared/app-font'
+import {
+  DEFAULT_UI_SCALE_PCT,
+  UI_CHROME_BASE_SCALE,
+  UI_SCALE_PCT_MAX,
+  UI_SCALE_PCT_MIN,
+  chromeScale,
+  clampUiScalePct,
+  uiScaleFactor,
+} from '../src/shared/ui-scale'
 
 const TMP = join(__dirname, '.tmp-settings-test')
 const FILE = join(TMP, 'settings.json')
@@ -82,6 +91,42 @@ describe('Settings interface (app) font', () => {
 
     const reloaded = new Settings(FILE)
     expect(reloaded.get('appFontFamily')).toBe('Inter, sans-serif')
+  })
+})
+
+describe('Settings interface scale', () => {
+  it('defaults a legacy settings file to 100% interface scale', () => {
+    writeFileSync(FILE, JSON.stringify({ claudeArgs: '--continue' }))
+    const settings = new Settings(FILE)
+    expect(settings.get('uiScalePct')).toBe(DEFAULT_UI_SCALE_PCT)
+    expect(settings.get('uiScalePct')).toBe(100)
+  })
+
+  it('persists a custom interface scale', () => {
+    const settings = new Settings(FILE)
+    settings.set('uiScalePct', 130)
+    expect(new Settings(FILE).get('uiScalePct')).toBe(130)
+  })
+})
+
+describe('clampUiScalePct / uiScaleFactor', () => {
+  it('rounds and clamps into range and converts percent to factor', () => {
+    expect(clampUiScalePct(120)).toBe(120)
+    expect(clampUiScalePct(10)).toBe(UI_SCALE_PCT_MIN)
+    expect(clampUiScalePct(999)).toBe(UI_SCALE_PCT_MAX)
+    expect(clampUiScalePct(NaN)).toBe(DEFAULT_UI_SCALE_PCT)
+    expect(uiScaleFactor(100)).toBe(1)
+    expect(uiScaleFactor(150)).toBeCloseTo(1.5)
+  })
+})
+
+describe('chromeScale (interface 100% matches the terminal)', () => {
+  it('applies a base of 16/12 so 100% lifts 12px chrome text to the terminal 16px', () => {
+    expect(UI_CHROME_BASE_SCALE).toBeCloseTo(16 / 12)
+    // 100% -> terminal-matching zoom (12px -> 16px)
+    expect(chromeScale(100)).toBeCloseTo(16 / 12)
+    // percentage scales around that base
+    expect(chromeScale(150)).toBeCloseTo(1.5 * (16 / 12))
   })
 })
 
