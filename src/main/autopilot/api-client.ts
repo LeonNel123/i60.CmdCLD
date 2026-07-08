@@ -11,6 +11,10 @@ import { buildDecisionPrompt } from './prompts'
 const RATES: Record<string, { input: number; cachedInput: number; cacheCreation: number; output: number }> = {
   // ---- Anthropic (direct) ----
   'claude-haiku-4-5':              { input: 1.0,  cachedInput: 0.10,  cacheCreation: 1.25,  output: 5.0  },
+  'claude-sonnet-5':               { input: 3.0,  cachedInput: 0.30,  cacheCreation: 3.75,  output: 15.0 },
+  'claude-opus-4-8':               { input: 5.0,  cachedInput: 0.50,  cacheCreation: 6.25,  output: 25.0 },
+  'claude-fable-5':                { input: 10.0, cachedInput: 1.0,   cacheCreation: 12.5,  output: 50.0 },
+  // Prior-gen (kept so existing saved configs still track accurately)
   'claude-sonnet-4-6':             { input: 3.0,  cachedInput: 0.30,  cacheCreation: 3.75,  output: 15.0 },
   'claude-opus-4-7':               { input: 15.0, cachedInput: 1.50,  cacheCreation: 18.75, output: 75.0 },
 

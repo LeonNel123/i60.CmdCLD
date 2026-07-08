@@ -79,7 +79,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
 
   // Autopilot tab state
   const [apProvider, setApProvider] = useState<'anthropic' | 'openrouter'>('anthropic')
-  const [apModel, setApModel] = useState('claude-sonnet-4-6')
+  const [apModel, setApModel] = useState('claude-sonnet-5')
   const [apCostCap, setApCostCap] = useState(1.0)
   const [apMaxIter, setApMaxIter] = useState(40)
   const [apHasAnthKey, setApHasAnthKey] = useState(false)
@@ -119,7 +119,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
       setAppFontFamily(resolveAppFontFamily(s.appFontFamily))
       setUiScalePct(clampUiScalePct(s.uiScalePct))
       setApProvider((s.autopilotApiProvider as any) ?? 'anthropic')
-      setApModel(s.autopilotPlannerModel ?? 'claude-sonnet-4-6')
+      setApModel(s.autopilotPlannerModel ?? 'claude-sonnet-5')
       setApCostCap(s.autopilotDefaultCostCap ?? 1.0)
       setApMaxIter(s.autopilotDefaultMaxIterations ?? 40)
       setLoaded(true)
@@ -1024,8 +1024,8 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
               <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '4px' }}>
                 Effort Level
               </label>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                {['low', 'medium', 'high'].map((e) => (
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                {['low', 'medium', 'high', 'xhigh', 'max', 'ultracode', 'auto'].map((e) => (
                   <button key={e} onClick={() => setCcEffort(e)} style={{
                     background: ccEffort === e ? '#22c55e20' : '#ffffff08',
                     border: ccEffort === e ? '1px solid #22c55e' : '1px solid #333',
@@ -1042,6 +1042,23 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
               <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '4px' }}>
                 Model Override
               </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
+                {[
+                  { id: '', label: 'Default' },
+                  { id: 'claude-opus-4-8', label: 'Opus 4.8' },
+                  { id: 'claude-sonnet-5', label: 'Sonnet 5' },
+                  { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+                  { id: 'claude-fable-5', label: 'Fable 5' },
+                ].map((m) => (
+                  <button key={m.id || 'default'} onClick={() => setCcModel(m.id)} style={{
+                    background: ccModel === m.id ? '#22c55e20' : '#ffffff08',
+                    border: ccModel === m.id ? '1px solid #22c55e' : '1px solid #333',
+                    borderRadius: '4px', padding: '4px 10px',
+                    color: ccModel === m.id ? '#22c55e' : '#aaa',
+                    fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer',
+                  }}>{m.label}</button>
+                ))}
+              </div>
               <input type="text" value={ccModel} onChange={(e) => setCcModel(e.target.value)}
                 placeholder="(default — no override)"
                 style={{
@@ -1282,8 +1299,9 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
                 {(apProvider === 'anthropic'
                   ? [
                       { id: 'claude-haiku-4-5',           label: 'Haiku 4.5',      cost: '$1 / $5',        star: true,  hint: 'fast & cheap, premium JSON' },
-                      { id: 'claude-sonnet-4-6',          label: 'Sonnet 4.6',     cost: '$3 / $15',       star: false, hint: 'balanced default' },
-                      { id: 'claude-opus-4-7',            label: 'Opus 4.7',       cost: '$15 / $75',      star: false, hint: 'overkill for orchestrator' },
+                      { id: 'claude-sonnet-5',            label: 'Sonnet 5',       cost: '$3 / $15',       star: false, hint: 'balanced default' },
+                      { id: 'claude-opus-4-8',            label: 'Opus 4.8',       cost: '$5 / $25',       star: false, hint: 'most capable Opus' },
+                      { id: 'claude-fable-5',             label: 'Fable 5',        cost: '$10 / $50',      star: false, hint: 'top capability, pricey for orchestration' },
                     ]
                   : [
                       { id: 'moonshotai/kimi-k2-0905',    label: 'Kimi K2 0905',   cost: '$0.40 / $2.00',  star: true,  hint: 'best value, agentic, 262K ctx' },
