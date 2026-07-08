@@ -5,6 +5,10 @@ import { dirname } from 'path'
 export interface WindowState {
   id: string
   bounds: { width: number; height: number; x: number; y: number }
+  // Whether the window was maximized. Stored alongside `bounds`, which always
+  // holds the *restored* (un-maximized) size — so we can reopen maximized yet
+  // still un-maximize back to the right size.
+  maximized?: boolean
   sidebarCollapsed: boolean
   viewMode: 'grid' | { focused: string }
   folders: Array<{
@@ -82,14 +86,21 @@ export class Store {
     return win?.bounds || { width: 1200, height: 800, x: 100, y: 100 }
   }
 
-  saveWindowBounds(windowId: string, bounds: { width: number; height: number; x: number; y: number }): void {
+  getWindowMaximized(windowId?: string): boolean {
+    const win = this.state.windows.find((w) => w.id === windowId)
+    return win?.maximized ?? false
+  }
+
+  saveWindowBounds(windowId: string, bounds: { width: number; height: number; x: number; y: number }, maximized = false): void {
     const win = this.state.windows.find((w) => w.id === windowId)
     if (win) {
       win.bounds = bounds
+      win.maximized = maximized
     } else {
       this.state.windows.push({
         id: windowId,
         bounds,
+        maximized,
         sidebarCollapsed: true,
         viewMode: 'grid',
         folders: [],
