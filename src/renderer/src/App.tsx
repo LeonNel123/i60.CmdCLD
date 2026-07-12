@@ -409,8 +409,9 @@ export default function App() {
 
   const handleRemoveRecent = useCallback(async (path: string) => {
     try {
+      await window.api.recentRemove(path)
       const current = await window.api.recentList()
-      setRecentFolders(current.filter((r) => r.path !== path))
+      setRecentFolders(current)
     } catch {
       // best-effort
     }

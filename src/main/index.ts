@@ -1185,6 +1185,10 @@ ipcMain.handle('recent:add', async (_event, folderPath: string) => {
   await recentDB.add(folderPath)
 })
 
+ipcMain.handle('recent:remove', async (_event, folderPath: string) => {
+  await recentDB.remove(folderPath)
+})
+
 ipcMain.handle('recent-check-path', (_e, p: string) => recentDB.checkPath(p))
 
 ipcMain.handle('get-build-info', () => ({

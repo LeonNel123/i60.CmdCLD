@@ -59,6 +59,9 @@ contextBridge.exposeInMainWorld('api', {
   recentAdd: (folderPath: string): Promise<void> =>
     ipcRenderer.invoke('recent:add', folderPath),
 
+  recentRemove: (folderPath: string): Promise<void> =>
+    ipcRenderer.invoke('recent:remove', folderPath),
+
   // Clipboard image — saves to .screenshots/ in project folder, returns path
   clipboardSaveImage: (cwd: string): Promise<string | null> =>
     ipcRenderer.invoke('clipboard:saveImage', cwd),
