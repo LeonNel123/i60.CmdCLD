@@ -85,7 +85,6 @@ export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup
         { id: 'claude-effort-xhigh', label: 'XHigh', args: '--effort xhigh' },
         { id: 'claude-effort-max', label: 'Max', args: '--effort max' },
         { id: 'claude-effort-ultracode', label: 'Ultracode', args: '--effort ultracode' },
-        { id: 'claude-effort-auto', label: 'Auto', args: '--effort auto' },
       ],
     },
     {
