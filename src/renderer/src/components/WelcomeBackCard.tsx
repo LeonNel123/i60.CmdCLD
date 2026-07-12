@@ -1,12 +1,18 @@
+import { useEffect, useState } from 'react'
 import { RotateCcw, X } from './icons'
 
 interface WelcomeBackCardProps {
   count: number
-  onReopen: () => void
+  resumeDefault: boolean
+  onReopen: (resume: boolean) => void
   onDismiss: () => void
 }
 
-export function WelcomeBackCard({ count, onReopen, onDismiss }: WelcomeBackCardProps) {
+export function WelcomeBackCard({ count, resumeDefault, onReopen, onDismiss }: WelcomeBackCardProps) {
+  const [resume, setResume] = useState(resumeDefault)
+  // Settings load async in App; re-seed if the default arrives after mount.
+  useEffect(() => { setResume(resumeDefault) }, [resumeDefault])
+
   if (count <= 0) return null
 
   return (
@@ -39,11 +45,23 @@ export function WelcomeBackCard({ count, onReopen, onDismiss }: WelcomeBackCardP
           <X width={14} height={14} />
         </button>
       </div>
-      <div style={{ color: '#aaa', fontSize: '12px', lineHeight: 1.5, marginBottom: '14px' }}>
+      <div style={{ color: '#aaa', fontSize: '12px', lineHeight: 1.5, marginBottom: '10px' }}>
         You had {count} project{count === 1 ? '' : 's'} open last time.
       </div>
+      <label style={{
+        display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px',
+        cursor: 'pointer', color: '#aaa', fontSize: '12px', fontFamily: 'inherit',
+      }}>
+        <input
+          type="checkbox"
+          checked={resume}
+          onChange={(e) => setResume(e.target.checked)}
+          style={{ accentColor: '#a78bfa' }}
+        />
+        Resume conversations (--continue)
+      </label>
       <button
-        onClick={onReopen}
+        onClick={() => onReopen(resume)}
         style={{
           background: '#a78bfa',
           color: '#000',
