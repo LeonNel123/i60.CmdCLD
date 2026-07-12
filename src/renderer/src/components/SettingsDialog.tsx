@@ -36,6 +36,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
   const [notifyOnIdle, setNotifyOnIdle] = useState(false)
   const [restoreSessionEnabled, setRestoreSessionEnabled] = useState(false)
+  const [restoreSessionResume, setRestoreSessionResume] = useState(false)
   const [terminalFontFamily, setTerminalFontFamily] = useState<string>(DEFAULT_TERMINAL_FONT_FAMILY)
   const [terminalFontSize, setTerminalFontSize] = useState<number>(DEFAULT_TERMINAL_FONT_SIZE)
   const [appFontFamily, setAppFontFamily] = useState<string>(DEFAULT_APP_FONT_FAMILY)
@@ -114,6 +115,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
       setRemotePort(s.remotePort ?? 3456)
       setFavoriteFolders(s.favoriteFolders ?? [])
       setRestoreSessionEnabled(s.restoreSessionEnabled ?? false)
+      setRestoreSessionResume(s.restoreSessionResume ?? false)
       setTerminalFontFamily(resolveTerminalFontFamily(s.terminalFontFamily))
       setTerminalFontSize(clampTerminalFontSize(s.terminalFontSize))
       setAppFontFamily(resolveAppFontFamily(s.appFontFamily))
@@ -246,6 +248,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
     window.api.settingsSet('remotePort', remotePort)
     window.api.settingsSet('favoriteFolders', favoriteFolders)
     window.api.settingsSet('restoreSessionEnabled', restoreSessionEnabled)
+    window.api.settingsSet('restoreSessionResume', restoreSessionResume)
     if (!restoreSessionEnabled) {
       // Clear the saved file so the next launch behaves like a fresh install.
       window.api.sessionClearLast().catch(() => {})
@@ -768,6 +771,24 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
           </label>
           <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '2px', marginLeft: '24px', lineHeight: 1.4 }}>
             Track which projects you have open. On next launch, a "Welcome back" card lets you reopen them with one click. App startup is unaffected.
+          </div>
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', marginLeft: '24px',
+            cursor: restoreSessionEnabled ? 'pointer' : 'default',
+            color: restoreSessionEnabled ? '#ccc' : '#666',
+            fontSize: '12px', fontFamily: 'inherit',
+          }}>
+            <input
+              type="checkbox"
+              checked={restoreSessionResume}
+              disabled={!restoreSessionEnabled}
+              onChange={(e) => setRestoreSessionResume(e.target.checked)}
+              style={{ accentColor: '#22c55e' }}
+            />
+            Resume conversations on reopen
+          </label>
+          <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '2px', marginLeft: '48px', lineHeight: 1.4 }}>
+            Adds --continue (Claude) / resume --last (Codex) when reopening, so each agent picks up its previous conversation.
           </div>
         </div>
 

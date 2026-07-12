@@ -216,6 +216,17 @@ export function stripResumeArgsForQuickLaunch(agentCli: AgentCli, args: string):
   return next.replace(/\s+/g, ' ').trim()
 }
 
+export function ensureResumeArgs(agentCli: AgentCli, args: string): string {
+  const trimmed = args.trim()
+  if (agentCli === 'claude') {
+    if (/(^|\s)(--continue|-c|--resume|-r)(?=\s|$)/.test(trimmed)) return trimmed
+    return trimmed ? `${trimmed} --continue` : '--continue'
+  }
+  // codex resumes via a subcommand, which must precede any options
+  if (/(^|\s)resume(?=\s|$)/.test(trimmed)) return trimmed
+  return trimmed ? `resume --last ${trimmed}` : 'resume --last'
+}
+
 export function getAutopilotRuntimeGuardrail(agentCli: AgentCli, args: string): AutopilotRuntimeGuardrail {
   const normalized = normalizeAgentCli(agentCli)
   const tokens = tokenizeArgs(args)
