@@ -139,6 +139,7 @@ export interface ElectronAPI {
   windowList: () => Promise<WindowInfo[]>
   recentList: () => Promise<RecentFolder[]>
   recentAdd: (folderPath: string) => Promise<void>
+  recentRemove: (folderPath: string) => Promise<void>
   recentCheckPath: (path: string) => Promise<'ok' | 'missing' | 'unmounted'>
   getBuildInfo: () => Promise<{
     electron: string
