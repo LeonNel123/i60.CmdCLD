@@ -26,6 +26,7 @@ import {
   getArgsForAgent,
   normalizeAgentCli,
   stripResumeArgsForQuickLaunch,
+  ensureResumeArgs,
   type AgentCli,
 } from '../../shared/agent-cli'
 import {
@@ -76,6 +77,7 @@ export default function App() {
   const [toast, setToast] = useState<{ message: string; kind: 'info' | 'warn' } | null>(null)
   const [favoriteFolders, setFavoriteFolders] = useState<string[]>([])
   const [restoreSessionEnabled, setRestoreSessionEnabled] = useState(false)
+  const [restoreSessionResume, setRestoreSessionResume] = useState(false)
   const [savedSessionProjects, setSavedSessionProjects] = useState<Array<{ path: string; agentCli?: AgentCli; claudeArgs: string; codexArgs?: string; isPlainShell: boolean }>>([])
   const [welcomeDismissed, setWelcomeDismissed] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ path: string; x: number; y: number } | null>(null)
@@ -154,6 +156,7 @@ export default function App() {
         setDefaultViewMode(settings.defaultViewMode)
         setFavoriteFolders(settings.favoriteFolders ?? [])
         setRestoreSessionEnabled(settings.restoreSessionEnabled ?? false)
+        setRestoreSessionResume(settings.restoreSessionResume ?? false)
         setTerminalFontFamily(resolveTerminalFontFamily(settings.terminalFontFamily))
         setTerminalFontSize(clampTerminalFontSize(settings.terminalFontSize))
         setAppFontFamily(resolveAppFontFamily(settings.appFontFamily))
@@ -441,8 +444,8 @@ export default function App() {
               name: folderName,
               color,
               agentCli,
-              claudeArgs: p.claudeArgs,
-              codexArgs: p.codexArgs ?? '',
+              claudeArgs: restoreSessionResume ? ensureResumeArgs('claude', p.claudeArgs) : p.claudeArgs,
+              codexArgs: restoreSessionResume ? ensureResumeArgs('codex', p.codexArgs ?? '') : (p.codexArgs ?? ''),
             }
       })
       const next = [...prev, ...newEntries]
@@ -456,7 +459,7 @@ export default function App() {
       window.api.recentAdd(p.path).catch(() => {})
     }
     setWelcomeDismissed(true)
-  }, [savedSessionProjects, defaultViewMode])
+  }, [savedSessionProjects, defaultViewMode, restoreSessionResume])
 
   const handleOpenRecent = useCallback(async (folderPath: string) => {
     let status: 'ok' | 'missing' | 'unmounted' = 'ok'
@@ -535,6 +538,8 @@ export default function App() {
       setNotifyOnIdle(s.notifyOnIdle)
       setProjectsRoot(s.projectsRoot)
       setDefaultViewMode(s.defaultViewMode)
+      setRestoreSessionEnabled(s.restoreSessionEnabled ?? false)
+      setRestoreSessionResume(s.restoreSessionResume ?? false)
       setTerminalFontFamily(resolveTerminalFontFamily(s.terminalFontFamily))
       setTerminalFontSize(clampTerminalFontSize(s.terminalFontSize))
       setAppFontFamily(resolveAppFontFamily(s.appFontFamily))

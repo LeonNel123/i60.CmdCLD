@@ -18,6 +18,7 @@ export interface AppSettings {
   remotePort: number
   favoriteFolders: string[]
   restoreSessionEnabled: boolean
+  restoreSessionResume: boolean
   terminalFontFamily: string
   terminalFontSize: number
   appFontFamily: string
@@ -41,6 +42,7 @@ const DEFAULTS: AppSettings = {
   remotePort: 3456,
   favoriteFolders: [],
   restoreSessionEnabled: false,
+  restoreSessionResume: false,
   terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
   terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
   appFontFamily: DEFAULT_APP_FONT_FAMILY,

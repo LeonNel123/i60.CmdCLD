@@ -9,6 +9,7 @@ import {
   getCouncilReviewerRuntimeGuardrail,
   normalizeAgentCli,
   stripResumeArgsForQuickLaunch,
+  ensureResumeArgs,
 } from '../src/shared/agent-cli'
 
 describe('agent CLI utilities', () => {
@@ -39,6 +40,17 @@ describe('agent CLI utilities', () => {
     expect(stripResumeArgsForQuickLaunch('claude', '-c --model sonnet')).toBe('--model sonnet')
     expect(stripResumeArgsForQuickLaunch('codex', 'resume --last --model gpt-5.4')).toBe('--model gpt-5.4')
     expect(stripResumeArgsForQuickLaunch('codex', '--sandbox workspace-write')).toBe('--sandbox workspace-write')
+  })
+
+  it('adds resume flags for session restore without duplicating existing ones', () => {
+    expect(ensureResumeArgs('claude', '')).toBe('--continue')
+    expect(ensureResumeArgs('claude', '--model sonnet')).toBe('--model sonnet --continue')
+    expect(ensureResumeArgs('claude', '--continue --model sonnet')).toBe('--continue --model sonnet')
+    expect(ensureResumeArgs('claude', '-c')).toBe('-c')
+    expect(ensureResumeArgs('claude', '--resume abc123')).toBe('--resume abc123')
+    expect(ensureResumeArgs('codex', '')).toBe('resume --last')
+    expect(ensureResumeArgs('codex', '--sandbox workspace-write')).toBe('resume --last --sandbox workspace-write')
+    expect(ensureResumeArgs('codex', 'resume --last')).toBe('resume --last')
   })
 
   it('defines composable launch option groups for Claude and Codex', () => {
