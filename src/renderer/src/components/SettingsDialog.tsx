@@ -1025,7 +1025,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
                 Effort Level
               </label>
               <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                {['low', 'medium', 'high', 'xhigh', 'max', 'ultracode', 'auto'].map((e) => (
+                {['low', 'medium', 'high', 'xhigh', 'max', 'ultracode'].map((e) => (
                   <button key={e} onClick={() => setCcEffort(e)} style={{
                     background: ccEffort === e ? '#22c55e20' : '#ffffff08',
                     border: ccEffort === e ? '1px solid #22c55e' : '1px solid #333',
