@@ -4,6 +4,8 @@ export interface GitStatus {
   isRepo: boolean
   branch: string | null
   dirty: boolean
+  /** Commits on the local branch that are not on its upstream (0 when no upstream). */
+  ahead: number
 }
 
 const cache = new Map<string, { value: GitStatus; at: number }>()
@@ -22,18 +24,22 @@ function runGit(cwd: string, args: string[]): Promise<string> {
 async function probe(path: string): Promise<GitStatus> {
   try {
     const branch = (await runGit(path, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
-    if (!branch) return { isRepo: false, branch: null, dirty: false }
+    if (!branch) return { isRepo: false, branch: null, dirty: false, ahead: 0 }
     let dirty = false
+    let ahead = 0
     try {
-      const status = await runGit(path, ['status', '--porcelain'])
-      dirty = status.trim().length > 0
+      const status = await runGit(path, ['status', '--porcelain', '--branch'])
+      const lines = status.split('\n')
+      const aheadMatch = (lines[0] || '').match(/\[ahead (\d+)/)
+      if (aheadMatch) ahead = parseInt(aheadMatch[1], 10)
+      dirty = lines.slice(1).some((l) => l.trim().length > 0)
     } catch {
       // status failed but rev-parse worked — call it clean
       dirty = false
     }
-    return { isRepo: true, branch, dirty }
+    return { isRepo: true, branch, dirty, ahead }
   } catch {
-    return { isRepo: false, branch: null, dirty: false }
+    return { isRepo: false, branch: null, dirty: false, ahead: 0 }
   }
 }
 

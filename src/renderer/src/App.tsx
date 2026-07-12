@@ -57,7 +57,9 @@ export default function App() {
   const [terminals, setTerminals] = useState<TerminalEntry[]>([])
   const [layouts, setLayouts] = useState<Layout[]>([])
   const [closingId, setClosingId] = useState<string | null>(null)
+  const [closeWarning, setCloseWarning] = useState<string | null>(null)
   const [showCloseAll, setShowCloseAll] = useState(false)
+  const [closeAllWarning, setCloseAllWarning] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>({ type: 'grid' })
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
@@ -231,6 +233,45 @@ export default function App() {
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [terminals, restoreSessionEnabled])
+
+  // While the close-terminal dialog is up, warn about work that would not be
+  // reachable from another machine: uncommitted changes and unpushed commits.
+  useEffect(() => {
+    setCloseWarning(null)
+    if (!closingId) return
+    const path = terminals.find((t) => t.id === closingId)?.path
+    if (!path) return
+    let cancelled = false
+    window.api.gitStatus(path, true).then((s) => {
+      if (cancelled) return
+      const parts: string[] = []
+      if (s.dirty) parts.push('uncommitted changes')
+      if (s.ahead > 0) parts.push(`${s.ahead} unpushed commit${s.ahead === 1 ? '' : 's'}`)
+      if (parts.length > 0) setCloseWarning(`⚠ This project has ${parts.join(' and ')}.`)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [closingId, terminals])
+
+  // Same warning for the close-all dialog, across every open project.
+  useEffect(() => {
+    setCloseAllWarning(null)
+    if (!showCloseAll) return
+    let cancelled = false
+    const paths = [...new Set(terminals.map((t) => t.path))]
+    Promise.all(paths.map(async (p) => {
+      try { return { path: p, status: await window.api.gitStatus(p, true) } } catch { return null }
+    })).then((checks) => {
+      if (cancelled) return
+      const name = (p: string): string => p.split(/[\\/]/).pop() || p
+      const dirty = checks.filter((c) => c?.status.dirty).map((c) => name(c!.path))
+      const unpushed = checks.filter((c) => c?.status.ahead).map((c) => name(c!.path))
+      const lines: string[] = []
+      if (dirty.length > 0) lines.push(`⚠ Uncommitted changes in: ${dirty.join(', ')}`)
+      if (unpushed.length > 0) lines.push(`⚠ Unpushed commits in: ${unpushed.join(', ')}`)
+      if (lines.length > 0) setCloseAllWarning(lines.join('\n'))
+    })
+    return () => { cancelled = true }
+  }, [showCloseAll, terminals])
 
   // Listen for sessions created remotely
   useEffect(() => {
@@ -753,6 +794,7 @@ export default function App() {
       {closingId && (
         <ConfirmDialog
           message={`Close terminal for "${terminals.find((t) => t.id === closingId)?.name}"?`}
+          detail={closeWarning ?? undefined}
           onConfirm={handleConfirmClose}
           onCancel={() => setClosingId(null)}
         />
@@ -761,6 +803,7 @@ export default function App() {
       {showCloseAll && (
         <ConfirmDialog
           message={`Close all ${terminals.length} terminal${terminals.length !== 1 ? 's' : ''}?`}
+          detail={closeAllWarning ?? undefined}
           onConfirm={handleConfirmCloseAll}
           onCancel={() => setShowCloseAll(false)}
         />

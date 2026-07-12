@@ -14,7 +14,7 @@ import { detectEditors, getDefaultEditor } from './editor-detect'
 import { RemoteServer } from './remote-server'
 import { hardenGlobalSettings, trustFolder, readClaudeConfig, writeClaudeConfig } from './claude-config'
 import { getStatus as tsGetStatus, getServeStatus as tsGetServeStatus, startServe as tsStartServe, stopServe as tsStopServe } from './tailscale'
-import { getGitStatus } from './git-status'
+import { getGitStatus, clearGitStatusCache } from './git-status'
 import type { TerminalMeta } from './pty-manager'
 import { createAutopilot, type AutopilotHandle, type AutopilotState } from './autopilot'
 import { createAutopilotPro, type AutopilotProHandle, type AutopilotProOptions } from './autopilot-pro'
@@ -408,16 +408,32 @@ function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: s
     }
 
     e.preventDefault()
-    dialog.showMessageBox(win, {
-      type: 'question',
-      buttons: ['Close', 'Cancel'],
-      defaultId: 1,
-      cancelId: 1,
-      title: 'Close window',
-      message: 'Close this window?',
-      detail: `${owned.length} terminal session${owned.length === 1 ? '' : 's'} will be terminated.`,
+    const paths = [...new Set(owned.map((t) => t.path))]
+    Promise.all(paths.map(async (p) => {
+      clearGitStatusCache(p)
+      try { return { path: p, status: await getGitStatus(p) } } catch { return null }
+    })).then((checks) => {
+      const name = (p: string): string => p.split(/[\\/]/).pop() || p
+      const dirty = checks.filter((c) => c?.status.dirty).map((c) => name(c!.path))
+      const unpushed = checks.filter((c) => c?.status.ahead).map((c) => name(c!.path))
+      const warnings: string[] = []
+      if (dirty.length > 0) warnings.push(`⚠ Uncommitted changes in: ${dirty.join(', ')}`)
+      if (unpushed.length > 0) warnings.push(`⚠ Unpushed commits in: ${unpushed.join(', ')}`)
+      const detailLines = [
+        `${owned.length} terminal session${owned.length === 1 ? '' : 's'} will be terminated.`,
+        ...(warnings.length > 0 ? ['', ...warnings] : []),
+      ]
+      return dialog.showMessageBox(win, {
+        type: warnings.length > 0 ? 'warning' : 'question',
+        buttons: ['Close', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+        title: 'Close window',
+        message: 'Close this window?',
+        detail: detailLines.join('\n'),
+      })
     }).then((result) => {
-      if (result.response === 0) {
+      if (result && result.response === 0) {
         confirmedClose.add(win)
         win.close()
       }
@@ -656,8 +672,9 @@ ipcMain.handle('session:clearLast', () => {
   lastSessionStore.clear()
 })
 
-ipcMain.handle('git:status', (_event, path: string) => {
-  if (typeof path !== 'string' || !path) return { isRepo: false, branch: null, dirty: false }
+ipcMain.handle('git:status', (_event, path: string, fresh?: boolean) => {
+  if (typeof path !== 'string' || !path) return { isRepo: false, branch: null, dirty: false, ahead: 0 }
+  if (fresh) clearGitStatusCache(path)
   return getGitStatus(path)
 })
 

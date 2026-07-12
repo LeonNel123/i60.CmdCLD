@@ -42,6 +42,7 @@ export interface GitStatus {
   isRepo: boolean
   branch: string | null
   dirty: boolean
+  ahead: number
 }
 
 export type ApiProvider = 'anthropic' | 'openrouter'
@@ -168,7 +169,7 @@ export interface ElectronAPI {
   sessionSaveLast: (session: SavedSession) => Promise<void>
   sessionLoadLast: () => Promise<SavedSession | null>
   sessionClearLast: () => Promise<void>
-  gitStatus: (path: string) => Promise<GitStatus>
+  gitStatus: (path: string, fresh?: boolean) => Promise<GitStatus>
   openExternal: (url: string) => Promise<void>
   openInExplorer: (folderPath: string) => Promise<void>
   openInEditor: (targetPath: string) => Promise<void>

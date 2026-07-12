@@ -1,10 +1,11 @@
 interface ConfirmDialogProps {
   message: string
+  detail?: string
   onConfirm: () => void
   onCancel: () => void
 }
 
-export function ConfirmDialog({ message, onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({ message, detail, onConfirm, onCancel }: ConfirmDialogProps) {
   return (
     <div style={{
       position: 'fixed',
@@ -23,7 +24,10 @@ export function ConfirmDialog({ message, onConfirm, onCancel }: ConfirmDialogPro
         width: '90%',
         border: '1px solid #333',
       }}>
-        <p style={{ color: '#e0e0e0', marginBottom: '20px', fontWeight: 600 }}>{message}</p>
+        <p style={{ color: '#e0e0e0', marginBottom: detail ? '8px' : '20px', fontWeight: 600 }}>{message}</p>
+        {detail && (
+          <p style={{ color: '#fbbf24', marginBottom: '20px', fontSize: '12px', whiteSpace: 'pre-line' }}>{detail}</p>
+        )}
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button
             onClick={onCancel}
