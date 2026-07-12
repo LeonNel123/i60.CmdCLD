@@ -461,7 +461,8 @@ export default function App() {
     }
   }, [])
 
-  const handleReopenSavedSession = useCallback(() => {
+  const handleReopenSavedSession = useCallback((resumeOverride?: boolean) => {
+    const resume = resumeOverride ?? restoreSessionResume
     if (savedSessionProjects.length === 0) {
       setWelcomeDismissed(true)
       return
@@ -485,8 +486,8 @@ export default function App() {
               name: folderName,
               color,
               agentCli,
-              claudeArgs: restoreSessionResume ? ensureResumeArgs('claude', p.claudeArgs) : p.claudeArgs,
-              codexArgs: restoreSessionResume ? ensureResumeArgs('codex', p.codexArgs ?? '') : (p.codexArgs ?? ''),
+              claudeArgs: resume ? ensureResumeArgs('claude', p.claudeArgs) : p.claudeArgs,
+              codexArgs: resume ? ensureResumeArgs('codex', p.codexArgs ?? '') : (p.codexArgs ?? ''),
             }
       })
       const next = [...prev, ...newEntries]
@@ -706,6 +707,7 @@ export default function App() {
         {terminals.length === 0 && savedSessionProjects.length > 0 && !welcomeDismissed && (
           <WelcomeBackCard
             count={savedSessionProjects.length}
+            resumeDefault={restoreSessionResume}
             onReopen={handleReopenSavedSession}
             onDismiss={() => setWelcomeDismissed(true)}
           />
