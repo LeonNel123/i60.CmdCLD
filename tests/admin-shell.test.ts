@@ -80,9 +80,24 @@ describe.runIf(process.platform === 'win32')('detectElevationBridge', () => {
   const gsudoPath = 'C:\\Program Files\\gsudo\\Current\\gsudo.exe'
   const noFile = () => false
 
-  it('prefers gsudo when on PATH', () => {
+  it('prefers gsudo when on PATH, querying for the .exe specifically', () => {
+    let whereArgs: string[] | undefined
+    const exec = (file: string, args: string[]) => {
+      if (file === 'where.exe') {
+        whereArgs = args
+        return `${gsudoPath}\r\n`
+      }
+      throw new Error('unexpected call')
+    }
+    expect(detectElevationBridge(exec, noFile)).toEqual({ kind: 'gsudo', exe: gsudoPath })
+    expect(whereArgs).toEqual(['gsudo.exe'])
+  })
+
+  it('never picks the extensionless gsudo shell script (CreateProcess error 193)', () => {
+    // gsudo ships a bash script named `gsudo` next to gsudo.exe; a where
+    // query can list the script first. Only .exe lines may be spawned.
     const exec = (file: string) => {
-      if (file === 'where.exe') return `${gsudoPath}\r\n`
+      if (file === 'where.exe') return `C:\\Program Files\\gsudo\\Current\\gsudo\r\n${gsudoPath}\r\n`
       throw new Error('unexpected call')
     }
     expect(detectElevationBridge(exec, noFile)).toEqual({ kind: 'gsudo', exe: gsudoPath })

@@ -458,8 +458,11 @@ export function TerminalPanel({
         // First mount — create PTY and launch the selected agent CLI.
         activePtys.add(id)
         const launchArgs = agentCli === 'codex' ? codexArgs : claudeArgs
-        window.api.createTerminal(id, folderPath, agentCli, launchArgs, elevated).catch(() => {
-          term.write('\r\n\x1b[31m[Failed to create terminal]\x1b[0m\r\n')
+        window.api.createTerminal(id, folderPath, agentCli, launchArgs, elevated).catch((err) => {
+          // Surface the real reason — a bare failure banner is undebuggable.
+          const raw = err instanceof Error ? err.message : String(err)
+          const msg = raw.replace(/^Error invoking remote method 'pty:create': (Error: )?/, '')
+          term.write(`\r\n\x1b[31m[Failed to create terminal]\x1b[0m\r\n${msg}\r\n`)
           activePtys.delete(id)
         })
 
