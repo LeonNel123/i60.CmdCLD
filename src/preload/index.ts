@@ -4,9 +4,10 @@ contextBridge.exposeInMainWorld('api', {
   // Platform info (synchronous — available immediately)
   platform: process.platform as 'win32' | 'darwin' | 'linux',
 
-  // Existing PTY methods
-  createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex', launchArgs?: string): Promise<void> =>
-    ipcRenderer.invoke('pty:create', id, cwd, agentCli, launchArgs),
+  // Existing PTY methods. `elevated` spawns the shell through an elevation
+  // bridge (gsudo / sudo inline) so the tile hosts an admin shell.
+  createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex', launchArgs?: string, elevated?: boolean): Promise<void> =>
+    ipcRenderer.invoke('pty:create', id, cwd, agentCli, launchArgs, elevated),
 
   writeTerminal: (id: string, data: string): Promise<void> =>
     ipcRenderer.invoke('pty:write', id, data),
@@ -77,6 +78,15 @@ contextBridge.exposeInMainWorld('api', {
   // Open a file/folder with the OS default program (path or file:// URL)
   openPath: (target: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('shell:openPath', target),
+
+  // How "Run as administrator" opens: 'in-app' (elevation bridge available,
+  // tile-hosted) or 'external' (separate elevated OS window)
+  adminShellMode: (): Promise<'in-app' | 'external'> =>
+    ipcRenderer.invoke('shell:adminShellMode'),
+
+  // Launch an elevated (admin) shell in its own OS window — Windows only
+  openAdminShell: (): Promise<{ ok: boolean; cancelled?: boolean; error?: string }> =>
+    ipcRenderer.invoke('shell:openAdminShell'),
 
   // File reading (for markdown viewer)
   readFile: (filePath: string): Promise<string | null> =>
