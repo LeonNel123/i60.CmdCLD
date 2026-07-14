@@ -23,6 +23,12 @@ function getShell(): string {
 
 const SHELL = getShell()
 
+// The shell every PTY spawns with — exposed so other main-process features
+// (e.g. the elevated Quick Shell) launch the same executable.
+export function getDefaultShell(): string {
+  return SHELL
+}
+
 export class ScrollbackBuffer {
   private chunks: string[] = []
   private totalLength = 0
@@ -123,8 +129,15 @@ export class PtyManager extends EventEmitter {
     }
   }
 
-  create(id: string, cwd: string, webContents: WebContents, meta: TerminalMeta): void {
-    const ptyProcess = pty.spawn(SHELL, [], {
+  create(
+    id: string,
+    cwd: string,
+    webContents: WebContents,
+    meta: TerminalMeta,
+    // e.g. an elevation bridge: spawn `gsudo.exe pwsh.exe` instead of the shell
+    spawnOverride?: { file: string; args: string[] },
+  ): void {
+    const ptyProcess = pty.spawn(spawnOverride?.file ?? SHELL, spawnOverride?.args ?? [], {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,

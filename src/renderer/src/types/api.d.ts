@@ -125,7 +125,7 @@ export interface AttachSessionStatus {
 
 export interface ElectronAPI {
   platform: 'win32' | 'darwin' | 'linux'
-  createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex', launchArgs?: string) => Promise<void>
+  createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex', launchArgs?: string, elevated?: boolean) => Promise<void>
   writeTerminal: (id: string, data: string) => Promise<void>
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>
   killTerminal: (id: string) => Promise<void>
@@ -154,6 +154,8 @@ export interface ElectronAPI {
   clipboardReadFiles: () => Promise<string[] | null>
   clipboardWriteText: (text: string) => Promise<void>
   openPath: (target: string) => Promise<{ ok: boolean; error?: string }>
+  adminShellMode: () => Promise<'in-app' | 'external'>
+  openAdminShell: () => Promise<{ ok: boolean; cancelled?: boolean; error?: string }>
   getHomeDir: () => Promise<string>
   getVersion: () => Promise<string>
   projectCreate: (folderName: string) => Promise<string | null>

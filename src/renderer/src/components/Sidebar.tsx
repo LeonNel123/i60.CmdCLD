@@ -31,6 +31,7 @@ interface SidebarProps {
   onAddFolder: () => void
   onQuickAgent: () => void
   onQuickShell: () => void
+  onQuickShellContextMenu?: (x: number, y: number) => void
   onNewWindow: () => void
   onNewProject: () => void
   onOpenSettings: () => void
@@ -132,6 +133,7 @@ export function Sidebar({
   onAddFolder,
   onQuickAgent,
   onQuickShell,
+  onQuickShellContextMenu,
   onNewWindow,
   onNewProject,
   onOpenSettings,
@@ -286,7 +288,19 @@ export function Sidebar({
           <span style={{ color: '#fb923c', display: 'flex', flexShrink: 0 }}><Sparkles width={14} height={14} /></span>
           {!collapsed && <span>Quick Agent</span>}
         </button>
-        <button onClick={onQuickShell} style={btnStyle()} className="sidebar-btn" title="Quick Shell — plain shell in your home folder">
+        <button
+          onClick={onQuickShell}
+          onContextMenu={(e) => {
+            if (!onQuickShellContextMenu) return
+            e.preventDefault()
+            onQuickShellContextMenu(e.clientX, e.clientY)
+          }}
+          style={btnStyle()}
+          className="sidebar-btn"
+          title={onQuickShellContextMenu
+            ? 'Quick Shell — plain shell in your home folder (right-click: run as administrator)'
+            : 'Quick Shell — plain shell in your home folder'}
+        >
           <span style={{ color: '#94a3b8', display: 'flex', flexShrink: 0 }}><TerminalSquare width={14} height={14} /></span>
           {!collapsed && <span>Quick Shell</span>}
         </button>

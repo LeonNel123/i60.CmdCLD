@@ -76,6 +76,7 @@ interface TerminalPanelProps {
   claudeArgs?: string
   codexArgs?: string
   isPlainShell?: boolean
+  elevated?: boolean
   fontFamily?: string
   fontSize?: number
   onClose: () => void
@@ -95,6 +96,7 @@ export function TerminalPanel({
   claudeArgs,
   codexArgs,
   isPlainShell,
+  elevated,
   fontFamily,
   fontSize,
   onClose,
@@ -456,7 +458,7 @@ export function TerminalPanel({
         // First mount — create PTY and launch the selected agent CLI.
         activePtys.add(id)
         const launchArgs = agentCli === 'codex' ? codexArgs : claudeArgs
-        window.api.createTerminal(id, folderPath, agentCli, launchArgs).catch(() => {
+        window.api.createTerminal(id, folderPath, agentCli, launchArgs, elevated).catch(() => {
           term.write('\r\n\x1b[31m[Failed to create terminal]\x1b[0m\r\n')
           activePtys.delete(id)
         })

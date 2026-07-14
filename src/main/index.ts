@@ -4,7 +4,8 @@ import { fileURLToPath } from 'url'
 import { spawn, execSync } from 'child_process'
 import { appendFileSync, existsSync, statSync, writeFileSync, readFileSync, mkdirSync } from 'fs'
 import * as os from 'os'
-import { PtyManager } from './pty-manager'
+import { PtyManager, getDefaultShell } from './pty-manager'
+import { openAdminShell, detectElevationBridge } from './admin-shell'
 import { Store } from './store'
 import { WindowRegistry } from './window-registry'
 import { RecentDB } from './recent-db'
@@ -466,7 +467,7 @@ function getWindowIdFromEvent(event: Electron.IpcMainInvokeEvent): string | unde
 }
 
 // PTY IPC handlers
-ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: AgentCli, launchArgsRaw?: string) => {
+ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: AgentCli, launchArgsRaw?: string, elevatedRaw?: unknown) => {
   const windowId = getWindowIdFromEvent(event)
   if (!windowId) return
   const wc = registry.getWebContents(windowId)
@@ -485,7 +486,15 @@ ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: Agen
   })
   const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli, launchArgs }
   if (agentCli === 'claude') trustFolder(cwd)
-  ptyManager.create(id, cwd, wc, meta)
+  // Elevated tile: spawn through the elevation bridge so the admin shell
+  // lands inside this pty (one UAC prompt fires on spawn). If the bridge
+  // vanished since the renderer asked, degrade to a normal shell.
+  let spawnOverride: { file: string; args: string[] } | undefined
+  if (elevatedRaw === true && process.platform === 'win32') {
+    const bridge = detectElevationBridge()
+    if (bridge) spawnOverride = { file: bridge.exe, args: [getDefaultShell()] }
+  }
+  ptyManager.create(id, cwd, wc, meta, spawnOverride)
 })
 
 ipcMain.handle('pty:write', (_event, id: string, data: string) => {
@@ -1129,6 +1138,23 @@ ipcMain.handle('tailscale:serveStop', async () => {
 // Get home directory for quick agent sessions
 ipcMain.handle('app:getHomeDir', () => {
   return app.getPath('home')
+})
+
+// How "Run as administrator" will open: 'in-app' when an elevation bridge
+// (gsudo / built-in sudo inline) can relay an elevated shell into a grid
+// tile, else 'external' (separate elevated OS window).
+ipcMain.handle('shell:adminShellMode', () => {
+  if (process.platform !== 'win32') return 'external'
+  return detectElevationBridge() ? 'in-app' : 'external'
+})
+
+// Launch an elevated shell in its own OS window (Windows only). Fallback for
+// when no elevation bridge is installed — an unelevated process can't host
+// an elevated PTY itself, so this goes through the UAC prompt via the
+// ShellExecute runas verb instead.
+ipcMain.handle('shell:openAdminShell', () => {
+  if (process.platform !== 'win32') return { ok: false, error: 'Admin shell is Windows-only' }
+  return openAdminShell(getDefaultShell(), app.getPath('home'))
 })
 
 // Get app version

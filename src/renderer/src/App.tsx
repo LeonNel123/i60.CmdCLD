@@ -16,7 +16,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { CommandPalette } from './components/CommandPalette'
 import { AutopilotPanel } from './components/AutopilotPanel'
 import { AutopilotKickoff } from './components/AutopilotKickoff'
-import { AppWindow, Star, FolderSearch, Code, Copy, Trash2, Sparkles, TerminalSquare } from './components/icons'
+import { AppWindow, Star, FolderSearch, Code, Copy, Trash2, Sparkles, TerminalSquare, Shield } from './components/icons'
 import { assignColor } from './utils/colors'
 import { calculateLayout, getRowCount } from './utils/grid-layout'
 import { onActivityChange } from './utils/terminal-activity'
@@ -49,6 +49,9 @@ interface TerminalEntry {
   claudeArgs?: string
   codexArgs?: string
   isPlainShell?: boolean
+  // Admin shell via elevation bridge. Deliberately not persisted to the
+  // last-session store — restoring it would fire a UAC prompt at startup.
+  elevated?: boolean
 }
 
 type ViewMode = { type: 'grid' } | { type: 'focused'; terminalId: string }
@@ -83,6 +86,7 @@ export default function App() {
   const [savedSessionProjects, setSavedSessionProjects] = useState<Array<{ path: string; agentCli?: AgentCli; claudeArgs: string; codexArgs?: string; isPlainShell: boolean }>>([])
   const [welcomeDismissed, setWelcomeDismissed] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ path: string; x: number; y: number } | null>(null)
+  const [quickShellMenu, setQuickShellMenu] = useState<{ x: number; y: number } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [autopilotKickoffFor, setAutopilotKickoffFor] = useState<string | null>(null)  // terminalId
   const [autopilotRunning, setAutopilotRunning] = useState<Set<string>>(new Set())
@@ -443,6 +447,45 @@ export default function App() {
     }).catch(() => {})
   }, [defaultViewMode, terminals])
 
+  // Windows-only. In-grid admin tile when an elevation bridge (gsudo / sudo
+  // inline) can relay the elevated shell into our pty; otherwise a separate
+  // elevated OS window via the UAC prompt.
+  const handleQuickShellAdmin = useCallback(async () => {
+    try {
+      const mode = await window.api.adminShellMode()
+      if (mode === 'in-app') {
+        const homeDir = await window.api.getHomeDir()
+        const folderName = homeDir.split(/[\\/]/).pop() || homeDir
+        const usedColors = terminals.map((t) => t.color)
+        const newEntry: TerminalEntry = {
+          id: crypto.randomUUID(),
+          path: homeDir,
+          name: `${folderName} (admin shell)`,
+          color: assignColor(usedColors),
+          isPlainShell: true,
+          elevated: true,
+        }
+        const newTerminals = [...terminals, newEntry]
+        setTerminals(newTerminals)
+        if (terminals.length === 0 && defaultViewMode === 'focused') {
+          setViewMode({ type: 'focused', terminalId: newEntry.id })
+        }
+        const newLayouts = calculateLayout(newTerminals.length).map((pos, i) => ({
+          ...pos,
+          i: newTerminals[i].id,
+        }))
+        setLayouts(newLayouts)
+        return
+      }
+      const res = await window.api.openAdminShell()
+      // cancelled = user declined the UAC prompt; stay silent for that.
+      if (!res.ok) showToast(`Admin shell failed: ${res.error || 'unknown error'}`, 'warn')
+      else if (!res.cancelled) showToast('Admin shell opened in a separate window — install gsudo or enable Windows sudo (inline) to host it in the grid', 'info')
+    } catch {
+      showToast('Admin shell failed to launch', 'warn')
+    }
+  }, [showToast, terminals, defaultViewMode])
+
   const handleToggleFavorite = useCallback((path: string) => {
     setFavoriteFolders((prev) => {
       const next = prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]
@@ -696,6 +739,7 @@ export default function App() {
         onAddFolder={handleAddFolder}
         onQuickAgent={handleQuickAgent}
         onQuickShell={handleQuickShell}
+        onQuickShellContextMenu={window.api.platform === 'win32' ? (x, y) => setQuickShellMenu({ x, y }) : undefined}
         onNewWindow={handleNewWindow}
         onNewProject={() => setShowNewProject(true)}
         onOpenSettings={() => setShowSettings(true)}
@@ -739,6 +783,7 @@ export default function App() {
                   claudeArgs={t.claudeArgs}
                   codexArgs={t.codexArgs}
                   isPlainShell={t.isPlainShell}
+                  elevated={t.elevated}
                   fontFamily={terminalFontFamily}
                   fontSize={terminalFontSize}
                   onClose={() => handleRequestClose(t.id)}
@@ -772,6 +817,7 @@ export default function App() {
               claudeArgs={t.claudeArgs}
               codexArgs={t.codexArgs}
               isPlainShell={t.isPlainShell}
+              elevated={t.elevated}
               fontFamily={terminalFontFamily}
               fontSize={terminalFontSize}
               onClose={() => handleRequestClose(t.id)}
@@ -842,6 +888,18 @@ export default function App() {
 
       {toast && (
         <Toast message={toast.message} kind={toast.kind} />
+      )}
+
+      {quickShellMenu && (
+        <ContextMenu
+          x={quickShellMenu.x}
+          y={quickShellMenu.y}
+          onClose={() => setQuickShellMenu(null)}
+          items={[
+            { label: 'Open Quick Shell', icon: TerminalSquare, onClick: handleQuickShell },
+            { label: 'Run as administrator…', icon: Shield, onClick: handleQuickShellAdmin },
+          ]}
+        />
       )}
 
       {contextMenu && (() => {
