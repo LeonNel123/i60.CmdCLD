@@ -485,7 +485,12 @@ ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: Agen
     codexArgs: settings.get('codexArgs'),
   })
   const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli, launchArgs }
-  if (agentCli === 'claude') trustFolder(cwd)
+  // Folder trust is a nicety — a failure here shouldn't kill the tile.
+  try {
+    if (agentCli === 'claude') trustFolder(cwd)
+  } catch (e) {
+    log(`pty:create trustFolder failed (non-fatal): ${e}`)
+  }
   // Elevated tile: spawn through the elevation bridge so the admin shell
   // lands inside this pty (one UAC prompt fires on spawn). If the bridge
   // vanished since the renderer asked, degrade to a normal shell.
@@ -493,8 +498,15 @@ ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: Agen
   if (elevatedRaw === true && process.platform === 'win32') {
     const bridge = detectElevationBridge()
     if (bridge) spawnOverride = { file: bridge.exe, args: [getDefaultShell()] }
+    log(`pty:create elevated tile — bridge: ${bridge ? `${bridge.kind} (${bridge.exe})` : 'none, spawning plain shell'}`)
   }
-  ptyManager.create(id, cwd, wc, meta, spawnOverride)
+  try {
+    ptyManager.create(id, cwd, wc, meta, spawnOverride)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log(`pty:create spawn failed${spawnOverride ? ` via ${spawnOverride.file}` : ''}: ${msg}`)
+    throw new Error(`PTY spawn failed: ${msg}`)
+  }
 })
 
 ipcMain.handle('pty:write', (_event, id: string, data: string) => {

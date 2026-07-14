@@ -26,7 +26,14 @@ const GSUDO_DEFAULT_EXE = 'C:\\Program Files\\gsudo\\Current\\gsudo.exe'
 export function detectElevationBridge(exec: ExecFn = defaultExec, fileExists: (p: string) => boolean = existsSync): ElevationBridge | null {
   if (process.platform !== 'win32') return null
   try {
-    const hit = exec('where.exe', ['gsudo']).split(/\r?\n/)[0]?.trim()
+    // Query for gsudo.exe specifically and keep only .exe hits: gsudo ships
+    // an extensionless `gsudo` shell script next to the exe, and a bare
+    // `where gsudo` lists the script first — CreateProcess on it fails with
+    // ERROR_BAD_EXE_FORMAT (193).
+    const hit = exec('where.exe', ['gsudo.exe'])
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => /\.exe$/i.test(l))
     if (hit) return { kind: 'gsudo', exe: hit }
   } catch {}
   try {
