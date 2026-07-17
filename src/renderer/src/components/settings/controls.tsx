@@ -17,16 +17,16 @@ export const INPUT_STYLE: CSSProperties = {
 /** Pane title, e.g. "Appearance". Matches the old per-tab h3 styling. */
 export function PaneHeading({ children }: { children: ReactNode }) {
   return (
-    <h3 style={{ color: '#e0e0e0', margin: '0 0 16px', fontSize: '14px', fontFamily: 'inherit', fontWeight: 600 }}>
+    <h3 style={{ color: '#e0e0e0', margin: '0 0 12px', fontSize: '14px', fontFamily: 'inherit', fontWeight: 600 }}>
       {children}
     </h3>
   )
 }
 
-/** Label + content + optional hint. The 16px bottom margin matches existing section spacing. */
+/** Label + content + optional hint. */
 export function Field({ label, hint, children }: { label?: ReactNode; hint?: ReactNode; children: ReactNode }) {
   return (
-    <div style={{ marginBottom: '16px' }}>
+    <div style={{ marginBottom: '12px' }}>
       {label != null && (
         <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>
           {label}
@@ -145,7 +145,7 @@ export function CheckboxRow({ checked, onChange, disabled, label, hint, indent }
   indent?: number
 }) {
   return (
-    <div style={{ marginBottom: '12px', marginLeft: indent ? `${indent}px` : undefined }}>
+    <div style={{ marginBottom: '10px', marginLeft: indent ? `${indent}px` : undefined }}>
       <label style={{
         display: 'flex', alignItems: 'center', gap: '8px',
         cursor: disabled ? 'default' : 'pointer',
