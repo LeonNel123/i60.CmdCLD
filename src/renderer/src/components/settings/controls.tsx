@@ -213,7 +213,7 @@ export function EditableList({ items, onChange, addLabel, placeholder, emptyText
         <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginBottom: '4px' }}>{emptyText}</div>
       )}
       {items.map((item, i) => (
-        <div key={item} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0' }}>
+        <div key={`${item}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0' }}>
           <span style={{
             color: '#ccc', fontSize: '11px', fontFamily: MONO_FONT, flex: 1,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

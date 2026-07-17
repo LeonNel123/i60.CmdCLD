@@ -10,7 +10,7 @@ import {
 } from '../../../../shared/terminal-font'
 import { APP_FONT_PRESETS, DEFAULT_APP_FONT_FAMILY, resolveAppFontFamily } from '../../../../shared/app-font'
 import { UI_SCALE_PCT_MAX, UI_SCALE_PCT_MIN, UI_SCALE_PCT_STEP, clampUiScalePct } from '../../../../shared/ui-scale'
-import { Field, INPUT_STYLE, MONO_FONT, NumberStepper, PaneHeading, TextInput } from './controls'
+import { Field, INPUT_STYLE, NumberStepper, PaneHeading, TextInput } from './controls'
 
 export interface AppearancePaneProps {
   terminalFontFamily: string
