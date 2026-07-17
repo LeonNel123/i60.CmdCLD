@@ -332,8 +332,9 @@ export function Sidebar({
         )}
       </div>
 
-      {/* Active terminals */}
-      <div style={{ overflowY: 'auto', padding: '4px', flexShrink: 0 }}>
+      {/* Active terminals. The 5px right margin keeps the scrollbar clear of
+          the resize handle strip so the thumb stays clickable. */}
+      <div style={{ overflowY: 'auto', padding: '4px', flexShrink: 0, marginRight: '5px' }}>
         {[...terminals].sort((a, b) => a.name.localeCompare(b.name)).map((t) => {
           const isActive = viewMode.type === 'focused' && viewMode.terminalId === t.id
           const busy = busyTerminals.has(t.id)
@@ -394,7 +395,8 @@ export function Sidebar({
         const favorites = recentFolders.filter((f) => favSet.has(f.path)).sort((a, b) => a.name.localeCompare(b.name))
         const recents = recentFolders.filter((f) => !favSet.has(f.path)).sort((a, b) => b.lastOpened - a.lastOpened)
         return (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          // 5px right margin: keep the scrollbar clear of the resize handle
+          <div style={{ flex: 1, overflowY: 'auto', marginRight: '5px' }}>
             {favorites.length > 0 && (
               <div>
                 <button
