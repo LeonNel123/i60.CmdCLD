@@ -323,7 +323,7 @@ export function AutopilotPanel({ terminalId, onClose }: Props) {
   }
 
   return (
-    <div style={{
+    <div className="ui-scaled" style={{
       width: 320, minWidth: 320, height: '100%',
       background: '#1a1a2e',
       borderLeft: '1px solid #2d2d2d',

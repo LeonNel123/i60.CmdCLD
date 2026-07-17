@@ -17,9 +17,19 @@ interface ContextMenuProps {
   onClose: () => void
 }
 
+// The menu carries .ui-scaled (CSS zoom — the terminal-matched chrome scale,
+// since menu text sits on the same 12px grid as the sidebar), which multiplies
+// its own left/top. Positions are computed in real viewport pixels, then
+// divided by the scale so the rendered menu lands exactly at the cursor at any
+// interface scale.
+function uiScale(): number {
+  const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale'))
+  return Number.isFinite(v) && v > 0 ? v : 1
+}
+
 export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null)
-  const [position, setPosition] = useState<{ left: number; top: number }>({ left: x, top: y })
+  const [position, setPosition] = useState<{ left: number; top: number }>({ left: x / uiScale(), top: y / uiScale() })
 
   // Clamp the menu to the viewport so it doesn't overflow.
   useLayoutEffect(() => {
@@ -31,7 +41,8 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
     let top = y
     if (left + rect.width > vw - 4) left = Math.max(4, vw - rect.width - 4)
     if (top + rect.height > vh - 4) top = Math.max(4, vh - rect.height - 4)
-    setPosition({ left, top })
+    const scale = uiScale()
+    setPosition({ left: left / scale, top: top / scale })
   }, [x, y])
 
   // Close on outside click and Esc key.
@@ -53,6 +64,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   return (
     <div
       ref={ref}
+      className="ui-scaled"
       style={{
         position: 'fixed',
         left: position.left,
@@ -94,6 +106,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
               color: item.disabled ? '#555' : item.destructive ? '#f87171' : '#ccc',
               cursor: item.disabled ? 'default' : 'pointer',
               fontSize: '12px',
+              fontFamily: 'inherit',
               textAlign: 'left',
             }}
             onMouseEnter={(e) => {

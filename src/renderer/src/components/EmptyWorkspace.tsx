@@ -2,7 +2,7 @@ import { FolderOpen, Sparkles, TerminalSquare } from './icons'
 
 export function EmptyWorkspace() {
   return (
-    <div style={{
+    <div className="ui-scaled" style={{
       position: 'absolute',
       inset: 0,
       display: 'flex',

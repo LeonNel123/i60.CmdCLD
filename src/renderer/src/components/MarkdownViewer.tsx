@@ -38,7 +38,7 @@ export function MarkdownViewer({ filePath, onClose }: MarkdownViewerProps) {
       .markdown-body code,
       .markdown-body pre { font-family: Menlo, Consolas, monospace; }
     `}</style>
-    <div style={{
+    <div className="ui-scaled-plain" style={{
       position: 'fixed',
       inset: 0,
       background: 'rgba(0,0,0,0.7)',

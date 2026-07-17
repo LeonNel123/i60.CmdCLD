@@ -6,6 +6,7 @@ import { SearchAddon } from '@xterm/addon-search'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { onTerminalDataReceived, removeTerminalActivity } from '../utils/terminal-activity'
+import { ContextMenu } from './ContextMenu'
 import { formatPaths } from '../utils/format-paths'
 import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
 import {
@@ -141,7 +142,6 @@ export function TerminalPanel({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [editorName, setEditorName] = useState('Editor')
   const [availableEditors, setAvailableEditors] = useState<Array<{ id: string; name: string; cmd: string }>>([])
-  const [showEditorPicker, setShowEditorPicker] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -555,25 +555,9 @@ export function TerminalPanel({
     }).catch(() => {})
   }, [])
 
-  // Close context menu on outside click / Escape
-  useEffect(() => {
-    if (!contextMenu) return
-    const handler = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent && e.key === 'Escape') { setContextMenu(null); return }
-      if (e instanceof MouseEvent) setContextMenu(null)
-    }
-    document.addEventListener('mousedown', handler)
-    document.addEventListener('keydown', handler)
-    return () => {
-      document.removeEventListener('mousedown', handler)
-      document.removeEventListener('keydown', handler)
-    }
-  }, [contextMenu])
-
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
     setContextMenu({ x: e.clientX, y: e.clientY })
-    setShowEditorPicker(false)
   }
 
   const handleSearch = (query: string, direction: 'next' | 'prev' = 'next') => {
@@ -603,14 +587,6 @@ export function TerminalPanel({
     fontFamily: 'monospace',
     borderRadius: '3px',
   }
-
-  const menuItemStyle: React.CSSProperties = {
-    display: 'block', width: '100%', padding: '6px 12px',
-    background: 'none', border: 'none', color: '#ccc',
-    fontSize: '12px', fontFamily: 'monospace', cursor: 'pointer', textAlign: 'left',
-  }
-  const menuHoverIn = (e: React.MouseEvent) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)' }
-  const menuHoverOut = (e: React.MouseEvent) => { (e.target as HTMLElement).style.background = 'none' }
 
   return (
     <div style={{
@@ -764,26 +740,16 @@ export function TerminalPanel({
       />
 
       {contextMenu && availableEditors.length > 1 && (
-        <div
-          onMouseDown={(e) => e.stopPropagation()}
-          style={{
-            position: 'fixed', left: contextMenu.x, top: contextMenu.y,
-            background: '#1a1a2e', border: '1px solid #333', borderRadius: '6px',
-            padding: '4px 0', minWidth: '150px', zIndex: 2000,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-          }}
-        >
-          {availableEditors.map((e) => (
-            <button
-              key={e.id}
-              onClick={() => { window.api.editorSetCurrent(e.cmd); setEditorName(e.name); setContextMenu(null) }}
-              style={menuItemStyle}
-              onMouseEnter={menuHoverIn}
-              onMouseLeave={menuHoverOut}
-            >
-              {e.name}
-            </button>
-          ))}
+        <div onMouseDown={(e) => e.stopPropagation()}>
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={availableEditors.map((e) => ({
+            label: e.name,
+            onClick: () => { window.api.editorSetCurrent(e.cmd); setEditorName(e.name) },
+          }))}
+          onClose={() => setContextMenu(null)}
+        />
         </div>
       )}
     </div>

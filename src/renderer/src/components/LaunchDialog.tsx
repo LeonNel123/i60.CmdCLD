@@ -25,7 +25,7 @@ export function LaunchDialog({ folderName, defaultAgentCli, defaultArgs, default
   }
 
   return (
-    <div style={{
+    <div className="ui-scaled" style={{
       position: 'fixed',
       inset: 0,
       background: 'rgba(0,0,0,0.6)',
@@ -44,7 +44,9 @@ export function LaunchDialog({ folderName, defaultAgentCli, defaultArgs, default
           padding: '20px',
           maxWidth: '520px',
           width: '90%',
-          maxHeight: '88vh',
+          // vh scales with the .ui-scaled zoom; divide it back out so the
+          // dialog fits the real viewport at any interface scale.
+          maxHeight: 'calc(88vh / var(--ui-scale, 1))',
           overflowY: 'auto',
           border: '1px solid #333',
         }}

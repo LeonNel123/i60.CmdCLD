@@ -6,7 +6,7 @@ interface ToastProps {
 export function Toast({ message, kind }: ToastProps) {
   const borderColor = kind === 'warn' ? '#f59e0b' : '#555'
   return (
-    <div style={{
+    <div className="ui-scaled" style={{
       position: 'fixed',
       bottom: '24px',
       right: '24px',
