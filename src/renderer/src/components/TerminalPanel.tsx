@@ -8,6 +8,7 @@ import '@xterm/xterm/css/xterm.css'
 import { onTerminalDataReceived, removeTerminalActivity } from '../utils/terminal-activity'
 import { formatPaths } from '../utils/format-paths'
 import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
+import { resolveTerminalPath } from '../../../shared/terminal-link'
 import {
   DEFAULT_TERMINAL_FONT_SIZE,
   TERMINAL_FONT_SIZE_MAX,
@@ -156,11 +157,11 @@ export function TerminalPanel({
     const openTarget = (raw: string): void => {
       if (/^https?:/i.test(raw)) { window.api.openExternal(raw); return }
       const isFileUrl = /^file:/i.test(raw)
-      let filePart = raw.replace(/:\d+(:\d+)?$/, '') // strip trailing :line[:col]
-      if (!isFileUrl && !filePart.includes('/') && !filePart.includes('\\')) {
-        const sep = window.api.platform === 'win32' ? '\\' : '/'
-        filePart = folderPath + sep + filePart
-      }
+      // Resolve relative paths (bare or with separators) against the
+      // terminal's folder — main resolves against the app cwd, not ours.
+      const filePart = isFileUrl
+        ? raw.replace(/:\d+(:\d+)?$/, '') // strip trailing :line[:col]
+        : resolveTerminalPath(raw, folderPath, window.api.platform)
       const base = filePart.split(/[\\/]/).pop() || ''
       const dotIdx = base.lastIndexOf('.')
       const ext = dotIdx > 0 ? base.slice(dotIdx + 1).toLowerCase() : ''
