@@ -26,7 +26,7 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogProps) {
-  const [tab, setTab] = useState<'settings' | 'claude config' | 'autopilot' | 'about'>('settings')
+  const [tab, setTab] = useState<'agent' | 'appearance' | 'general' | 'remote' | 'claude config' | 'autopilot' | 'about'>('agent')
   const [defaultAgentCli, setDefaultAgentCli] = useState<AgentCli>('claude')
   const [agentArgsTab, setAgentArgsTab] = useState<AgentCli>('claude')
   const [claudeArgs, setClaudeArgs] = useState('')
@@ -311,7 +311,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   if (!loaded) return null
 
   return (
-    <div style={{
+    <div className="ui-scaled" style={{
       position: 'fixed',
       inset: 0,
       background: 'rgba(0,0,0,0.6)',
@@ -328,16 +328,18 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
           background: '#1a1a2e',
           borderRadius: '8px',
           padding: '20px',
-          maxWidth: '520px',
+          maxWidth: '680px',
           width: '90%',
-          maxHeight: '85vh',
+          // vh scales with the .ui-scaled zoom; divide it back out so the
+          // dialog fits the real viewport at any interface scale.
+          maxHeight: 'calc(85vh / var(--ui-scale, 1))',
           overflowY: 'auto',
           border: '1px solid #333',
         }}
       >
         {/* Tab bar */}
-        <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
-          {(['settings', 'claude config', 'autopilot', 'about'] as const).map((t) => (
+        <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          {(['agent', 'appearance', 'general', 'remote', 'claude config', 'autopilot', 'about'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -359,10 +361,10 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
           ))}
         </div>
 
-        {tab === 'settings' && (
+        {tab === 'agent' && (
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '0 0 16px 0' }}>
           <h3 style={{ color: '#e0e0e0', margin: 0, fontSize: '14px', fontFamily: 'inherit', fontWeight: 600 }}>
-            Agent CLI Settings
+            Agent CLI
           </h3>
           {appVersion && (
             <span style={{ color: '#555', fontSize: '11px', fontFamily: 'Menlo, Consolas, monospace' }}>
@@ -372,7 +374,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
         </div>
         )}
 
-        {tab === 'settings' && (<>
+        {tab === 'agent' && (<>
 
         {/* Default agent */}
         <div style={{ marginBottom: '12px' }}>
@@ -494,6 +496,34 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
             These flags are passed to `{AGENT_CLI_COMMANDS[agentArgsTab]}` when opening a new terminal
           </div>
         </div>
+
+        {/* Ask before launch toggle */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            cursor: 'pointer',
+            color: '#ccc',
+            fontSize: '12px',
+            fontFamily: 'inherit',
+          }}>
+            <input
+              type="checkbox"
+              checked={askBeforeLaunch}
+              onChange={(e) => setAskBeforeLaunch(e.target.checked)}
+              style={{ accentColor: '#22c55e' }}
+            />
+            Ask before launch (edit flags each time)
+          </label>
+        </div>
+
+        </>)}
+
+        {tab === 'appearance' && (<>
+        <h3 style={{ color: '#e0e0e0', margin: '0 0 16px', fontSize: '14px', fontFamily: 'inherit', fontWeight: 600 }}>
+          Appearance
+        </h3>
 
         {/* Terminal font */}
         <div style={{ marginBottom: '16px' }}>
@@ -684,29 +714,8 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
             <span style={{ color: '#666', fontSize: '11px', fontFamily: 'inherit', flexShrink: 0 }}>%</span>
           </div>
           <div style={{ color: '#555', fontSize: '10px', fontFamily: 'inherit', marginTop: '4px' }}>
-            Scales the interface so text and controls grow together (this first cut scales the sidebar). Terminals are never affected. Applies when you save.
+            Scales the interface (sidebar, menus, dialogs) so text and controls grow together. Terminals are never affected. Applies when you save.
           </div>
-        </div>
-
-        {/* Ask before launch toggle */}
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            cursor: 'pointer',
-            color: '#ccc',
-            fontSize: '12px',
-            fontFamily: 'inherit',
-          }}>
-            <input
-              type="checkbox"
-              checked={askBeforeLaunch}
-              onChange={(e) => setAskBeforeLaunch(e.target.checked)}
-              style={{ accentColor: '#22c55e' }}
-            />
-            Ask before launch (edit flags each time)
-          </label>
         </div>
 
         {/* Default view mode */}
@@ -738,6 +747,13 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
             ))}
           </div>
         </div>
+
+        </>)}
+
+        {tab === 'general' && (<>
+        <h3 style={{ color: '#e0e0e0', margin: '0 0 16px', fontSize: '14px', fontFamily: 'inherit', fontWeight: 600 }}>
+          General
+        </h3>
 
         {/* Notification on idle */}
         <div style={{ marginBottom: '12px' }}>
@@ -828,11 +844,13 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
           </div>
         </div>
 
-        {/* Remote Access */}
-        <div style={{ borderTop: '1px solid #333', paddingTop: '16px', marginTop: '16px' }}>
-          <h4 style={{ color: '#e0e0e0', margin: '0 0 12px', fontSize: '13px', fontFamily: 'inherit', fontWeight: 600 }}>
+        </>)}
+
+        {tab === 'remote' && (<>
+        <div>
+          <h3 style={{ color: '#e0e0e0', margin: '0 0 16px', fontSize: '14px', fontFamily: 'inherit', fontWeight: 600 }}>
             Remote Access
-          </h4>
+          </h3>
 
           <div style={{ marginBottom: '12px' }}>
             <label style={{
@@ -1510,7 +1528,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
 
         {/* Buttons */}
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
-          {tab === 'settings' && (
+          {(tab === 'agent' || tab === 'appearance' || tab === 'general' || tab === 'remote') && (
             <>
               <button
                 onClick={onClose}
