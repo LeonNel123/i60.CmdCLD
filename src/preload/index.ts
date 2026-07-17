@@ -129,6 +129,17 @@ contextBridge.exposeInMainWorld('api', {
   windowList: (): Promise<Array<{ id: string; label: string }>> =>
     ipcRenderer.invoke('window:list'),
 
+  // Window-close confirmation: main asks, renderer shows the in-app dialog
+  // and confirms back if the user accepts.
+  onWindowCloseRequest: (callback: () => void): (() => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('window:close-request', listener)
+    return () => { ipcRenderer.removeListener('window:close-request', listener) }
+  },
+
+  windowConfirmClose: (): Promise<void> =>
+    ipcRenderer.invoke('window:confirmClose'),
+
   // Open URL in system browser
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke('shell:openExternal', url),

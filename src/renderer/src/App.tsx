@@ -36,7 +36,7 @@ import {
   resolveTerminalFontFamily,
 } from '../../shared/terminal-font'
 import { DEFAULT_APP_FONT_FAMILY, resolveAppFontFamily } from '../../shared/app-font'
-import { DEFAULT_UI_SCALE_PCT, clampUiScalePct, chromeScale } from '../../shared/ui-scale'
+import { DEFAULT_UI_SCALE_PCT, clampUiScalePct, chromeScale, uiScaleFactor } from '../../shared/ui-scale'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
@@ -63,6 +63,7 @@ export default function App() {
   const [closeWarning, setCloseWarning] = useState<string | null>(null)
   const [showCloseAll, setShowCloseAll] = useState(false)
   const [closeAllWarning, setCloseAllWarning] = useState<string | null>(null)
+  const [showCloseWindow, setShowCloseWindow] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>({ type: 'grid' })
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
@@ -111,10 +112,12 @@ export default function App() {
     document.documentElement.style.setProperty('--app-font-family', appFontFamily)
   }, [appFontFamily])
 
-  // Push the interface scale onto :root as --ui-scale (a zoom factor). 100% is
-  // rebased to match the terminal, so this is chromeScale, not the raw percent.
+  // Push the interface scale onto :root as zoom factors. --ui-scale (sidebar &
+  // 12px-base chrome) is rebased so 100% matches the terminal; --ui-scale-plain
+  // (menus/dialogs authored at final size) is the raw percentage only.
   useEffect(() => {
     document.documentElement.style.setProperty('--ui-scale', String(chromeScale(uiScalePct)))
+    document.documentElement.style.setProperty('--ui-scale-plain', String(uiScaleFactor(uiScalePct)))
   }, [uiScalePct])
 
   // Track terminal busy/idle state + notification sound
@@ -256,10 +259,18 @@ export default function App() {
     return () => { cancelled = true }
   }, [closingId, terminals])
 
-  // Same warning for the close-all dialog, across every open project.
+  // Main asks us to confirm closing the whole window (in-app dialog instead
+  // of the old native message box). Reply comes via windowConfirmClose().
+  useEffect(() => {
+    const unsub = window.api.onWindowCloseRequest(() => setShowCloseWindow(true))
+    return unsub
+  }, [])
+
+  // Same warning for the close-all and close-window dialogs, across every
+  // open project.
   useEffect(() => {
     setCloseAllWarning(null)
-    if (!showCloseAll) return
+    if (!showCloseAll && !showCloseWindow) return
     let cancelled = false
     const paths = [...new Set(terminals.map((t) => t.path))]
     Promise.all(paths.map(async (p) => {
@@ -275,7 +286,7 @@ export default function App() {
       if (lines.length > 0) setCloseAllWarning(lines.join('\n'))
     })
     return () => { cancelled = true }
-  }, [showCloseAll, terminals])
+  }, [showCloseAll, showCloseWindow, terminals])
 
   // Listen for sessions created remotely
   useEffect(() => {
@@ -852,8 +863,22 @@ export default function App() {
         <ConfirmDialog
           message={`Close all ${terminals.length} terminal${terminals.length !== 1 ? 's' : ''}?`}
           detail={closeAllWarning ?? undefined}
+          confirmLabel="Close All"
           onConfirm={handleConfirmCloseAll}
           onCancel={() => setShowCloseAll(false)}
+        />
+      )}
+
+      {showCloseWindow && (
+        <ConfirmDialog
+          message="Close this window?"
+          detail={[
+            `${terminals.length} terminal session${terminals.length !== 1 ? 's' : ''} will be terminated.`,
+            ...(closeAllWarning ? ['', closeAllWarning] : []),
+          ].join('\n')}
+          confirmLabel="Close Window"
+          onConfirm={() => { setShowCloseWindow(false); window.api.windowConfirmClose() }}
+          onCancel={() => setShowCloseWindow(false)}
         />
       )}
 
@@ -955,7 +980,7 @@ export default function App() {
         const t = terminals.find((tt) => tt.id === autopilotKickoffFor)
         if (!t) return null
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          <div className="ui-scaled" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                onClick={() => setAutopilotKickoffFor(null)}>
             <div onClick={(e) => e.stopPropagation()} style={{ width: 480, maxWidth: '90%' }}>
               <AutopilotKickoff
@@ -977,7 +1002,7 @@ export default function App() {
       })()}
 
       {showNewProject && (
-        <div style={{
+        <div className="ui-scaled" style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000,
         }} onClick={() => setShowNewProject(false)}>

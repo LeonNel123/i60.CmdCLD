@@ -179,6 +179,8 @@ export interface ElectronAPI {
   editorGetCurrent: () => Promise<string>
   editorSetCurrent: (cmd: string) => Promise<void>
   onWindowListUpdated: (callback: (windows: WindowInfo[]) => void) => () => void
+  onWindowCloseRequest: (callback: () => void) => () => void
+  windowConfirmClose: () => Promise<void>
   claudeConfigRead: () => Promise<{ global: Record<string, unknown>; local: Record<string, unknown> }>
   claudeConfigWrite: (scope: 'global' | 'local', data: Record<string, unknown>) => Promise<void>
   remoteToggle: (enabled: boolean) => Promise<{ ok: boolean; urls?: string[]; port?: number; error?: string }>

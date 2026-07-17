@@ -409,36 +409,15 @@ function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: s
     }
 
     e.preventDefault()
-    const paths = [...new Set(owned.map((t) => t.path))]
-    Promise.all(paths.map(async (p) => {
-      clearGitStatusCache(p)
-      try { return { path: p, status: await getGitStatus(p) } } catch { return null }
-    })).then((checks) => {
-      const name = (p: string): string => p.split(/[\\/]/).pop() || p
-      const dirty = checks.filter((c) => c?.status.dirty).map((c) => name(c!.path))
-      const unpushed = checks.filter((c) => c?.status.ahead).map((c) => name(c!.path))
-      const warnings: string[] = []
-      if (dirty.length > 0) warnings.push(`⚠ Uncommitted changes in: ${dirty.join(', ')}`)
-      if (unpushed.length > 0) warnings.push(`⚠ Unpushed commits in: ${unpushed.join(', ')}`)
-      const detailLines = [
-        `${owned.length} terminal session${owned.length === 1 ? '' : 's'} will be terminated.`,
-        ...(warnings.length > 0 ? ['', ...warnings] : []),
-      ]
-      return dialog.showMessageBox(win, {
-        type: warnings.length > 0 ? 'warning' : 'question',
-        buttons: ['Close', 'Cancel'],
-        defaultId: 1,
-        cancelId: 1,
-        title: 'Close window',
-        message: 'Close this window?',
-        detail: detailLines.join('\n'),
-      })
-    }).then((result) => {
-      if (result && result.response === 0) {
-        confirmedClose.add(win)
-        win.close()
-      }
-    }).catch(() => {})
+    // Ask the renderer to show the in-app confirm dialog (same look as the
+    // terminal-close one). It replies via window:confirmClose. If the renderer
+    // is gone (crashed/destroyed), don't trap the user — just close.
+    if (win.webContents.isDestroyed() || win.webContents.isCrashed()) {
+      confirmedClose.add(win)
+      win.close()
+      return
+    }
+    win.webContents.send('window:close-request')
   })
 
   win.on('closed', () => {
@@ -536,6 +515,15 @@ ipcMain.handle('window:list', (event) => {
   const callerId = getWindowIdFromEvent(event)
   if (!callerId) return []
   return registry.listExcluding(callerId)
+})
+
+// Renderer confirmed the close it was asked about via window:close-request
+ipcMain.handle('window:confirmClose', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win) {
+    confirmedClose.add(win)
+    win.close()
+  }
 })
 
 // Open URL in system browser
