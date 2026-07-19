@@ -8,7 +8,7 @@ import '@xterm/xterm/css/xterm.css'
 import { onTerminalDataReceived, removeTerminalActivity } from '../utils/terminal-activity'
 import { formatPaths } from '../utils/format-paths'
 import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
-import { resolveTerminalPath } from '../../../shared/terminal-link'
+import { findTerminalPaths, resolveTerminalPath } from '../../../shared/terminal-link'
 import {
   DEFAULT_TERMINAL_FONT_SIZE,
   TERMINAL_FONT_SIZE_MAX,
@@ -239,26 +239,39 @@ export function TerminalPanel({
     // Make file paths clickable — opens in configured editor
     term.registerLinkProvider({
       provideLinks(bufferLineNumber, callback) {
-        const line = term.buffer.active.getLine(bufferLineNumber - 1)
-        if (!line) { callback(undefined); return }
-        const text = line.translateToString()
-        const links: Array<{ startIndex: number; length: number; text: string }> = []
-        // Match: Windows absolute paths, Unix absolute paths (not inside URLs), relative paths with / or \, and bare filenames with extensions
-        const pathRegex = /(?:file:\/\/[^\s'"<>|)\]]+|[A-Z]:\\[\w\\.-]+(?::\d+)?|(?<!\/)\/[\w./-]+(?::\d+(?::\d+)?)?|(?:\.[\\/]|\.\.[\\/]|[\w][\w/\\.-]*[\\/][\w.-]+)(?::\d+(?::\d+)?)?|[\w.-]+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|toml|css|html|py|rs|go|java|sh|sql|xml|csv|txt|log|env|cfg|ini|conf)(?::\d+(?::\d+)?)?)/gi
-        let match
-        while ((match = pathRegex.exec(text)) !== null) {
-          links.push({ startIndex: match.index, length: match[0].length, text: match[0] })
+        // Long paths wrap across rows in a narrow grid panel, and a per-row
+        // scan would only see (and open) the fragment on the clicked row. So
+        // reassemble the full logical line — walk back to the first
+        // non-wrapped row, forward across continuation rows — match on that,
+        // and map string indices back to buffer coordinates.
+        const buffer = term.buffer.active
+        const cols = term.cols
+        let firstRow = bufferLineNumber - 1
+        while (firstRow > 0 && buffer.getLine(firstRow)?.isWrapped) firstRow--
+        let lastRow = bufferLineNumber - 1
+        while (buffer.getLine(lastRow + 1)?.isWrapped) lastRow++
+        let text = ''
+        for (let i = firstRow; i <= lastRow; i++) {
+          const line = buffer.getLine(i)
+          if (!line) { callback(undefined); return }
+          // trimRight=false keeps each row exactly `cols` chars so
+          // index -> row/col math stays aligned (paths are single-width ASCII;
+          // wide chars would drift, but they can't appear in a path match)
+          text += line.translateToString(false, 0, cols)
         }
-        callback(links.map((l) => ({
-          range: {
-            start: { x: l.startIndex + 1, y: bufferLineNumber },
-            end: { x: l.startIndex + l.length + 1, y: bufferLineNumber },
-          },
-          text: l.text,
-          activate(event) {
-            if (isLinkActivation(event)) openTarget(l.text)
-          },
-        })))
+        callback(findTerminalPaths(text).map((l) => {
+          const endIdx = l.index + l.text.length - 1 // index of last char
+          return {
+            range: {
+              start: { x: (l.index % cols) + 1, y: firstRow + Math.floor(l.index / cols) + 1 },
+              end: { x: (endIdx % cols) + 2, y: firstRow + Math.floor(endIdx / cols) + 1 },
+            },
+            text: l.text,
+            activate(event) {
+              if (isLinkActivation(event)) openTarget(l.text)
+            },
+          }
+        }))
       },
     })
 
