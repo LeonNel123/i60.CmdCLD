@@ -1,7 +1,20 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
+
+function copyDir(src: string, dest: string): void {
+  mkdirSync(dest, { recursive: true })
+  for (const entry of readdirSync(src)) {
+    const srcPath = join(src, entry)
+    const destPath = join(dest, entry)
+    if (statSync(srcPath).isDirectory()) {
+      copyDir(srcPath, destPath)
+    } else {
+      copyFileSync(srcPath, destPath)
+    }
+  }
+}
 
 function copyRemoteUi() {
   return {
@@ -9,10 +22,7 @@ function copyRemoteUi() {
     closeBundle() {
       const src = join(__dirname, 'src/remote-ui')
       const dest = join(__dirname, 'out/remote-ui')
-      mkdirSync(dest, { recursive: true })
-      for (const file of readdirSync(src)) {
-        copyFileSync(join(src, file), join(dest, file))
-      }
+      copyDir(src, dest)
 
       // Bundle xterm vendor files so remote UI works in production
       const xtermPkg = join(__dirname, 'node_modules/@xterm/xterm')

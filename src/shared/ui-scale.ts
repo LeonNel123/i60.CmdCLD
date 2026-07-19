@@ -14,7 +14,7 @@
 import { DEFAULT_TERMINAL_FONT_SIZE, pointsToPixels } from './terminal-font'
 
 export const DEFAULT_UI_SCALE_PCT = 100
-export const UI_SCALE_PCT_MIN = 80
+export const UI_SCALE_PCT_MIN = 50
 export const UI_SCALE_PCT_MAX = 160
 export const UI_SCALE_PCT_STEP = 10
 

@@ -2,11 +2,12 @@
 // Both the main-process settings defaults and the renderer's TerminalPanel
 // import from here so the family/size literals can't drift apart.
 //
-// The default matches Windows Terminal's out-of-the-box look: "Cascadia Mono"
-// (the ligature-free Cascadia variant) at 12pt. Cascadia Mono ships with
-// Windows Terminal rather than the OS, so the stack falls back to the classic
-// per-platform monospace faces (Menlo/Monaco on macOS, Consolas/Courier New on
-// Windows) and finally the generic `monospace` keyword.
+// The default face is JetBrains Mono, which the app bundles as woff2 (see
+// @font-face in src/renderer/index.html and src/remote-ui/index.html) so it
+// renders identically on every machine. The stack falls back to Cascadia Mono
+// (Windows Terminal's face) and the classic per-platform monospace faces
+// (Menlo/Monaco on macOS, Consolas/Courier New on Windows) before the generic
+// `monospace` keyword. The 12pt default size matches Windows Terminal.
 //
 // IMPORTANT — UNITS:
 //   Windows Terminal specifies its font size in POINTS. xterm.js's `fontSize`
@@ -18,7 +19,7 @@
 //   to xterm's fontSize.
 
 export const DEFAULT_TERMINAL_FONT_FAMILY =
-  'Cascadia Mono, Menlo, Monaco, Consolas, "Courier New", monospace'
+  '"JetBrains Mono", Cascadia Mono, Menlo, Monaco, Consolas, "Courier New", monospace'
 
 // Point size. 12pt matches Windows Terminal's default and renders as 16 CSS px.
 export const DEFAULT_TERMINAL_FONT_SIZE = 12
@@ -42,11 +43,11 @@ export function pointsToPixels(points: number): number {
 // Quick-pick font stacks offered in Settings. `value` is a full CSS
 // font-family list so an unavailable first choice degrades gracefully.
 export const TERMINAL_FONT_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
-  { label: 'Cascadia Mono (Windows Terminal default)', value: DEFAULT_TERMINAL_FONT_FAMILY },
+  { label: 'JetBrains Mono (bundled default)', value: DEFAULT_TERMINAL_FONT_FAMILY },
+  { label: 'Cascadia Mono (Windows Terminal)', value: 'Cascadia Mono, Menlo, Monaco, Consolas, "Courier New", monospace' },
   { label: 'Cascadia Code (ligatures)', value: 'Cascadia Code, Menlo, Monaco, Consolas, "Courier New", monospace' },
   { label: 'Consolas', value: 'Consolas, "Courier New", monospace' },
   { label: 'Courier New', value: '"Courier New", monospace' },
-  { label: 'JetBrains Mono', value: '"JetBrains Mono", Menlo, Consolas, monospace' },
   { label: 'Fira Code (ligatures)', value: '"Fira Code", Menlo, Consolas, monospace' },
   { label: 'Menlo / Monaco (macOS)', value: 'Menlo, Monaco, Consolas, monospace' },
 ]

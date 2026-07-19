@@ -70,7 +70,7 @@
         selectionBackground: '#264f78',
       },
       fontSize: mobile ? getMobileFontSize() : 14,
-      fontFamily: "'Cascadia Code', 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace",
+      fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace",
       cursorBlink: !mobile,
       cursorStyle: 'bar',
       scrollback: 5000,

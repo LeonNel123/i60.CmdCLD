@@ -72,14 +72,16 @@ const RecentRow = memo(function RecentRow({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '6px',
-        width: '100%',
-        padding: '6px 10px',
+        gap: '8px',
+        width: 'auto',
+        padding: '5px 12px',
+        margin: '0 4px',
         background: 'none',
         cursor: 'pointer',
         fontFamily: 'inherit',
-        fontSize: '12px',
-        borderRadius: '3px',
+        fontSize: '13px',
+        borderRadius: '6px',
+        transition: 'background 80ms ease',
       }}
       title={folder.path}
     >
@@ -108,7 +110,7 @@ const RecentRow = memo(function RecentRow({
       }}>
         {folder.name}
       </span>
-      <span style={{ color: '#666', fontSize: '10px', flexShrink: 0, fontFamily: 'Menlo, Consolas, monospace' }}>
+      <span style={{ color: '#5a5a5a', fontSize: '10px', flexShrink: 0, fontFamily: 'Menlo, Consolas, monospace' }}>
         {formatRelativeTime(folder.lastOpened)}
       </span>
     </div>
@@ -245,35 +247,39 @@ export function Sidebar({
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    width: '100%',
-    padding: collapsed ? '6px 0' : '6px 10px',
+    width: 'auto',
+    padding: collapsed ? '5px 0' : '5px 12px',
+    margin: '0 4px',
     justifyContent: collapsed ? 'center' : 'flex-start',
-    background: active ? 'rgba(255,255,255,0.10)' : 'none',
+    background: active ? 'rgba(255,255,255,0.08)' : 'none',
     border: 'none',
-    color: disabled ? '#444' : '#ccc',
+    color: disabled ? '#444' : '#d8d8d8',
     cursor: disabled ? 'default' : 'pointer',
-    fontSize: '12px',
+    fontSize: '13px',
     fontFamily: 'inherit',
-    borderRadius: '3px',
+    borderRadius: '6px',
     textAlign: 'left',
     opacity: disabled ? 0.5 : 1,
+    transition: 'background 80ms ease',
+    position: 'relative',
   })
 
   const sectionHeadingStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    width: '100%',
-    padding: '5px 10px',
+    width: 'auto',
+    padding: '4px 12px',
+    margin: '10px 4px 2px',
     background: 'none',
     border: 'none',
-    color: '#777',
-    fontSize: '10px',
+    color: '#5e5e5e',
+    fontSize: '12px',
     fontFamily: 'inherit',
-    fontWeight: 600,
-    letterSpacing: '0.06em',
+    fontWeight: 500,
+    letterSpacing: 'normal',
     cursor: 'pointer',
-    borderRadius: '3px',
+    borderRadius: '6px',
     textAlign: 'left',
   }
 
@@ -283,8 +289,8 @@ export function Sidebar({
       width,
       minWidth: width,
       height: '100%',
-      background: '#181818',
-      borderRight: '1px solid #2d2d2d',
+      background: '#1a1a1a',
+      borderRight: '1px solid #2a2a2a',
       display: 'flex',
       flexDirection: 'column',
       transition: resizing ? 'none' : 'width 150ms ease',
@@ -294,15 +300,27 @@ export function Sidebar({
     }}>
       <style>{`
         .recent-row:hover .recent-star { opacity: 1 !important; }
-        .recent-row:hover { background: rgba(255,255,255,0.06); }
-        .sidebar-btn:hover { background: rgba(255,255,255,0.06) !important; }
+        .recent-row:hover { background: rgba(255,255,255,0.05); }
+        .sidebar-btn:hover { background: rgba(255,255,255,0.05) !important; }
         .sidebar-resize-handle:hover { background: rgba(255,255,255,0.14); }
+        .sidebar-btn.active-session::before {
+          content: '';
+          position: absolute;
+          left: -4px;
+          top: 8px;
+          bottom: 8px;
+          width: 2px;
+          border-radius: 1px;
+          background: var(--accent, #6b9bff);
+        }
       `}</style>
 
       {/* Everything except the bottom actions lives in one scroll container:
           overflow-y auto means the scrollbar pops in only when the sections
-          (given their expanded/collapsed state) don't fit the window. */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          (given their expanded/collapsed state) don't fit the window. The 5px
+          right margin keeps that scrollbar clear of the resize handle strip so
+          the thumb stays clickable. */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', marginRight: '5px' }}>
 
       {/* Primary actions (formerly the icon rail) */}
       <div style={{ padding: '4px', borderBottom: '1px solid #2d2d2d' }}>
@@ -350,7 +368,9 @@ export function Sidebar({
         </>)}
       </div>
 
-      {/* Active terminals */}
+      {/* Active terminals. This section doesn't scroll on its own — the outer
+          container above owns the single scrollbar (and its right margin keeps
+          that scrollbar clear of the resize handle). */}
       {terminals.length > 0 && (
       <div style={{ padding: '4px' }}>
         {!collapsed && (
@@ -370,8 +390,11 @@ export function Sidebar({
                 e.preventDefault()
                 onContextMenu(t.path, e.clientX, e.clientY)
               }}
-              style={btnStyle(isActive)}
-              className="sidebar-btn"
+              style={{
+                ...btnStyle(isActive),
+                ...(isActive ? { '--accent': t.color } as React.CSSProperties : {}),
+              }}
+              className={'sidebar-btn' + (isActive ? ' active-session' : '')}
               title={t.name}
             >
               {t.isPlainShell ? (
@@ -385,12 +408,14 @@ export function Sidebar({
                 }}>&gt;_</span>
               ) : (
                 <span style={{
-                  width: '8px',
-                  height: '8px',
+                  width: '10px',
+                  height: '10px',
                   borderRadius: '50%',
                   background: t.color,
                   flexShrink: 0,
-                  boxShadow: busy ? `0 0 6px 2px ${t.color}80` : 'none',
+                  boxShadow: busy
+                    ? `0 0 8px 2px ${t.color}80, 0 0 0 2px rgba(255,255,255,0.04)`
+                    : '0 0 0 2px rgba(255,255,255,0.04)',
                   animation: busy ? 'pulse 1.5s ease-in-out infinite' : 'none',
                 }} />
               )}
@@ -420,13 +445,13 @@ export function Sidebar({
         return (
           <div>
             {favorites.length > 0 && (
-              <div style={{ borderTop: '1px solid #2d2d2d' }}>
+              <div>
                 <button
                   onClick={toggleFavorites}
                   style={sectionHeadingStyle}
                   className="sidebar-btn"
                 >
-                  <span>FAVORITES</span>
+                  <span>favorites</span>
                   {favoritesExpanded ? <ChevronDown width={12} height={12} /> : <ChevronRight width={12} height={12} />}
                 </button>
                 {favoritesExpanded && favorites.map((f) => (
@@ -443,13 +468,13 @@ export function Sidebar({
               </div>
             )}
             {recents.length > 0 && (
-              <div style={{ borderTop: '1px solid #2d2d2d' }}>
+              <div>
                 <button
                   onClick={toggleRecent}
                   style={sectionHeadingStyle}
                   className="sidebar-btn"
                 >
-                  <span>RECENT</span>
+                  <span>recents</span>
                   {recentExpanded ? <ChevronDown width={12} height={12} /> : <ChevronRight width={12} height={12} />}
                 </button>
                 {recentExpanded && recents.map((f) => (
@@ -471,23 +496,36 @@ export function Sidebar({
 
       </div>
 
-      {/* Bottom actions */}
-      <div style={{ padding: '6px 4px', borderTop: '1px solid #2d2d2d', flexShrink: 0 }}>
-        <button onClick={onShowAll} style={btnStyle(viewMode.type === 'grid')} className="sidebar-btn" title="Show All">
+      {/* Bottom actions — elevated card group when expanded; the card's 8px
+          margins don't fit the 36px collapsed rail, so collapsed keeps the
+          flat divider look. */}
+      <div style={collapsed ? {
+        padding: '8px 4px',
+        borderTop: '1px solid #2a2a2a',
+        flexShrink: 0,
+      } : {
+        margin: '8px',
+        padding: '4px',
+        background: '#202020',
+        border: '1px solid #2a2a2a',
+        borderRadius: '8px',
+        flexShrink: 0,
+      }}>
+        <button onClick={onShowAll} style={{ ...btnStyle(viewMode.type === 'grid'), margin: 0 }} className="sidebar-btn" title="Show All">
           <LayoutGrid width={14} height={14} />
           {!collapsed && <span>Show All</span>}
         </button>
         {terminals.length > 0 && (
-          <button onClick={onCloseAll} style={btnStyle()} className="sidebar-btn" title="Close All">
+          <button onClick={onCloseAll} style={{ ...btnStyle(), margin: 0 }} className="sidebar-btn" title="Close All">
             <X width={14} height={14} style={{ color: '#f14c4c' }} />
             {!collapsed && <span>Close All</span>}
           </button>
         )}
-        <button onClick={onOpenSettings} style={btnStyle()} className="sidebar-btn" title="Settings">
+        <button onClick={onOpenSettings} style={{ ...btnStyle(), margin: 0 }} className="sidebar-btn" title="Settings">
           <span style={{ color: '#aaa', display: 'flex', flexShrink: 0 }}><Settings width={14} height={14} /></span>
           {!collapsed && <span>Settings</span>}
         </button>
-        <button onClick={toggleCollapsed} style={btnStyle()} className="sidebar-btn" title={collapsed ? 'Expand' : 'Collapse'}>
+        <button onClick={toggleCollapsed} style={{ ...btnStyle(), margin: 0 }} className="sidebar-btn" title={collapsed ? 'Expand' : 'Collapse'}>
           {collapsed ? <ChevronRight width={14} height={14} /> : <ChevronLeft width={14} height={14} />}
           {!collapsed && <span>Collapse</span>}
         </button>

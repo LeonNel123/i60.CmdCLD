@@ -55,12 +55,12 @@ describe('Settings agent CLI defaults', () => {
 })
 
 describe('Settings terminal font', () => {
-  it('defaults a legacy settings file to the Windows Terminal font (Cascadia Mono, 12)', () => {
+  it('defaults a legacy settings file to the bundled JetBrains Mono at 12pt', () => {
     writeFileSync(FILE, JSON.stringify({ claudeArgs: '--continue' }))
     const settings = new Settings(FILE)
 
     expect(settings.get('terminalFontFamily')).toBe(DEFAULT_TERMINAL_FONT_FAMILY)
-    expect(settings.get('terminalFontFamily')).toContain('Cascadia Mono')
+    expect(settings.get('terminalFontFamily')).toContain('JetBrains Mono')
     expect(settings.get('terminalFontSize')).toBe(DEFAULT_TERMINAL_FONT_SIZE)
     expect(settings.get('terminalFontSize')).toBe(12)
   })
@@ -113,6 +113,7 @@ describe('clampUiScalePct / uiScaleFactor', () => {
   it('rounds and clamps into range and converts percent to factor', () => {
     expect(clampUiScalePct(120)).toBe(120)
     expect(clampUiScalePct(10)).toBe(UI_SCALE_PCT_MIN)
+    expect(clampUiScalePct(10)).toBe(50) // pinned: floor is 50%
     expect(clampUiScalePct(999)).toBe(UI_SCALE_PCT_MAX)
     expect(clampUiScalePct(NaN)).toBe(DEFAULT_UI_SCALE_PCT)
     expect(uiScaleFactor(100)).toBe(1)
