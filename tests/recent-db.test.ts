@@ -96,12 +96,16 @@ describe('getEffectiveRoot', () => {
     Object.defineProperty(process, 'platform', { value: p, configurable: true })
   }
 
-  it('Windows local: D:\\foo → D:\\', () => {
+  // Windows-host only: getEffectiveRoot falls through to path.parse, and Node
+  // binds `path` to win32/posix from the real host platform at module load —
+  // mocking process.platform afterwards cannot switch it, so backslash roots
+  // only parse on an actual Windows machine.
+  it.runIf(process.platform === 'win32')('Windows local: D:\\foo → D:\\', () => {
     setPlatform('win32')
     expect(getEffectiveRoot('D:\\foo')).toBe('D:\\')
   })
 
-  it('Windows UNC: \\\\srv\\share\\foo → \\\\srv\\share\\', () => {
+  it.runIf(process.platform === 'win32')('Windows UNC: \\\\srv\\share\\foo → \\\\srv\\share\\', () => {
     setPlatform('win32')
     expect(getEffectiveRoot('\\\\srv\\share\\foo')).toBe('\\\\srv\\share\\')
   })
@@ -180,12 +184,16 @@ describe('RecentDB.pruneStale', () => {
   it('prunes only missing entries, keeps ok and unmounted', async () => {
     const realPath = realDir               // exists on disk → 'ok'
     const missingPath = join(realDir, 'gone-subdir')  // on real root, dir absent → 'missing'
-    // fake drive path: on Windows use Z:\fake (unmounted); on other platforms use a
-    // path that references a non-existent mount prefix so getEffectiveRoot returns
-    // something that also doesn't exist → 'unmounted'
+    // fake drive path: a non-existent mount prefix that getEffectiveRoot treats
+    // as a removable root on THIS host platform, so the root itself doesn't
+    // exist → 'unmounted'. The prefix is platform-specific: /media/* is only a
+    // mount root on Linux (on macOS its effective root is '/', which exists,
+    // demoting the entry to 'missing' and breaking the keep-unmounted case).
     const fakePath = process.platform === 'win32'
       ? 'Z:\\fake-cmdcld-dir'
-      : '/media/fakecmdcld/mydir'
+      : process.platform === 'darwin'
+        ? '/Volumes/fake-cmdcld-vol/mydir'
+        : '/media/fakecmdcld/mydir'
 
     // Insert directly via add (startup pruneStaleInternal already ran on init,
     // but none of these paths existed then, so we insert after init resolves)
