@@ -1347,4 +1347,37 @@ describe('research stage', () => {
     expect(sm.state.stage).toBe('research')
     expect(sm.state.researchInFlight).toBeDefined()
   })
+
+  it('returns to discovery when all research topics are written and approved', async () => {
+    const writes: string[] = []
+    const plans: ProDecideResult[] = [
+      { shape: 'research', topics: [{ slug: 'example-docs', approve: true, budgetUsd: 0.5 }] },
+      { shape: 'approve', verdict: 'approve' },
+      { shape: 'reply', text: 'ack' },
+    ]
+    const sm = makeSm(fakeChatClient(() => plans.shift() ?? { shape: 'reply', text: 'x' }), writes, {
+      researchEnabled: true,
+      freeTextIdea: 'evaluate https://example.com/docs for this integration',
+    })
+    await sm.start()
+    expect(sm.state.stage).toBe('research')
+
+    // Doer proposes a topic; planner approves it.
+    sm.feedPty('[ORCH:WAITING] research topics?\nDECISION_SHAPE: research\n')
+    await flush()
+    expect(sm.state.researchInFlight?.pendingTopics).toEqual(['example-docs'])
+
+    // Doer writes the artifact and asks for approval.
+    mkdirSync(join(TMP, 'docs/research'), { recursive: true })
+    writeFileSync(join(TMP, 'docs/research/example-docs.md'), '# findings')
+    sm.feedPty('[ORCH:WAITING] wrote findings\nDECISION_SHAPE: approve\nARTIFACT: docs/research/example-docs.md\n')
+    await flush()
+
+    // The completion scan runs at the top of the NEXT settle.
+    sm.feedPty('[ORCH:WAITING] what next\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(writes.some((w) => w.includes('Research complete. 1 artifact(s)'))).toBe(true)
+    expect(sm.state.researchInFlight).toBeUndefined()
+    expect(sm.state.stage).toBe('discovery')
+  })
 })

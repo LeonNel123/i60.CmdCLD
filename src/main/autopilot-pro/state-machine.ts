@@ -1106,7 +1106,8 @@ export class AutopilotProStateMachine {
     return this.outputVolumeSinceReset >= this.maxDoerOutputPerReset
   }
 
-  private transition(_phase: ProStage, reason: string): void {
+  private transition(phase: ProStage, reason: string): void {
+    this.state.stage = phase
     this.appendActivity('orchestrator-pause', reason)
     this.clearSilenceTimer()
   }
