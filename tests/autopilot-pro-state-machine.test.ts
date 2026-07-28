@@ -1380,4 +1380,20 @@ describe('research stage', () => {
     expect(sm.state.researchInFlight).toBeUndefined()
     expect(sm.state.stage).toBe('discovery')
   })
+
+  it('escapes research when the planner decides transition advance', async () => {
+    const writes: string[] = []
+    const sm = makeSm(
+      fakeChatClient(() => ({ shape: 'transition', action: 'advance', why: 'no research needed' })),
+      writes,
+      { researchEnabled: true, freeTextIdea: 'evaluate https://example.com/docs for this integration' },
+    )
+    await sm.start()
+    expect(sm.state.stage).toBe('research')
+    sm.feedPty('[ORCH:WAITING] skip research?\nDECISION_SHAPE: transition\n')
+    await flush()
+    expect(sm.state.stage).toBe('discovery')
+    expect(sm.state.researchInFlight).toBeUndefined()
+    expect(writes.some((w) => w.includes('Stage now: discovery'))).toBe(true)
+  })
 })

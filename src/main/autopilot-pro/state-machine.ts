@@ -923,8 +923,17 @@ export class AutopilotProStateMachine {
 
       case 'transition': {
         if (result.action === 'advance') {
-          // Validate gates before allowing advance
-          this.maybeAdvanceStage()
+          if (this.state.stage === 'research') {
+            // Escape hatch: the planner can abandon research (e.g. the doer
+            // never proposed topics). Return to the stage that triggered it.
+            const trigger = this.state.researchInFlight?.triggerStage ?? 'discovery'
+            this.state.researchInFlight = undefined
+            this.appendActivity('research-stage-complete', `advance during research — returning to ${trigger}`)
+            this.transition(trigger, 'research ended by planner advance')
+          } else {
+            // Validate gates before allowing advance
+            this.maybeAdvanceStage()
+          }
           const reply = `Stage now: ${this.state.stage}. ${result.why}`
           this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-resume', `stage→${this.state.stage}`)
