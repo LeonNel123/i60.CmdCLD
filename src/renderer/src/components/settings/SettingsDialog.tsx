@@ -62,6 +62,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   // Remote access (applies immediately)
   const [remoteAccess, setRemoteAccess] = useState(false)
   const [remotePort, setRemotePort] = useState(3456)
+  const [remoteLanAccess, setRemoteLanAccess] = useState(false)
   const [remoteUrls, setRemoteUrls] = useState<string[]>([])
   const [remoteError, setRemoteError] = useState('')
   const [tsStatus, setTsStatus] = useState<TailscaleStatus | null>(null)
@@ -100,6 +101,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
       setProjectsRoot(s.projectsRoot)
       setRemoteAccess(s.remoteAccess ?? false)
       setRemotePort(s.remotePort ?? 3456)
+      setRemoteLanAccess(s.remoteLanAccess ?? false)
       setFavoriteFolders(s.favoriteFolders ?? [])
       setRestoreSessionEnabled(s.restoreSessionEnabled ?? false)
       setRestoreSessionResume(s.restoreSessionResume ?? false)
@@ -280,6 +282,8 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
           <RemotePane
             remoteAccess={remoteAccess} onRemoteToggle={(v) => { void handleRemoteToggle(v) }}
             remotePort={remotePort} onRemotePortChange={setRemotePort}
+            remoteLanAccess={remoteLanAccess}
+            onRemoteLanAccessChange={(v) => { setRemoteLanAccess(v); void window.api.settingsSet('remoteLanAccess', v) }}
             remoteUrls={remoteUrls} remoteError={remoteError}
             tsStatus={tsStatus} tsBusy={tsBusy} tsError={tsError}
             onTailscaleServeToggle={(v) => { void handleTailscaleServeToggle(v) }}
