@@ -888,9 +888,26 @@ export class AutopilotProStateMachine {
           this.appendActivity('research-dispatch', `${t.slug} approved, budget $${budget.toFixed(2)}`)
         }
 
+        // If every proposed topic was declined or reused, there's nothing left
+        // to research this round. When we're actually in the research stage
+        // (the stage-(-1) auto-trigger flow), requesting a confirming approve
+        // here is a dead end — approve hard-requires an ARTIFACT path, and
+        // nothing ever advances the stage out of 'research'. End it inline,
+        // mirroring the natural research-complete path above. Mid-flight
+        // research digressions dispatched from another stage (state.stage is
+        // still e.g. 'discovery') keep the prior confirm-with-approve behavior.
+        let endedResearchInline: ProStage | null = null
         if (pending.length === 0) {
-          lines.push('No new research; proceeding back to ' + (this.state.researchInFlight?.triggerStage ?? this.state.stage) + '.')
-          lines.push('Emit DECISION_SHAPE: approve to confirm.')
+          const trigger = this.state.researchInFlight?.triggerStage ?? 'discovery'
+          if (this.state.stage === 'research') {
+            this.state.researchInFlight = undefined
+            this.appendActivity('research-stage-complete', `no new research needed — returning to ${trigger}`)
+            lines.push(`No new research needed; proceed to ${trigger}.`)
+            endedResearchInline = trigger
+          } else {
+            lines.push('No new research; proceeding back to ' + trigger + '.')
+            lines.push('Emit DECISION_SHAPE: approve to confirm.')
+          }
         } else {
           lines.push('')
           lines.push('Proceed; emit DECISION_SHAPE: research while in-flight (with RESEARCH_TOPIC: <slug>) and DECISION_SHAPE: approve once each artifact is written.')
@@ -915,6 +932,8 @@ export class AutopilotProStateMachine {
             topicBudgets: { ...(this.state.researchInFlight?.topicBudgets ?? {}), ...budgets },
             topicsRegistered: true,
           }
+        } else if (endedResearchInline) {
+          this.transition(endedResearchInline, 'research ended — all topics declined/reused')
         }
 
         this.notify()
