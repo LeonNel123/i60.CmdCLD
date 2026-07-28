@@ -1393,7 +1393,7 @@ export class AutopilotProStateMachine {
     const cost = this.state.researchInFlight.spendByTopic[slug] ?? 0
     this.recordResearchHistory(slug, cost, 'written')
     this.appendActivity('research-write', `${slug} written, cost $${cost.toFixed(3)}`)
-    if (this.state.researchInFlight.pendingTopics.length === 0) {
+    if (this.state.researchInFlight.topicsRegistered && this.state.researchInFlight.pendingTopics.length === 0) {
       const trigger = this.state.researchInFlight.triggerStage
       this.state.researchInFlight = undefined
       this.appendActivity('research-stage-complete', `returning to ${trigger}`)
