@@ -385,6 +385,7 @@ export class AutopilotProStateMachine {
           pendingTopics: [],
           spendByTopic: {},
           topicBudgets: {},
+          topicsRegistered: false,
         }
         this.appendActivity('research-stage-entered', signals.triggerReason)
 
@@ -567,7 +568,7 @@ export class AutopilotProStateMachine {
         }
       }
 
-      if (this.state.researchInFlight.pendingTopics.length === 0) {
+      if (this.state.researchInFlight.topicsRegistered && this.state.researchInFlight.pendingTopics.length === 0) {
         const trigger = this.state.researchInFlight.triggerStage
         this.state.researchInFlight = undefined
         this.appendActivity('research-stage-complete', `returning to ${trigger}`)
@@ -912,6 +913,7 @@ export class AutopilotProStateMachine {
             pendingTopics: [...(this.state.researchInFlight?.pendingTopics ?? []), ...pending],
             spendByTopic: this.state.researchInFlight?.spendByTopic ?? {},
             topicBudgets: { ...(this.state.researchInFlight?.topicBudgets ?? {}), ...budgets },
+            topicsRegistered: true,
           }
         }
 

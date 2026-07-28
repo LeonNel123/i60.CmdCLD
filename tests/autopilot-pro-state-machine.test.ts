@@ -1322,3 +1322,29 @@ describe('research runtime persistence + overrun (Wave 1.6)', () => {
     expect(writes.some((w) => w.includes('exceeded budget'))).toBe(true)
   })
 })
+
+describe('research stage', () => {
+  const RESEARCH_IDEA = 'evaluate https://example.com/docs for this integration'
+
+  it('enters research at start when the idea has research signals', async () => {
+    const sm = makeSm(undefined, [], { researchEnabled: true, freeTextIdea: RESEARCH_IDEA })
+    await sm.start()
+    expect(sm.state.stage).toBe('research')
+    expect(sm.state.researchInFlight).toBeDefined()
+  })
+
+  it('does not declare research complete before any topics are registered', async () => {
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'working on it' })), writes, {
+      researchEnabled: true,
+      freeTextIdea: RESEARCH_IDEA,
+    })
+    await sm.start()
+    writes.length = 0
+    sm.feedPty('[ORCH:WAITING] scoping the work\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(writes.some((w) => w.includes('Research complete.'))).toBe(false)
+    expect(sm.state.stage).toBe('research')
+    expect(sm.state.researchInFlight).toBeDefined()
+  })
+})
