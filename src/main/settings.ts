@@ -16,6 +16,7 @@ export interface AppSettings {
   projectsRoot: string
   remoteAccess: boolean
   remotePort: number
+  remoteLanAccess: boolean
   favoriteFolders: string[]
   restoreSessionEnabled: boolean
   restoreSessionResume: boolean
@@ -40,6 +41,7 @@ const DEFAULTS: AppSettings = {
   projectsRoot: '',
   remoteAccess: false,
   remotePort: 3456,
+  remoteLanAccess: false,
   favoriteFolders: [],
   restoreSessionEnabled: false,
   restoreSessionResume: false,
