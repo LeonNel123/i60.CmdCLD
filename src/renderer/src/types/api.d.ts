@@ -31,6 +31,8 @@ export interface SavedProject {
   claudeArgs: string
   codexArgs?: string
   isPlainShell: boolean
+  // Tucked into the taskbar when the session was saved; restored the same way.
+  minimized?: boolean
 }
 
 export interface SavedSession {
@@ -172,7 +174,7 @@ export interface ElectronAPI {
   sessionLoadLast: () => Promise<SavedSession | null>
   sessionClearLast: () => Promise<void>
   gitStatus: (path: string, fresh?: boolean) => Promise<GitStatus>
-  openExternal: (url: string) => Promise<void>
+  openExternal: (url: string, source?: string) => Promise<void>
   openInExplorer: (folderPath: string) => Promise<void>
   openInEditor: (
     targetPath: string,
@@ -247,7 +249,7 @@ export interface ElectronAPI {
   autopilotAttachStatus: (terminalId: string) => Promise<AttachSessionStatus | null>
   autopilotAttachCancel: (terminalId: string) => Promise<{ ok: boolean }>
   onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void) => () => void
-  relaySend: (req: { from: string; to: string; subject: string; path: string }) => Promise<RelaySendResult>
+  relaySend: (req: { fromTerminalId: string; to: string; subject: string; path: string }) => Promise<RelaySendResult>
   relayState: () => Promise<RelayState>
   relaySessions: () => Promise<Array<{ id: string; name: string }>>
   relayCancel: (id: string) => Promise<boolean>

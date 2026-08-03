@@ -7,8 +7,8 @@ export type RelayStatus = 'delivered' | 'queued' | 'refused' | 'cancelled'
 export type RelayQueueReason = 'busy' | 'unknown-target' | 'ambiguous-target'
 
 export interface RelayRequest {
-  // Sender display name (phase 1: chosen by the human in the UI; phase 2:
-  // host-stamped from the MCP caller's session token).
+  // Sender display name — host-stamped on both entry paths: from the MCP
+  // caller's session token, or from the sending terminal's meta for UI sends.
   from: string
   // Target session id or name; resolved against live sessions at delivery time.
   to: string

@@ -82,6 +82,11 @@ interface TerminalPanelProps {
   fontFamily?: string
   fontSize?: number
   onClose: () => void
+  // Window-style controls: minimize tucks the tile into the bottom taskbar;
+  // maximize toggles the existing focused view.
+  onMinimize?: () => void
+  onToggleMaximize?: () => void
+  isMaximized?: boolean
   onSpawnShell?: () => void
   onOpenMarkdown?: (filePath: string) => void
   onStartAutopilot?: () => void
@@ -104,6 +109,9 @@ export function TerminalPanel({
   fontFamily,
   fontSize,
   onClose,
+  onMinimize,
+  onToggleMaximize,
+  isMaximized,
   onSpawnShell,
   onOpenMarkdown,
   onStartAutopilot,
@@ -166,8 +174,8 @@ export function TerminalPanel({
     // Route a clicked terminal link/path: http(s) -> system browser; .md ->
     // in-app viewer; source/config files -> editor; everything else (incl.
     // file:// links) -> the OS default program (like double-clicking it).
-    const openTarget = (raw: string): void => {
-      if (/^https?:/i.test(raw)) { window.api.openExternal(raw); return }
+    const openTarget = (raw: string, source: string): void => {
+      if (/^https?:/i.test(raw)) { window.api.openExternal(raw, source); return }
       const isFileUrl = /^file:/i.test(raw)
       // Resolve relative paths (bare or with separators) against the
       // terminal's folder — main resolves against the app cwd, not ours.
@@ -192,8 +200,21 @@ export function TerminalPanel({
     // stray plain click never launches a file, app, or browser — same gesture
     // as VS Code's integrated terminal. (On macOS, Ctrl+click is a right-click,
     // so we require Cmd there instead.)
-    const isLinkActivation = (event?: MouseEvent | null): boolean =>
-      !event || (window.api.platform === 'darwin' ? event.metaKey : event.ctrlKey)
+    //
+    // While the pty application has mouse reporting enabled (Claude Code's
+    // fullscreen renderer, vim with mouse=a, …), xterm forwards clicks into
+    // the pty and the app owns the gesture. Claude Code opens ctrl+clicked
+    // links itself in that state — it only defers to terminals it recognizes
+    // (e.g. TERM_PROGRAM=vscode), and we are not one — so opening here too
+    // double-opened every link (two browser tabs per click, diagnosed via
+    // the openExternal [source] log). Stand down whenever the app tracks
+    // the mouse; at a plain shell prompt nothing tracks it and we handle
+    // the click as before.
+    const isLinkActivation = (event?: MouseEvent | null): boolean => {
+      const t = terminalRef.current
+      if (t && t.modes.mouseTrackingMode !== 'none') return false
+      return !event || (window.api.platform === 'darwin' ? event.metaKey : event.ctrlKey)
+    }
 
     const term = new Terminal({
       cursorBlink: true,
@@ -226,11 +247,11 @@ export function TerminalPanel({
       // fontSize is CSS px, so convert at this boundary.
       fontSize: pointsToPixels(fontRef.current.size),
       // Handle OSC 8 hyperlinks (ESC]8;;<uri>) that terminal programs emit.
-      linkHandler: { activate: (event, uri) => { if (isLinkActivation(event)) openTarget(uri) } },
+      linkHandler: { activate: (event, uri) => { if (isLinkActivation(event)) openTarget(uri, 'osc8') } },
     })
     const fitAddon = new FitAddon()
     const webLinksAddon = new WebLinksAddon((event, uri) => {
-      if (isLinkActivation(event)) openTarget(uri)
+      if (isLinkActivation(event)) openTarget(uri, 'weblinks')
     })
     const searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
@@ -264,6 +285,11 @@ export function TerminalPanel({
         while (firstRow > 0 && buffer.getLine(firstRow)?.isWrapped) firstRow--
         let lastRow = bufferLineNumber - 1
         while (buffer.getLine(lastRow + 1)?.isWrapped) lastRow++
+        // A logical line spanning this many rows is a dump (minified JSON, a
+        // token blob), not something with a clickable path a human wants —
+        // and reassembling + regex-scanning it on every hover is what froze
+        // the renderer. Bail before building the string.
+        if (lastRow - firstRow + 1 > 64) { callback(undefined); return }
         let text = ''
         for (let i = firstRow; i <= lastRow; i++) {
           const line = buffer.getLine(i)
@@ -282,7 +308,7 @@ export function TerminalPanel({
             },
             text: l.text,
             activate(event) {
-              if (isLinkActivation(event)) openTarget(l.text)
+              if (isLinkActivation(event)) openTarget(l.text, 'path-provider')
             },
           }
         }))
@@ -675,6 +701,13 @@ export function TerminalPanel({
     borderRadius: '3px',
   }
 
+  // Minimize / maximize / close share the muted look of the old close button.
+  const windowBtnStyle: React.CSSProperties = {
+    background: 'none', border: 'none', color: '#666',
+    cursor: 'pointer', fontSize: '13px', padding: '0 7px',
+    lineHeight: 1, height: '100%',
+  }
+
   return (
     <div style={{
       height: '100%',
@@ -694,9 +727,11 @@ export function TerminalPanel({
         flexShrink: 0,
         height: '28px',
       }}>
-        {/* Col 1: Folder name — drag handle */}
+        {/* Col 1: Folder name — drag handle; double-click toggles maximize,
+            mirroring OS title-bar behavior */}
         <div
           className="drag-handle"
+          onDoubleClick={onToggleMaximize}
           style={{
             flex: 1,
             padding: '0 10px',
@@ -796,16 +831,32 @@ export function TerminalPanel({
           </button>
         )}
 
-        {/* Col 4: Close */}
+        {/* Col 4: Window controls — minimize, maximize/restore, close */}
+        {onMinimize && (
+          <button
+            onClick={onMinimize}
+            onMouseDown={(e) => e.stopPropagation()}
+            title="Minimize to taskbar"
+            style={windowBtnStyle}
+          >
+            &#8722;
+          </button>
+        )}
+        {onToggleMaximize && (
+          <button
+            onClick={onToggleMaximize}
+            onMouseDown={(e) => e.stopPropagation()}
+            title={isMaximized ? 'Restore grid' : 'Maximize'}
+            style={{ ...windowBtnStyle, fontSize: '11px' }}
+          >
+            {isMaximized ? <>&#10064;</> : <>&#9633;</>}
+          </button>
+        )}
         <button
           onClick={onClose}
           onMouseDown={(e) => e.stopPropagation()}
           title="Close terminal"
-          style={{
-            background: 'none', border: 'none', color: '#666',
-            cursor: 'pointer', fontSize: '13px', padding: '0 8px',
-            lineHeight: 1, height: '100%',
-          }}
+          style={windowBtnStyle}
         >
           &#10005;
         </button>

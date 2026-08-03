@@ -71,4 +71,34 @@ describe('findTerminalPaths', () => {
     expect(texts('docs/a.md')).toEqual(['docs/a.md'])
     expect(texts('docs/a.md')).toEqual(['docs/a.md'])
   })
+
+  it('finds paths in multiple whitespace-separated tokens with correct indices', () => {
+    const found = findTerminalPaths('open docs/a.md and  src/b.ts:3 now')
+    expect(found).toEqual([
+      { index: 5, text: 'docs/a.md' },
+      { index: 20, text: 'src/b.ts:3' },
+    ])
+  })
+
+  it('skips tokens too long to be a clickable path, keeping neighbors', () => {
+    // A 600-char slashed run would have matched before the cap; it must not
+    // match now, and paths around it must keep their indices.
+    const blob = 'x'.repeat(600) + '/y.md'
+    const found = findTerminalPaths(`docs/a.md ${blob} src/b.ts`)
+    expect(found).toEqual([
+      { index: 0, text: 'docs/a.md' },
+      { index: 10 + blob.length + 1, text: 'src/b.ts' },
+    ])
+  })
+
+  it('handles pathological non-path lines in linear time (renderer freeze regression)', () => {
+    // Quadratic backtracking: a long dotted run with no slash and no known
+    // extension re-scanned the whole tail from every start position. At 100K
+    // chars the old code took tens of seconds per call — one hover over such
+    // a wrapped line pegged the renderer at 100% CPU.
+    const jwtish = 'a.'.repeat(50_000)
+    const start = performance.now()
+    expect(findTerminalPaths(jwtish)).toEqual([])
+    expect(performance.now() - start).toBeLessThan(250)
+  })
 })

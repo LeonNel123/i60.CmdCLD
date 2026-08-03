@@ -88,7 +88,7 @@ export function RemotePane(p: RemotePaneProps) {
             Tailscale CLI not found. Install from{' '}
             <a
               href="https://tailscale.com/download"
-              onClick={(e) => { e.preventDefault(); window.api.openExternal('https://tailscale.com/download') }}
+              onClick={(e) => { e.preventDefault(); window.api.openExternal('https://tailscale.com/download', 'ui') }}
               style={{ color: '#22c55e' }}
             >tailscale.com/download</a>{' '}
             to expose CmdCLD over a trusted HTTPS URL without touching router settings.
