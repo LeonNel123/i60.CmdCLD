@@ -383,6 +383,7 @@ function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: s
     try {
       const parsed = new URL(url)
       if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        log(`openExternal [window-open]: ${url}`)
         shell.openExternal(url)
       }
     } catch {
@@ -572,9 +573,12 @@ ipcMain.handle('window:confirmClose', (event) => {
   }
 })
 
-// Open URL in system browser
-ipcMain.handle('shell:openExternal', (_event, url: string) => {
+// Open URL in system browser. The source tag + log line exist to diagnose
+// double-opens: one user click must produce exactly one of these lines — two
+// lines means two renderer paths fired for the same click.
+ipcMain.handle('shell:openExternal', (_event, url: string, source?: string) => {
   if (url.startsWith('http://') || url.startsWith('https://')) {
+    log(`openExternal${typeof source === 'string' && source ? ` [${source}]` : ''}: ${url}`)
     shell.openExternal(url)
   }
 })

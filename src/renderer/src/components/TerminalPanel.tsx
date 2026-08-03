@@ -166,8 +166,8 @@ export function TerminalPanel({
     // Route a clicked terminal link/path: http(s) -> system browser; .md ->
     // in-app viewer; source/config files -> editor; everything else (incl.
     // file:// links) -> the OS default program (like double-clicking it).
-    const openTarget = (raw: string): void => {
-      if (/^https?:/i.test(raw)) { window.api.openExternal(raw); return }
+    const openTarget = (raw: string, source: string): void => {
+      if (/^https?:/i.test(raw)) { window.api.openExternal(raw, source); return }
       const isFileUrl = /^file:/i.test(raw)
       // Resolve relative paths (bare or with separators) against the
       // terminal's folder — main resolves against the app cwd, not ours.
@@ -226,11 +226,11 @@ export function TerminalPanel({
       // fontSize is CSS px, so convert at this boundary.
       fontSize: pointsToPixels(fontRef.current.size),
       // Handle OSC 8 hyperlinks (ESC]8;;<uri>) that terminal programs emit.
-      linkHandler: { activate: (event, uri) => { if (isLinkActivation(event)) openTarget(uri) } },
+      linkHandler: { activate: (event, uri) => { if (isLinkActivation(event)) openTarget(uri, 'osc8') } },
     })
     const fitAddon = new FitAddon()
     const webLinksAddon = new WebLinksAddon((event, uri) => {
-      if (isLinkActivation(event)) openTarget(uri)
+      if (isLinkActivation(event)) openTarget(uri, 'weblinks')
     })
     const searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
@@ -287,7 +287,7 @@ export function TerminalPanel({
             },
             text: l.text,
             activate(event) {
-              if (isLinkActivation(event)) openTarget(l.text)
+              if (isLinkActivation(event)) openTarget(l.text, 'path-provider')
             },
           }
         }))

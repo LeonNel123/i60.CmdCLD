@@ -140,9 +140,11 @@ contextBridge.exposeInMainWorld('api', {
   windowConfirmClose: (): Promise<void> =>
     ipcRenderer.invoke('window:confirmClose'),
 
-  // Open URL in system browser
-  openExternal: (url: string): Promise<void> =>
-    ipcRenderer.invoke('shell:openExternal', url),
+  // Open URL in system browser. `source` names the renderer path that asked
+  // (osc8 | weblinks | path-provider | ui) — logged main-side to diagnose
+  // duplicate opens.
+  openExternal: (url: string, source?: string): Promise<void> =>
+    ipcRenderer.invoke('shell:openExternal', url, source),
 
   // Explorer
   openInExplorer: (folderPath: string): Promise<void> =>

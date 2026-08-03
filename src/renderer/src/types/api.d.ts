@@ -172,7 +172,7 @@ export interface ElectronAPI {
   sessionLoadLast: () => Promise<SavedSession | null>
   sessionClearLast: () => Promise<void>
   gitStatus: (path: string, fresh?: boolean) => Promise<GitStatus>
-  openExternal: (url: string) => Promise<void>
+  openExternal: (url: string, source?: string) => Promise<void>
   openInExplorer: (folderPath: string) => Promise<void>
   openInEditor: (
     targetPath: string,
