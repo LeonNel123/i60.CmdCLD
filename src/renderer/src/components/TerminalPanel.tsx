@@ -82,6 +82,11 @@ interface TerminalPanelProps {
   fontFamily?: string
   fontSize?: number
   onClose: () => void
+  // Window-style controls: minimize tucks the tile into the bottom taskbar;
+  // maximize toggles the existing focused view.
+  onMinimize?: () => void
+  onToggleMaximize?: () => void
+  isMaximized?: boolean
   onSpawnShell?: () => void
   onOpenMarkdown?: (filePath: string) => void
   onStartAutopilot?: () => void
@@ -104,6 +109,9 @@ export function TerminalPanel({
   fontFamily,
   fontSize,
   onClose,
+  onMinimize,
+  onToggleMaximize,
+  isMaximized,
   onSpawnShell,
   onOpenMarkdown,
   onStartAutopilot,
@@ -680,6 +688,13 @@ export function TerminalPanel({
     borderRadius: '3px',
   }
 
+  // Minimize / maximize / close share the muted look of the old close button.
+  const windowBtnStyle: React.CSSProperties = {
+    background: 'none', border: 'none', color: '#666',
+    cursor: 'pointer', fontSize: '13px', padding: '0 7px',
+    lineHeight: 1, height: '100%',
+  }
+
   return (
     <div style={{
       height: '100%',
@@ -699,9 +714,11 @@ export function TerminalPanel({
         flexShrink: 0,
         height: '28px',
       }}>
-        {/* Col 1: Folder name — drag handle */}
+        {/* Col 1: Folder name — drag handle; double-click toggles maximize,
+            mirroring OS title-bar behavior */}
         <div
           className="drag-handle"
+          onDoubleClick={onToggleMaximize}
           style={{
             flex: 1,
             padding: '0 10px',
@@ -801,16 +818,32 @@ export function TerminalPanel({
           </button>
         )}
 
-        {/* Col 4: Close */}
+        {/* Col 4: Window controls — minimize, maximize/restore, close */}
+        {onMinimize && (
+          <button
+            onClick={onMinimize}
+            onMouseDown={(e) => e.stopPropagation()}
+            title="Minimize to taskbar"
+            style={windowBtnStyle}
+          >
+            &#8722;
+          </button>
+        )}
+        {onToggleMaximize && (
+          <button
+            onClick={onToggleMaximize}
+            onMouseDown={(e) => e.stopPropagation()}
+            title={isMaximized ? 'Restore grid' : 'Maximize'}
+            style={{ ...windowBtnStyle, fontSize: '11px' }}
+          >
+            {isMaximized ? <>&#10064;</> : <>&#9633;</>}
+          </button>
+        )}
         <button
           onClick={onClose}
           onMouseDown={(e) => e.stopPropagation()}
           title="Close terminal"
-          style={{
-            background: 'none', border: 'none', color: '#666',
-            cursor: 'pointer', fontSize: '13px', padding: '0 8px',
-            lineHeight: 1, height: '100%',
-          }}
+          style={windowBtnStyle}
         >
           &#10005;
         </button>

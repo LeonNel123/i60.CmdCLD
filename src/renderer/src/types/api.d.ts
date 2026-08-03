@@ -31,6 +31,8 @@ export interface SavedProject {
   claudeArgs: string
   codexArgs?: string
   isPlainShell: boolean
+  // Tucked into the taskbar when the session was saved; restored the same way.
+  minimized?: boolean
 }
 
 export interface SavedSession {
