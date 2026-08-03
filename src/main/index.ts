@@ -133,8 +133,9 @@ let autopilotPtyWriter: QueuedPtyWriter
 let relayManager: RelayManager
 let relayIdleWatcher: SessionIdleWatcher
 const relayTokens = new SessionTokens()
-// Known once the relay MCP server binds; ptys spawned before that (shouldn't
-// happen — it starts in whenReady before any window) just omit the url var.
+// Set once the relay MCP server binds — awaited in whenReady before the
+// first window is created, so every pty spawn sees it. Stays '' only if the
+// server failed to start, in which case sessions omit the url var.
 let relayMcpUrl = ''
 let store: Store
 let recentDB: RecentDB
@@ -971,8 +972,16 @@ ipcMain.handle('autopilot:getStatus', (_event, terminalId: string) => {
   if (pro) return pro.getState()
   return autopilots.get(terminalId)?.state ?? null
 })
-ipcMain.handle('relay:send', (_event, req: RelayRequest) => {
-  return relayManager.send(req)
+// `from` is host-stamped from the sender terminal on this path too (same
+// rule as the MCP tool): the renderer names the sending session, never the
+// sender label that lands in the nudge.
+ipcMain.handle('relay:send', (_event, req: { fromTerminalId: string; to: string; subject: string; path: string }) => {
+  const from = ptyManager.getMeta(req.fromTerminalId)?.name
+  if (!from) {
+    return { ok: false, status: 'refused', id: '', error: 'sender session no longer exists' }
+  }
+  const request: RelayRequest = { from, to: req.to, subject: req.subject, path: req.path }
+  return relayManager.send(request)
 })
 ipcMain.handle('relay:state', () => {
   return relayManager.getState()
@@ -1480,27 +1489,32 @@ ipcMain.handle('store:save', (_event, state) => {
   }
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   log('App ready — creating first window')
 
   // Relay MCP endpoint (CMDCLD-REQ-001 phase 2) — 127.0.0.1 only, always on.
   // Sessions find it via CMDCLD_RELAY_URL + authenticate via CMDCLD_SESSION_ID
-  // (both injected into every pty's env at spawn).
-  startMcpServer({
-    resolveToken: (token) => relayTokens.resolve(token),
-    sessionName: (terminalId) => ptyManager.getMeta(terminalId)?.name ?? null,
-    listSessions: () => ptyManager.listAll().map((m) => ({
-      id: m.id,
-      name: m.name,
-      idle: relayIdleWatcher.isIdle(m.id),
-    })),
-    sendRelay: (args) => relayManager.send(args),
-  }).then((handle) => {
+  // (both injected into every pty's env at spawn). Awaited before the first
+  // window exists: ptys only spawn on renderer request, so binding first
+  // guarantees every session — including ones restored at startup — gets the
+  // relay env.
+  try {
+    const handle = await startMcpServer({
+      resolveToken: (token) => relayTokens.resolve(token),
+      sessionName: (terminalId) => ptyManager.getMeta(terminalId)?.name ?? null,
+      listSessions: () => ptyManager.listAll().map((m) => ({
+        id: m.id,
+        name: m.name,
+        projectPath: m.path,
+        idle: relayIdleWatcher.isIdle(m.id),
+      })),
+      sendRelay: (args) => relayManager.send(args),
+    })
     relayMcpUrl = handle.url
     log(`Relay MCP server listening at ${handle.url}`)
-  }).catch((e) => {
+  } catch (e) {
     log(`Relay MCP server failed to start: ${e}`)
-  })
+  }
 
   // macOS application menu with standard shortcuts (Cmd+Q, Cmd+W, Edit menu)
   if (process.platform === 'darwin') {

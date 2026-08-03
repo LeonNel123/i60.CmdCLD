@@ -247,7 +247,7 @@ export interface ElectronAPI {
   autopilotAttachStatus: (terminalId: string) => Promise<AttachSessionStatus | null>
   autopilotAttachCancel: (terminalId: string) => Promise<{ ok: boolean }>
   onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void) => () => void
-  relaySend: (req: { from: string; to: string; subject: string; path: string }) => Promise<RelaySendResult>
+  relaySend: (req: { fromTerminalId: string; to: string; subject: string; path: string }) => Promise<RelaySendResult>
   relayState: () => Promise<RelayState>
   relaySessions: () => Promise<Array<{ id: string; name: string }>>
   relayCancel: (id: string) => Promise<boolean>

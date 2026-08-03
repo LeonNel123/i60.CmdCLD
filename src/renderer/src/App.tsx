@@ -381,7 +381,20 @@ export default function App() {
     }).then((list) => {
       setRecentFolders(list)
     }).catch(() => {})
-  }, [defaultAgentCli, defaultViewMode, terminals])
+
+    // Welcome affordance (CMDCLD-REQ-001-response §4): surface non-adoption
+    // at launch in our own chrome — never injected. Staging the actual invite
+    // stays behind the user's click in the relay dialog. Home-dir quick
+    // terminals are exempt: they aren't project workspaces.
+    window.api.getHomeDir().then((home) => {
+      if (folderPath === home) return
+      return window.api.relayCheckAdoption(folderPath).then((isAdopted) => {
+        if (!isAdopted) {
+          showToast(`"${newEntry.name}" hasn't adopted the exchange protocol — the envelope button offers an invite`, 'info')
+        }
+      })
+    }).catch(() => {})
+  }, [defaultAgentCli, defaultViewMode, terminals, showToast])
 
   // Start the folder-open flow (may show dialog or launch directly).
   // Pass agentOverride to force a specific CLI — used by the right-click

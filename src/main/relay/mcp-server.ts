@@ -15,7 +15,7 @@ import type { RelaySendResult } from './types'
 export interface McpRelayDeps {
   resolveToken: (token: string) => string | null
   sessionName: (terminalId: string) => string | null
-  listSessions: () => Array<{ id: string; name: string; idle: boolean }>
+  listSessions: () => Array<{ id: string; name: string; projectPath: string; idle: boolean }>
   sendRelay: (args: { from: string; to: string; subject: string; path: string }) => Promise<RelaySendResult>
 }
 
@@ -38,7 +38,7 @@ const TOOLS = [
   },
   {
     name: 'list_sessions',
-    description: 'List CmdCLD sessions addressable by relay_notify: id, name, and whether each is currently idle.',
+    description: 'List CmdCLD sessions addressable by relay_notify: id, name, project path, and whether each is currently idle.',
     inputSchema: { type: 'object', properties: {} },
   },
 ]

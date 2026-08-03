@@ -288,7 +288,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('autopilot:update', listener)
     return () => { ipcRenderer.removeListener('autopilot:update', listener) }
   },
-  relaySend: (req: { from: string; to: string; subject: string; path: string }): Promise<{ ok: boolean; status: string; id: string; error?: string }> =>
+  relaySend: (req: { fromTerminalId: string; to: string; subject: string; path: string }): Promise<{ ok: boolean; status: string; id: string; error?: string }> =>
     ipcRenderer.invoke('relay:send', req),
   relayState: (): Promise<unknown> =>
     ipcRenderer.invoke('relay:state'),

@@ -35,13 +35,14 @@ const labelStyle = { color: '#888', fontSize: '11px', display: 'block', marginBo
 export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNotify }: RelayDialogProps) {
   // Sessions come from the main process so targets span every window.
   const [sessions, setSessions] = useState<Array<{ id: string; name: string }>>([])
-  const targets = useMemo(() => sessions.filter((s) => s.name !== fromName), [sessions, fromName])
+  const targets = useMemo(() => sessions.filter((s) => s.id !== fromTerminalId), [sessions, fromTerminalId])
   const [to, setTo] = useState('')
   const [subject, setSubject] = useState('')
   const [path, setPath] = useState('')
   const [sending, setSending] = useState(false)
   const [state, setState] = useState<RelayState>({ queue: [], log: [] })
   const [adopted, setAdopted] = useState(true)
+  const [logScope, setLogScope] = useState<'session' | 'all'>('session')
 
   useEffect(() => {
     let alive = true
@@ -65,7 +66,7 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
     if (!to || !subject.trim() || !path.trim() || sending) return
     setSending(true)
     try {
-      const res = await window.api.relaySend({ from: fromName, to, subject, path })
+      const res = await window.api.relaySend({ fromTerminalId, to, subject, path })
       if (res.status === 'delivered') {
         onNotify('Relay staged in target composer — submit happens there', 'info')
         setSubject('')
@@ -82,9 +83,16 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
     } finally {
       setSending(false)
     }
-  }, [to, subject, path, sending, fromName, onNotify])
+  }, [to, subject, path, sending, fromTerminalId, onNotify])
 
-  const recentLog = useMemo(() => [...state.log].reverse().slice(0, 25), [state.log])
+  // Per-session view (CMDCLD-REQ-001-response §5): this session's log is what
+  // it sent (from-name match) plus what was delivered into it (terminalId).
+  const recentLog = useMemo(() => {
+    const relevant = logScope === 'all'
+      ? state.log
+      : state.log.filter((e) => e.terminalId === fromTerminalId || e.from === fromName)
+    return [...relevant].reverse().slice(0, 25)
+  }, [state.log, logScope, fromTerminalId, fromName])
 
   return (
     <div className="ui-scaled-plain" style={{
@@ -210,9 +218,26 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
         )}
 
         <div>
-          <div style={{ color: '#888', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Relay log</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '6px' }}>
+            <span style={{ color: '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', flex: 1 }}>Relay log</span>
+            {(['session', 'all'] as const).map((scope) => (
+              <button
+                key={scope}
+                onClick={() => setLogScope(scope)}
+                style={{
+                  background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '11px',
+                  color: logScope === scope ? '#a5b4fc' : '#666',
+                  textDecoration: logScope === scope ? 'underline' : 'none',
+                }}
+              >
+                {scope === 'session' ? 'This session' : 'All sessions'}
+              </button>
+            ))}
+          </div>
           {recentLog.length === 0 && (
-            <span style={{ color: '#666', fontSize: '12px' }}>No relays yet</span>
+            <span style={{ color: '#666', fontSize: '12px' }}>
+              {logScope === 'session' ? 'No relays for this session yet' : 'No relays yet'}
+            </span>
           )}
           {recentLog.map((entry) => (
             <div key={`${entry.id}-${entry.status}-${entry.ts}`} style={{ display: 'flex', alignItems: 'baseline', gap: '8px', padding: '4px 0', borderBottom: '1px solid #26263a', fontSize: '12px' }}>

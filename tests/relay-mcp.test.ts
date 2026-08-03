@@ -10,7 +10,7 @@ function makeDeps(overrides: Partial<McpRelayDeps> = {}): McpRelayDeps & { sendC
     sendCalls,
     resolveToken: (token) => (token === 'good-token' ? 't1' : null),
     sessionName: (id) => (id === 't1' ? 'release-manager' : null),
-    listSessions: () => [{ id: 't1', name: 'release-manager', idle: true }],
+    listSessions: () => [{ id: 't1', name: 'release-manager', projectPath: 'D:\\repo', idle: true }],
     sendRelay: async (args) => {
       sendCalls.push(args)
       return { ok: true, status: 'delivered', id: 'relay-1' }
@@ -78,6 +78,8 @@ describe('handleMcpMessage', () => {
     const out = resultOf(res)
     expect(out.isError).toBeFalsy()
     expect(out.content[0].text).toContain('release-manager')
+    // projectPath is part of the committed shape (response §1).
+    expect(out.content[0].text).toContain('projectPath')
   })
 
   it('relay_notify without a valid token fails gracefully and explains itself', async () => {
