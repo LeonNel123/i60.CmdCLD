@@ -264,6 +264,11 @@ export function TerminalPanel({
         while (firstRow > 0 && buffer.getLine(firstRow)?.isWrapped) firstRow--
         let lastRow = bufferLineNumber - 1
         while (buffer.getLine(lastRow + 1)?.isWrapped) lastRow++
+        // A logical line spanning this many rows is a dump (minified JSON, a
+        // token blob), not something with a clickable path a human wants —
+        // and reassembling + regex-scanning it on every hover is what froze
+        // the renderer. Bail before building the string.
+        if (lastRow - firstRow + 1 > 64) { callback(undefined); return }
         let text = ''
         for (let i = firstRow; i <= lastRow; i++) {
           const line = buffer.getLine(i)
