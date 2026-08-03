@@ -1,6 +1,6 @@
 {
   "name": "cmdcld",
-  "version": "1.6.22",
+  "version": "1.6.23",
   "description": "Multi-terminal Claude and Codex launcher",
   "main": "./out/main/index.js",
   "scripts": {
