@@ -200,8 +200,21 @@ export function TerminalPanel({
     // stray plain click never launches a file, app, or browser — same gesture
     // as VS Code's integrated terminal. (On macOS, Ctrl+click is a right-click,
     // so we require Cmd there instead.)
-    const isLinkActivation = (event?: MouseEvent | null): boolean =>
-      !event || (window.api.platform === 'darwin' ? event.metaKey : event.ctrlKey)
+    //
+    // While the pty application has mouse reporting enabled (Claude Code's
+    // fullscreen renderer, vim with mouse=a, …), xterm forwards clicks into
+    // the pty and the app owns the gesture. Claude Code opens ctrl+clicked
+    // links itself in that state — it only defers to terminals it recognizes
+    // (e.g. TERM_PROGRAM=vscode), and we are not one — so opening here too
+    // double-opened every link (two browser tabs per click, diagnosed via
+    // the openExternal [source] log). Stand down whenever the app tracks
+    // the mouse; at a plain shell prompt nothing tracks it and we handle
+    // the click as before.
+    const isLinkActivation = (event?: MouseEvent | null): boolean => {
+      const t = terminalRef.current
+      if (t && t.modes.mouseTrackingMode !== 'none') return false
+      return !event || (window.api.platform === 'darwin' ? event.metaKey : event.ctrlKey)
+    }
 
     const term = new Terminal({
       cursorBlink: true,
