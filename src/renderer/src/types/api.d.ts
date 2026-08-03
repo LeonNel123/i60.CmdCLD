@@ -174,10 +174,14 @@ export interface ElectronAPI {
   gitStatus: (path: string, fresh?: boolean) => Promise<GitStatus>
   openExternal: (url: string) => Promise<void>
   openInExplorer: (folderPath: string) => Promise<void>
-  openInEditor: (targetPath: string) => Promise<void>
+  openInEditor: (
+    targetPath: string,
+    opts?: { forceFolder?: boolean; editorId?: string; projectPath?: string },
+  ) => Promise<{ ok: boolean; error?: string; opened?: 'solution' | 'editor'; name?: string }>
+  editorProbeProject: (folderPath: string) => Promise<{ path: string; name: string; kind: 'solution' | 'project' } | null>
   editorGetAvailable: () => Promise<Array<{ id: string; name: string; cmd: string }>>
-  editorGetCurrent: () => Promise<string>
-  editorSetCurrent: (cmd: string) => Promise<void>
+  editorGetDefaults: (projectPath?: string) => Promise<{ global: string; project: string; resolvedId: string | null }>
+  editorSetDefault: (arg: { scope: 'global' | 'project'; editorId: string | null; projectPath?: string }) => Promise<{ ok: boolean }>
   onWindowListUpdated: (callback: (windows: WindowInfo[]) => void) => () => void
   onWindowCloseRequest: (callback: () => void) => () => void
   windowConfirmClose: () => Promise<void>
@@ -243,6 +247,48 @@ export interface ElectronAPI {
   autopilotAttachStatus: (terminalId: string) => Promise<AttachSessionStatus | null>
   autopilotAttachCancel: (terminalId: string) => Promise<{ ok: boolean }>
   onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void) => () => void
+  relaySend: (req: { from: string; to: string; subject: string; path: string }) => Promise<RelaySendResult>
+  relayState: () => Promise<RelayState>
+  relaySessions: () => Promise<Array<{ id: string; name: string }>>
+  relayCancel: (id: string) => Promise<boolean>
+  relaySelectDocument: (projectPath: string) => Promise<string | null>
+  relayCheckAdoption: (projectPath: string) => Promise<boolean>
+  relayStageInvite: (terminalId: string) => Promise<{ ok: boolean; error?: string }>
+  onRelayUpdate: (callback: (state: RelayState) => void) => () => void
+}
+
+interface RelayItem {
+  id: string
+  from: string
+  to: string
+  subject: string
+  path: string
+  createdAt: number
+  reason: 'busy' | 'unknown-target' | 'ambiguous-target'
+}
+
+interface RelayLogEntry {
+  id: string
+  ts: number
+  from: string
+  to: string
+  subject: string
+  path: string
+  status: 'delivered' | 'queued' | 'refused' | 'cancelled'
+  terminalId?: string
+  detail?: string
+}
+
+interface RelayState {
+  queue: RelayItem[]
+  log: RelayLogEntry[]
+}
+
+interface RelaySendResult {
+  ok: boolean
+  status: 'delivered' | 'queued' | 'refused' | 'cancelled'
+  id: string
+  error?: string
 }
 
 declare global {

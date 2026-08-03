@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cmdcld-relay": {
+      "type": "http",
+      "url": "${CMDCLD_RELAY_URL}",
+      "headers": {
+        "X-CmdCLD-Session": "${CMDCLD_SESSION_ID}"
+      }
+    }
+  }
+}

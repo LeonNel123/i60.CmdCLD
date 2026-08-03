@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Menu, powerSaveBlocker, safeStorage, screen } from 'electron'
-import { join, resolve as resolvePath, sep as pathSep } from 'path'
+import { join, resolve as resolvePath, sep as pathSep, isAbsolute } from 'path'
 import { fileURLToPath } from 'url'
 import { spawn, execSync } from 'child_process'
 import { appendFileSync, existsSync, statSync, writeFileSync, readFileSync, mkdirSync } from 'fs'
@@ -11,7 +11,7 @@ import { WindowRegistry } from './window-registry'
 import { RecentDB } from './recent-db'
 import { Settings } from './settings'
 import { LastSessionStore, type SavedSession } from './last-session-store'
-import { detectEditors, getDefaultEditor } from './editor-detect'
+import { detectEditors, getDefaultEditor, findProjectAnchor, type EditorInfo } from './editor-detect'
 import { RemoteServer } from './remote-server'
 import { hardenGlobalSettings, trustFolder, readClaudeConfig, writeClaudeConfig } from './claude-config'
 import { getStatus as tsGetStatus, getServeStatus as tsGetServeStatus, startServe as tsStartServe, stopServe as tsStopServe } from './tailscale'
@@ -30,6 +30,12 @@ import { AnthropicClient, OpenRouterClient } from './autopilot/api-client'
 import { createDeterministicAttachDraft, createLlmAttachDraft } from './autopilot/attach-session'
 import type { AttachSessionStatus } from './autopilot/attach-types'
 import { loadBudget, getSnapshot as getBudgetSnapshot, setProjectCap, setGlobalCap, resetTodaySpend } from './autopilot/budget-tracker'
+import { RelayManager } from './relay/relay-manager'
+import { RelayStore } from './relay/relay-store'
+import { SessionIdleWatcher } from './relay/idle-watcher'
+import { SessionTokens } from './relay/session-tokens'
+import { startMcpServer } from './relay/mcp-server'
+import type { RelayRequest, RelayState } from './relay/types'
 import { detectAgentCliAvailability } from './agent-cli-detect'
 import {
   buildAgentLaunchCommand,
@@ -124,6 +130,12 @@ log('Single instance lock acquired')
 
 let ptyManager: PtyManager
 let autopilotPtyWriter: QueuedPtyWriter
+let relayManager: RelayManager
+let relayIdleWatcher: SessionIdleWatcher
+const relayTokens = new SessionTokens()
+// Known once the relay MCP server binds; ptys spawned before that (shouldn't
+// happen — it starts in whenReady before any window) just omit the url var.
+let relayMcpUrl = ''
 let store: Store
 let recentDB: RecentDB
 let settings: Settings
@@ -226,8 +238,12 @@ function broadcastAutopilotCouncilUpdate(terminalId: string, state: CouncilState
 }
 
 try {
-  ptyManager = new PtyManager()
+  ptyManager = new PtyManager((id) => ({
+    CMDCLD_SESSION_ID: relayTokens.issue(id),
+    ...(relayMcpUrl ? { CMDCLD_RELAY_URL: relayMcpUrl } : {}),
+  }))
   ptyManager.on('exit', ({ id }: { id: string }) => clearAttachSession(id))
+  ptyManager.on('exit', ({ id }: { id: string }) => relayTokens.revoke(id))
   autopilotPtyWriter = new QueuedPtyWriter((terminalId, data) => {
     ptyManager.write(terminalId, data)
   }, {
@@ -248,13 +264,42 @@ try {
     },
   })
 
+  // Cross-session relay (CMDCLD-REQ-001 phase 1): idle tracking for every
+  // session, persisted queue, stage-only delivery through the shared pty
+  // writer so relay and autopilot writes stay serialized per terminal.
+  relayIdleWatcher = new SessionIdleWatcher()
+  ptyManager.on('data', ({ id }: { id: string }) => relayIdleWatcher.noteData(id))
+  ptyManager.on('exit', ({ id }: { id: string }) => relayIdleWatcher.noteExit(id))
+  relayManager = new RelayManager({
+    listSessions: () => ptyManager.listAll().map((m) => ({ id: m.id, name: m.name })),
+    isIdle: (terminalId) => relayIdleWatcher.isIdle(terminalId),
+    writeStaged: (terminalId, data) => autopilotPtyWriter.write(terminalId, data),
+    store: new RelayStore(join(app.getPath('userData'), 'relay.json')),
+    // Auto-submit only where the orchestrator genuinely knows the session is
+    // at a prompt: a classic autopilot at a WAITING checkpoint. Everything
+    // else — including PRO/Council and all plain sessions — stays stage-only.
+    canAutoSubmit: (terminalId) => {
+      const state = autopilots.get(terminalId)?.state
+      return state?.phase === 'executing' && state.lastMarker?.kind === 'WAITING'
+    },
+  })
+  relayManager.on('update', (state: RelayState) => {
+    for (const wcId of registry.list().map((w) => w.id)) {
+      const wc = registry.getWebContents(wcId)
+      if (wc) wc.send('relay:update', state)
+    }
+  })
+  setInterval(() => { void relayManager.tick() }, 1000)
+
   // Auto-detect editors and set default if not configured
   const availableEditors = detectEditors()
   log(`Detected editors: ${availableEditors.map(e => e.name).join(', ') || 'none'}`)
   const currentEditor = settings.get('editor')
-  if (!availableEditors.find(e => e.cmd === currentEditor)) {
-    const def = getDefaultEditor(availableEditors)
-    if (def) settings.set('editor', def.cmd)
+  if (currentEditor && !availableEditors.find(e => e.id === currentEditor || e.cmd === currentEditor)) {
+    // Stale global default (editor uninstalled, or a legacy value like 'code'
+    // on a machine without it). Clear it rather than imposing a new one — the
+    // user picks a default from the edit-button menu.
+    settings.set('editor', '')
   }
   log('All services created')
 } catch (e) {
@@ -543,17 +588,133 @@ ipcMain.handle('explorer:open', (_event, folderPath: string) => {
   child.unref()
 })
 
-// Open in editor — uses configured editor
-// shell:true is needed on Windows because editors like 'code' are .cmd batch wrappers
-// On macOS/Linux they're symlinks that work directly
-// Accepts both file paths (from clickable links) and directory paths
-ipcMain.handle('editor:open', (_event, targetPath: string) => {
-  const cmd = settings.get('editor')
+// Launch a folder-capable editor with the given arguments. Resolves { ok, error }.
+// Detection hands us an absolute install path where possible, so launching does
+// not depend on PATH. Spawning without a shell means a missing binary surfaces
+// as an 'error' event instead of failing silently.
+function spawnEditor(cmd: string, args: string[]): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolveResult) => {
+    const isWin = process.platform === 'win32'
+    const isBatch = isWin && /\.(cmd|bat)$/i.test(cmd)
+    let child
+    try {
+      if (isBatch) {
+        // .cmd/.bat wrappers (VS Code, Cursor, …) aren't directly executable by
+        // CreateProcess; run them through cmd.exe, which handles spaced paths.
+        child = spawn('cmd.exe', ['/c', cmd, ...args], { detached: true, stdio: 'ignore', windowsHide: true })
+      } else {
+        // Absolute .exe / POSIX binary: spawn directly. Bare command names
+        // (the PATH fallback) still need a shell on Windows.
+        const shellNeeded = isWin && !isAbsolute(cmd)
+        child = spawn(cmd, args, { shell: shellNeeded, detached: true, stdio: 'ignore', windowsHide: true })
+      }
+    } catch (e) {
+      resolveResult({ ok: false, error: e instanceof Error ? e.message : String(e) })
+      return
+    }
+    let settled = false
+    child.on('error', (err) => {
+      if (settled) return
+      settled = true
+      resolveResult({ ok: false, error: err.message })
+    })
+    // No error within a short grace period → the process launched. Detach.
+    setTimeout(() => {
+      if (settled) return
+      settled = true
+      child.unref()
+      resolveResult({ ok: true })
+    }, 400)
+  })
+}
+
+// Visual Studio opens a *folder* through VSLauncher (the shell "Open in Visual
+// Studio" verb), NOT devenv — devenv only takes solution/project files. Path is
+// fixed across VS installs. Returns null if not present.
+function vsLauncherPath(): string | null {
+  const base = process.env['ProgramFiles(x86)']
+  if (!base) return null
+  const p = join(base, 'Common Files', 'Microsoft Shared', 'MSEnv', 'VSLauncher.exe')
+  return existsSync(p) ? p : null
+}
+
+// Resolve the editor to use: an explicit editorId wins, else the per-project
+// default, else the global default. Returns null when no default is chosen.
+function resolveEditorFor(available: EditorInfo[], projectPath: string | undefined, editorId: string | undefined): EditorInfo | null {
+  if (editorId) return available.find((e) => e.id === editorId) ?? null
+  const perProject = projectPath ? settings.get('editorByProject')[projectPath] : undefined
+  const chosen = perProject || settings.get('editor')
+  if (chosen) return available.find((e) => e.id === chosen || e.cmd === chosen) ?? null
+  return null
+}
+
+// Open in editor. Accepts files (from clickable links) and directories (the
+// terminal "open in editor" button). For a directory that is a Visual Studio
+// project root, the default opens the solution/project via the OS association
+// (→ the right VS). `opts.forceFolder` opens the folder itself instead;
+// `opts.editorId` targets a specific detected editor; `opts.projectPath` scopes
+// the per-project default lookup.
+ipcMain.handle('editor:open', async (_event, targetPath: string, opts?: { forceFolder?: boolean; editorId?: string; projectPath?: string }) => {
   try {
-    if (!existsSync(targetPath)) return
-  } catch { return }
-  const child = spawn(cmd, [targetPath], { shell: process.platform === 'win32', detached: true, stdio: 'ignore' })
-  child.unref()
+    if (!existsSync(targetPath)) return { ok: false, error: 'Path no longer exists' }
+  } catch { return { ok: false, error: 'Path no longer exists' } }
+
+  let isDir = false
+  try { isDir = statSync(targetPath).isDirectory() } catch {}
+
+  if (isDir && !opts?.forceFolder) {
+    const anchor = findProjectAnchor(targetPath)
+    if (anchor) {
+      // shell.openPath uses ShellExecute → the .sln/.slnx association (VSLauncher,
+      // which picks the right VS). ShellExecute launches VS fully independently of
+      // this app, so it survives the app closing — unlike a spawned child.
+      const err = await shell.openPath(anchor.path)
+      if (!err) return { ok: true, opened: 'solution', name: anchor.name }
+      // Association didn't take — launch VS directly on the solution.
+      const vs = detectEditors().find((e) => e.id === 'devenv')
+      if (vs) {
+        const r = await spawnEditor(vs.cmd, [anchor.path])
+        if (r.ok) return { ok: true, opened: 'solution', name: anchor.name }
+      }
+      // Else fall through and try an editor on the folder.
+    }
+  }
+
+  const available = detectEditors()
+  const projectPath = opts?.projectPath ?? (isDir ? targetPath : undefined)
+  let editor = resolveEditorFor(available, projectPath, opts?.editorId)
+  // A file (terminal-link click) with no chosen default still needs to open
+  // somewhere — auto-pick. The folder button never relies on this: it shows the
+  // picker menu when no default is set.
+  if (!editor && !isDir) editor = getDefaultEditor(available) ?? null
+  if (!editor) {
+    return { ok: false, error: 'No editor found — right-click the edit button to pick one.' }
+  }
+
+  // Visual Studio opening a folder must go through VSLauncher, not devenv.
+  if (editor.id === 'devenv' && isDir) {
+    const launcher = vsLauncherPath()
+    if (launcher) {
+      const r = await spawnEditor(launcher, [targetPath, 'source:Explorer'])
+      return r.ok
+        ? { ok: true, opened: 'editor', name: editor.name }
+        : { ok: false, error: `Couldn't launch ${editor.name}` }
+    }
+  }
+
+  const res = await spawnEditor(editor.cmd, [targetPath])
+  return res.ok
+    ? { ok: true, opened: 'editor', name: editor.name }
+    : { ok: false, error: `Couldn't launch ${editor.name}` }
+})
+
+// Probe a folder for a Visual Studio solution/project so the renderer can label
+// the button and its menu. Returns null for non-VS folders.
+ipcMain.handle('editor:probeProject', (_event, folderPath: string) => {
+  try {
+    if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) return null
+  } catch { return null }
+  return findProjectAnchor(folderPath)
 })
 
 // Editor settings
@@ -561,12 +722,27 @@ ipcMain.handle('editor:getAvailable', () => {
   return detectEditors()
 })
 
-ipcMain.handle('editor:getCurrent', () => {
-  return settings.get('editor')
+// Report the global default, the per-project default (if any), and the id that
+// currently resolves for this folder (project → global, or null if unset).
+ipcMain.handle('editor:getDefaults', (_event, projectPath?: string) => {
+  const available = detectEditors()
+  const global = settings.get('editor') || ''
+  const project = (projectPath && settings.get('editorByProject')[projectPath]) || ''
+  const resolved = resolveEditorFor(available, projectPath, undefined)
+  return { global, project, resolvedId: resolved?.id ?? null }
 })
 
-ipcMain.handle('editor:setCurrent', (_event, cmd: string) => {
-  settings.set('editor', cmd)
+// Set (or clear, with editorId null) the default editor for a scope.
+ipcMain.handle('editor:setDefault', (_event, arg: { scope: 'global' | 'project'; editorId: string | null; projectPath?: string }) => {
+  if (arg.scope === 'global') {
+    settings.set('editor', arg.editorId ?? '')
+  } else {
+    const map = { ...settings.get('editorByProject') }
+    if (arg.editorId && arg.projectPath) map[arg.projectPath] = arg.editorId
+    else if (arg.projectPath) delete map[arg.projectPath]
+    settings.set('editorByProject', map)
+  }
+  return { ok: true }
 })
 
 // Clipboard image paste — saves to .screenshots/ inside the project folder
@@ -794,6 +970,56 @@ ipcMain.handle('autopilot:getStatus', (_event, terminalId: string) => {
   const pro = autopilotPros.get(terminalId)
   if (pro) return pro.getState()
   return autopilots.get(terminalId)?.state ?? null
+})
+ipcMain.handle('relay:send', (_event, req: RelayRequest) => {
+  return relayManager.send(req)
+})
+ipcMain.handle('relay:state', () => {
+  return relayManager.getState()
+})
+ipcMain.handle('relay:sessions', () => {
+  return ptyManager.listAll().map((m) => ({ id: m.id, name: m.name }))
+})
+ipcMain.handle('relay:cancel', (_event, id: string) => {
+  return relayManager.cancel(id)
+})
+// File picker for the relay document. Opens in the sender's outbound/ (the
+// only valid location) so the common case is a click, not a typed path.
+ipcMain.handle('relay:selectDocument', async (event, projectPath: string) => {
+  const windowId = getWindowIdFromEvent(event)
+  const win = windowId ? registry.get(windowId) : undefined
+  if (!win) return null
+  const outbound = join(projectPath, 'docs', 'integration', 'outbound')
+  const result = await dialog.showOpenDialog(win, {
+    title: 'Select the document to point at',
+    defaultPath: existsSync(outbound) ? outbound : projectPath,
+    properties: ['openFile'],
+    filters: [
+      { name: 'Markdown', extensions: ['md'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  })
+  return result.canceled ? null : result.filePaths[0]
+})
+ipcMain.handle('relay:checkAdoption', (_event, projectPath: string) => {
+  try {
+    return existsSync(join(projectPath, 'docs', 'integration'))
+  } catch {
+    return false
+  }
+})
+// Welcome affordance (CMDCLD-REQ-001-response §4): the adoption invite is
+// UI-triggered, never automatic — and the staged text is a fixed constant, so
+// this path can't be repurposed to inject arbitrary content.
+const ADOPTION_INVITE_TEXT =
+  "[cmdcld invite] This workspace has no docs/integration/ exchange folders. " +
+  "To adopt the cross-project exchange protocol (outbound/inbound request docs, ack-closed threads), " +
+  "load the 'exchange' skill from the cmdcld-exchange plugin and follow its Adopting section. " +
+  "Adoption is this repo's own act — create the folders and README here if you agree."
+ipcMain.handle('relay:stageInvite', async (_event, terminalId: string) => {
+  if (!ptyManager.has(terminalId)) return { ok: false, error: 'Terminal session not found.' }
+  await autopilotPtyWriter.write(terminalId, ADOPTION_INVITE_TEXT)
+  return { ok: true }
 })
 ipcMain.handle('autopilot:inspectOutput', (_event, terminalId: string) => {
   return inspectAutopilotOutput(ptyManager.getScrollback(terminalId))
@@ -1256,6 +1482,25 @@ ipcMain.handle('store:save', (_event, state) => {
 
 app.whenReady().then(() => {
   log('App ready — creating first window')
+
+  // Relay MCP endpoint (CMDCLD-REQ-001 phase 2) — 127.0.0.1 only, always on.
+  // Sessions find it via CMDCLD_RELAY_URL + authenticate via CMDCLD_SESSION_ID
+  // (both injected into every pty's env at spawn).
+  startMcpServer({
+    resolveToken: (token) => relayTokens.resolve(token),
+    sessionName: (terminalId) => ptyManager.getMeta(terminalId)?.name ?? null,
+    listSessions: () => ptyManager.listAll().map((m) => ({
+      id: m.id,
+      name: m.name,
+      idle: relayIdleWatcher.isIdle(m.id),
+    })),
+    sendRelay: (args) => relayManager.send(args),
+  }).then((handle) => {
+    relayMcpUrl = handle.url
+    log(`Relay MCP server listening at ${handle.url}`)
+  }).catch((e) => {
+    log(`Relay MCP server failed to start: ${e}`)
+  })
 
   // macOS application menu with standard shortcuts (Cmd+Q, Cmd+W, Edit menu)
   if (process.platform === 'darwin') {

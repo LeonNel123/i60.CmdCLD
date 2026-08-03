@@ -149,17 +149,23 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('explorer:open', folderPath),
 
   // Editor (accepts files or directories)
-  openInEditor: (targetPath: string): Promise<void> =>
-    ipcRenderer.invoke('editor:open', targetPath),
+  openInEditor: (
+    targetPath: string,
+    opts?: { forceFolder?: boolean; editorId?: string; projectPath?: string },
+  ): Promise<{ ok: boolean; error?: string; opened?: 'solution' | 'editor'; name?: string }> =>
+    ipcRenderer.invoke('editor:open', targetPath, opts),
+
+  editorProbeProject: (folderPath: string): Promise<{ path: string; name: string; kind: 'solution' | 'project' } | null> =>
+    ipcRenderer.invoke('editor:probeProject', folderPath),
 
   editorGetAvailable: (): Promise<Array<{ id: string; name: string; cmd: string }>> =>
     ipcRenderer.invoke('editor:getAvailable'),
 
-  editorGetCurrent: (): Promise<string> =>
-    ipcRenderer.invoke('editor:getCurrent'),
+  editorGetDefaults: (projectPath?: string): Promise<{ global: string; project: string; resolvedId: string | null }> =>
+    ipcRenderer.invoke('editor:getDefaults', projectPath),
 
-  editorSetCurrent: (cmd: string): Promise<void> =>
-    ipcRenderer.invoke('editor:setCurrent', cmd),
+  editorSetDefault: (arg: { scope: 'global' | 'project'; editorId: string | null; projectPath?: string }): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('editor:setDefault', arg),
 
   onWindowListUpdated: (callback: (windows: Array<{ id: string; label: string }>) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, windows: any): void => callback(windows)
@@ -281,5 +287,24 @@ contextBridge.exposeInMainWorld('api', {
     const listener = (_e: Electron.IpcRendererEvent, terminalId: string, state: unknown) => callback(terminalId, state)
     ipcRenderer.on('autopilot:update', listener)
     return () => { ipcRenderer.removeListener('autopilot:update', listener) }
+  },
+  relaySend: (req: { from: string; to: string; subject: string; path: string }): Promise<{ ok: boolean; status: string; id: string; error?: string }> =>
+    ipcRenderer.invoke('relay:send', req),
+  relayState: (): Promise<unknown> =>
+    ipcRenderer.invoke('relay:state'),
+  relaySessions: (): Promise<Array<{ id: string; name: string }>> =>
+    ipcRenderer.invoke('relay:sessions'),
+  relayCancel: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('relay:cancel', id),
+  relaySelectDocument: (projectPath: string): Promise<string | null> =>
+    ipcRenderer.invoke('relay:selectDocument', projectPath),
+  relayCheckAdoption: (projectPath: string): Promise<boolean> =>
+    ipcRenderer.invoke('relay:checkAdoption', projectPath),
+  relayStageInvite: (terminalId: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('relay:stageInvite', terminalId),
+  onRelayUpdate: (callback: (state: unknown) => void): (() => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, state: unknown) => callback(state)
+    ipcRenderer.on('relay:update', listener)
+    return () => { ipcRenderer.removeListener('relay:update', listener) }
   },
 })

@@ -115,7 +115,10 @@ export class PtyManager extends EventEmitter {
   private ptys = new Map<string, PtyEntry>()
   private localOutputListeners = new Map<string, Set<(data: string) => void>>()
 
-  constructor() {
+  // Extra environment merged into every spawned pty (e.g. the relay session
+  // token + MCP url). A hook rather than a create() param so all call sites
+  // (desktop IPC, remote server, council reviewer) get it without changes.
+  constructor(private buildExtraEnv?: (id: string) => Record<string, string>) {
     super()
   }
 
@@ -142,7 +145,10 @@ export class PtyManager extends EventEmitter {
       cols: 80,
       rows: 24,
       cwd,
-      env: process.env as Record<string, string>,
+      env: {
+        ...(process.env as Record<string, string>),
+        ...(this.buildExtraEnv?.(id) ?? {}),
+      },
     })
 
     const scrollback = new ScrollbackBuffer(SCROLLBACK_SIZE)

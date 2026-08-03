@@ -6,7 +6,7 @@ import { SearchAddon } from '@xterm/addon-search'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { onTerminalDataReceived, removeTerminalActivity } from '../utils/terminal-activity'
-import { ContextMenu } from './ContextMenu'
+import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatPaths } from '../utils/format-paths'
 import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
 import { findTerminalPaths, resolveTerminalPath } from '../../../shared/terminal-link'
@@ -85,8 +85,10 @@ interface TerminalPanelProps {
   onSpawnShell?: () => void
   onOpenMarkdown?: (filePath: string) => void
   onStartAutopilot?: () => void
+  onOpenRelay?: () => void
   isAutopilotRunning?: boolean
   onShowAutopilotPanel?: () => void
+  onNotify?: (message: string, kind?: 'info' | 'warn') => void
 }
 
 export function TerminalPanel({
@@ -105,8 +107,10 @@ export function TerminalPanel({
   onSpawnShell,
   onOpenMarkdown,
   onStartAutopilot,
+  onOpenRelay,
   isAutopilotRunning,
   onShowAutopilotPanel,
+  onNotify,
 }: TerminalPanelProps) {
   const termRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -141,8 +145,16 @@ export function TerminalPanel({
   // session, breaking pasted multi-line content.
   const sniffTailRef = useRef('')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
-  const [editorName, setEditorName] = useState('Editor')
   const [availableEditors, setAvailableEditors] = useState<Array<{ id: string; name: string; cmd: string }>>([])
+  // A Visual Studio solution/project at the folder root, if any — the button
+  // opens it (via the OS association) instead of the folder-in-editor default.
+  const [projectAnchor, setProjectAnchor] = useState<{ path: string; name: string; kind: 'solution' | 'project' } | null>(null)
+  // The chosen default editor for this folder: per-project override, else global.
+  // resolvedId is null until the user picks one — then the button opens it
+  // directly instead of showing the picker.
+  const [editorDefaults, setEditorDefaults] = useState<{ global: string; project: string; resolvedId: string | null }>({ global: '', project: '', resolvedId: null })
+  const onNotifyRef = useRef(onNotify)
+  onNotifyRef.current = onNotify
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -168,7 +180,9 @@ export function TerminalPanel({
       if (!isFileUrl && ext === 'md' && onOpenMarkdown) {
         onOpenMarkdown(filePart)
       } else if (!isFileUrl && EDITOR_EXTS.has(ext)) {
-        window.api.openInEditor(filePart)
+        window.api.openInEditor(filePart, { projectPath: folderPath }).then((res) => {
+          if (!res.ok) onNotifyRef.current?.(res.error || 'Could not open in editor', 'warn')
+        }).catch(() => onNotifyRef.current?.('Could not open in editor', 'warn'))
       } else {
         window.api.openPath(isFileUrl ? raw : filePart)
       }
@@ -557,17 +571,76 @@ export function TerminalPanel({
     try { fitAddonRef.current?.fit() } catch {}
   }, [fontFamilyResolved, fontSizeResolved])
 
-  // Load editor info once
+  // Load editors + the chosen default for this folder, and probe for a solution.
   useEffect(() => {
+    let cancelled = false
     Promise.all([
       window.api.editorGetAvailable(),
-      window.api.editorGetCurrent(),
-    ]).then(([editors, current]) => {
+      window.api.editorGetDefaults(folderPath),
+    ]).then(([editors, defs]) => {
+      if (cancelled) return
       setAvailableEditors(editors)
-      const found = editors.find((e) => e.cmd === current)
-      setEditorName(found?.name || 'Editor')
+      setEditorDefaults(defs)
     }).catch(() => {})
-  }, [])
+    window.api.editorProbeProject(folderPath)
+      .then((a) => { if (!cancelled) setProjectAnchor(a) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [folderPath])
+
+  // Open a file/folder in an editor and surface any failure as a toast. For a
+  // folder the main process applies the solution-aware default unless forceFolder.
+  const openInEditor = (target: string, opts?: { forceFolder?: boolean; editorId?: string }) => {
+    window.api.openInEditor(target, { ...opts, projectPath: folderPath }).then((res) => {
+      if (!res.ok) onNotifyRef.current?.(res.error || 'Could not open in editor', 'warn')
+    }).catch(() => onNotifyRef.current?.('Could not open in editor', 'warn'))
+  }
+
+  // Left-click when a default is set: open it. VS (devenv) stays solution-aware
+  // (opens the .sln if present); any other editor opens the folder itself.
+  const openResolvedEditor = () => {
+    const id = editorDefaults.resolvedId
+    if (!id) return
+    if (id === 'devenv') openInEditor(folderPath, { editorId: 'devenv' })
+    else openInEditor(folderPath, { editorId: id, forceFolder: true })
+  }
+
+  const applyDefault = (scope: 'global' | 'project', editorId: string | null) => {
+    window.api.editorSetDefault({ scope, editorId, projectPath: folderPath })
+      .then(() => window.api.editorGetDefaults(folderPath).then(setEditorDefaults))
+      .catch(() => {})
+  }
+
+  const editorMenuItems = (): ContextMenuItem[] => {
+    const editorRows = availableEditors.map((e) => ({
+      label: `Open folder in ${e.name}`,
+      checked: editorDefaults.resolvedId === e.id,
+      onClick: () => openInEditor(folderPath, { editorId: e.id, forceFolder: true }),
+    }))
+    const scopeSub = (scope: 'global' | 'project', current: string): ContextMenuItem[] => [
+      ...availableEditors.map((e) => ({
+        label: e.name,
+        checked: current === e.id,
+        onClick: () => applyDefault(scope, e.id),
+      })),
+      ...(current ? [
+        { label: '', divider: true, onClick: () => {} },
+        { label: 'Clear', onClick: () => applyDefault(scope, null) },
+      ] : []),
+    ]
+    return [
+      ...(projectAnchor ? [
+        { label: `Open ${projectAnchor.name}`, onClick: () => openInEditor(folderPath) },
+        { label: '', divider: true, onClick: () => {} },
+      ] : []),
+      ...editorRows,
+      ...(availableEditors.length ? [{ label: '', divider: true, onClick: () => {} }] : []),
+      { label: 'Default for this project', onClick: () => {}, submenu: scopeSub('project', editorDefaults.project) },
+      { label: 'Default for all projects', onClick: () => {}, submenu: scopeSub('global', editorDefaults.global) },
+    ]
+  }
+
+  const resolvedEditorName = availableEditors.find((e) => e.id === editorDefaults.resolvedId)?.name
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -672,12 +745,35 @@ export function TerminalPanel({
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3l5 4-5 4V3zm6 8h6v1H8v-1z"/></svg>
             </button>
           )}
-          <button onClick={() => window.api.openInEditor(folderPath)} onMouseDown={(e) => e.stopPropagation()} title={`Open in ${editorName}`} style={actionBtnStyle}>
+          <button
+            onClick={(e) => {
+              if (editorDefaults.resolvedId) { openResolvedEditor(); return }
+              if (projectAnchor || availableEditors.length > 0) {
+                // No default yet — show the picker anchored under the button.
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                setContextMenu({ x: r.left, y: r.bottom + 2 })
+              } else {
+                openInEditor(folderPath) // nothing installed → surfaces a toast
+              }
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            title={
+              projectAnchor ? `Open ${projectAnchor.name}`
+                : resolvedEditorName ? `Open folder in ${resolvedEditorName}`
+                : 'Open in editor…'
+            }
+            style={actionBtnStyle}
+          >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/></svg>
             </button>
           <button onClick={() => window.api.openInExplorer(folderPath)} onMouseDown={(e) => e.stopPropagation()} title={window.api.platform === 'darwin' ? 'Open in Finder' : 'Open in Explorer'} style={actionBtnStyle}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 1h5l1 2H14.5l.5.5v10l-.5.5h-13l-.5-.5v-12l.5-.5zM2 13h12V4H7.06l-1-2H2v11z"/></svg>
           </button>
+          {onOpenRelay && (
+            <button onClick={onOpenRelay} onMouseDown={(e) => e.stopPropagation()} title="Relay to another session" style={actionBtnStyle}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3.5l.5-.5h13l.5.5v9l-.5.5h-13l-.5-.5v-9zM2 5.07V12h12V5.07L8.31 9.5h-.62L2 5.07zM13.03 4H2.97L8 8.36 13.03 4z"/></svg>
+            </button>
+          )}
         </div>
 
         {/* Col 3: Autopilot */}
@@ -753,15 +849,12 @@ export function TerminalPanel({
         }}
       />
 
-      {contextMenu && availableEditors.length > 1 && (
+      {contextMenu && (projectAnchor || availableEditors.length > 0) && (
         <div onMouseDown={(e) => e.stopPropagation()}>
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={availableEditors.map((e) => ({
-            label: e.name,
-            onClick: () => { window.api.editorSetCurrent(e.cmd); setEditorName(e.name) },
-          }))}
+          items={editorMenuItems()}
           onClose={() => setContextMenu(null)}
         />
         </div>

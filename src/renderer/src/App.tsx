@@ -16,6 +16,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { CommandPalette } from './components/CommandPalette'
 import { AutopilotPanel } from './components/AutopilotPanel'
 import { AutopilotKickoff } from './components/AutopilotKickoff'
+import { RelayDialog } from './components/RelayDialog'
 import { AppWindow, Star, FolderSearch, Code, Copy, Trash2, Sparkles, TerminalSquare, Shield } from './components/icons'
 import { assignColor } from './utils/colors'
 import { calculateLayout, getRowCount } from './utils/grid-layout'
@@ -92,6 +93,7 @@ export default function App() {
   const [autopilotKickoffFor, setAutopilotKickoffFor] = useState<string | null>(null)  // terminalId
   const [autopilotRunning, setAutopilotRunning] = useState<Set<string>>(new Set())
   const [autopilotPanelFor, setAutopilotPanelFor] = useState<string | null>(null)
+  const [relayDialogFor, setRelayDialogFor] = useState<string | null>(null)  // terminalId
   const [autopilotDefaults, setAutopilotDefaults] = useState({ costCap: 1.0, maxIterations: 40 })
   // Terminal font is a global setting applied to every xterm panel. Held here
   // so a change in Settings live-applies to all open terminals via props.
@@ -130,6 +132,37 @@ export default function App() {
     setToast({ message, kind })
     toastTimerRef.current = setTimeout(() => setToast(null), 3000)
   }, [])
+
+  // Cross-session relay visibility: sessions must never whisper to each other
+  // invisibly, so every delivery that happens outside a send (queued relays
+  // draining on the 1 Hz tick) surfaces as a toast here too.
+  const relayLogSeenRef = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    const unsubscribe = window.api.onRelayUpdate((state) => {
+      const seen = relayLogSeenRef.current
+      if (seen === null) {
+        // First update after mount: absorb history without toasting it.
+        relayLogSeenRef.current = new Set(state.log.map((l) => `${l.id}:${l.status}`))
+        return
+      }
+      for (const entry of state.log) {
+        const key = `${entry.id}:${entry.status}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        if (entry.status === 'delivered') {
+          showToast(`Relay from ${entry.from} staged in "${entry.to}" — review and press Enter there`, 'info')
+        } else if (entry.status === 'refused') {
+          showToast(`Relay refused: ${entry.detail ?? 'validation failed'}`, 'warn')
+        }
+      }
+    })
+    window.api.relayState().then((state) => {
+      if (relayLogSeenRef.current === null) {
+        relayLogSeenRef.current = new Set(state.log.map((l) => `${l.id}:${l.status}`))
+      }
+    }).catch(() => { relayLogSeenRef.current = relayLogSeenRef.current ?? new Set() })
+    return () => unsubscribe()
+  }, [showToast])
 
   useEffect(() => {
     const audio = new Audio(notificationSound)
@@ -803,6 +836,8 @@ export default function App() {
                   onStartAutopilot={() => setAutopilotKickoffFor(t.id)}
                   isAutopilotRunning={autopilotRunning.has(t.id)}
                   onShowAutopilotPanel={() => setAutopilotPanelFor(t.id)}
+                  onOpenRelay={() => setRelayDialogFor(t.id)}
+                  onNotify={showToast}
                 />
               </div>
             ))}
@@ -837,6 +872,8 @@ export default function App() {
               onStartAutopilot={() => setAutopilotKickoffFor(t.id)}
               isAutopilotRunning={autopilotRunning.has(t.id)}
               onShowAutopilotPanel={() => setAutopilotPanelFor(t.id)}
+              onOpenRelay={() => setRelayDialogFor(t.id)}
+              onNotify={showToast}
             />
           </div>
         ))}
@@ -847,6 +884,16 @@ export default function App() {
         <AutopilotPanel
           terminalId={autopilotPanelFor}
           onClose={() => setAutopilotPanelFor(null)}
+        />
+      )}
+
+      {relayDialogFor && (
+        <RelayDialog
+          fromName={terminals.find((t) => t.id === relayDialogFor)?.name ?? 'unknown'}
+          fromTerminalId={relayDialogFor}
+          fromPath={terminals.find((t) => t.id === relayDialogFor)?.path ?? ''}
+          onClose={() => setRelayDialogFor(null)}
+          onNotify={showToast}
         />
       )}
 
@@ -958,7 +1005,7 @@ export default function App() {
               { label: '', divider: true, onClick: () => {} },
               { label: isFav ? 'Remove from favorites' : 'Add to favorites', icon: Star, onClick: () => handleToggleFavorite(path) },
               { label: 'Open in Explorer', icon: FolderSearch, onClick: () => { window.api.openInExplorer(path).catch(() => {}) } },
-              { label: 'Open in Editor', icon: Code, onClick: () => { window.api.openInEditor(path).catch(() => {}) } },
+              { label: 'Open in Editor', icon: Code, onClick: () => { window.api.openInEditor(path).then((res) => { if (!res.ok) showToast(res.error || 'Could not open in editor', 'warn') }).catch(() => showToast('Could not open in editor', 'warn')) } },
               { label: 'Copy path', icon: Copy, onClick: () => { navigator.clipboard.writeText(path).catch(() => {}) } },
               { label: '', divider: true, onClick: () => {} },
               { label: 'Remove from recents', icon: Trash2, onClick: () => handleRemoveRecent(path), destructive: true },
