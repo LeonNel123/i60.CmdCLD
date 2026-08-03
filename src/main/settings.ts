@@ -6,7 +6,10 @@ import { DEFAULT_APP_FONT_FAMILY } from '../shared/app-font'
 import { DEFAULT_UI_SCALE_PCT } from '../shared/ui-scale'
 
 export interface AppSettings {
+  /** Global default editor id (empty = no global default chosen yet). */
   editor: string
+  /** Per-project editor id overrides, keyed by absolute folder path. */
+  editorByProject: Record<string, string>
   defaultAgentCli: AgentCli
   claudeArgs: string
   codexArgs: string
@@ -30,7 +33,8 @@ export interface AppSettings {
 }
 
 const DEFAULTS: AppSettings = {
-  editor: 'code',
+  editor: '',
+  editorByProject: {},
   defaultAgentCli: DEFAULT_AGENT_CLI,
   claudeArgs: '',
   codexArgs: '',

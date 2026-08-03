@@ -136,7 +136,7 @@ export function AppearancePane(p: AppearancePaneProps) {
 
       <Field
         label="Interface Size"
-        hint="Scales the interface so text and controls grow together (this first cut scales the sidebar). Terminals are never affected. Applies when you save."
+        hint="Scales the interface — sidebar, menus and dialogs — so text and controls grow together. Terminals are never affected. Applies when you save."
       >
         <NumberStepper
           value={p.uiScalePct}
