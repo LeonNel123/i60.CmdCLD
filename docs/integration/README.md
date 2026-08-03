@@ -5,6 +5,10 @@ release-manager, Toms.Security, ...). Documents are the protocol; any
 relay/notification only carries pointers. This repo adopted the layout 2026-07-30
 (thread CMDCLD-REQ-001).
 
+**Canonical text**: the `exchange` skill (`plugin/skills/exchange/SKILL.md`), per
+CMDCLD-REQ-002 (2026-08-03). This README is a dated adoption record of the same
+rules; if the two ever disagree, the skill wins.
+
 ## Rules
 
 1. **No cross-repo writes, ever.** A session writes only inside its own repo. Reading a
@@ -15,17 +19,14 @@ relay/notification only carries pointers. This repo adopted the layout 2026-07-3
    to us, their responses to ours), copied verbatim from the counterpart's `outbound/`
    on receipt, original filenames kept. Copies are point-in-time; the counterpart's
    repo holds their authoritative version.
-4. **Naming**: `<ADDRESSEE>-REQ-NNN-<slug>.md` (the prefix names who the request is FOR —
-   `CMDCLD-REQ-001-*` is a request to us; `RELMAN-REQ-002-*` is ours to
-   release-manager). Answers append a suffix to the original name: `-response`,
-   `-review-notes`, .... **Number+slug is the thread key** — with multiple requestors
-   authoring toward the same addressee, a bare `<ADDRESSEE>-REQ-NNN` is not assumed
-   unique (adopted 2026-07-30 via TOMSSEC-REQ-003, after two requestors took
-   `RELMAN-REQ-003` in the same window). Pick the next free number by checking the
-   addressee's `inbound/` plus your own `outbound/`, and re-verify **at send time**,
-   immediately before `relay_notify`; if a collision slips through anyway, the
-   courier reports it and the uncopied side renumbers — once both sides are copied,
-   slugs disambiguate and nobody renames.
+4. **Naming**: `<ADDRESSEE>-REQ-<YYYYMMDD>-<slug>.md` (the prefix names who the request
+   is FOR; the date is the authoring date; adopted 2026-08-03 via CMDCLD-REQ-002,
+   replacing sequence numbers whose collision defenses failed twice under load).
+   Answers append a suffix to the original name: `-response`, `-review-notes`, ....
+   **Addressee+date+slug is the thread key** — collisions cannot occur without
+   coordination; if two genuinely distinct threads collide on all three, the later
+   author appends `-b` to its slug. Legacy numbered threads
+   (`<ADDRESSEE>-REQ-NNN-<slug>`) keep their names; both forms coexist indefinitely.
 5. **Flow**: requestor authors in own `outbound/` → requestee copies to own `inbound/`,
    authors the answer in own `outbound/` → requestor copies the answer to own
    `inbound/`. Both repos end up with the full thread, each file written by exactly one
@@ -35,12 +36,21 @@ relay/notification only carries pointers. This repo adopted the layout 2026-07-3
    substantive document authors the ack in its own outbound — normally the requestor;
    for requests that ask only for assent, the requestee. An ack contains **no new
    asks**: it states *accepted* (as-is, or enumerating the modifications accepted) or
-   *withdrawn*. Anything else is another response round or a new numbered request. **A
-   thread without an ack is open**, however settled it looks.
+   *withdrawn*. Anything else is another response round or a new request. **A
+   thread without an ack is open**, however settled it looks. **Ack length is
+   proportional to content** (adopted 2026-08-03 via CMDCLD-REQ-002): accept-as-is is
+   one line; long-form is for withdrawing a claim, enumerating accepted
+   modifications, or correcting the record. An ack may carry an `## Observations`
+   section for no-ask input; the counterpart answers in its next cover note or as a
+   postscript in an unrelated outbound document, without reopening the closed thread.
 7. **Notification** is the CmdCLD cross-session relay (live since 2026-07-30; human
    courier before that): a fixed-format nudge pointing at the counterpart `outbound/`
    path. Never content, never instructions.
-8. **Retiring legacy documents** when a superseded thread closes: grep the **whole
+8. **Cover notes** (adopted 2026-08-03 via CMDCLD-REQ-002, credit Mocha): a batch of
+   threads gets one cover document indexing it, relayed as a single pointer. The
+   cover is not a thread document and takes no ack; each thread still closes with
+   its own.
+9. **Retiring legacy documents** when a superseded thread closes: grep the **whole
    repo**, not just `docs/` — legacy filenames get linked from ADRs, design docs and
    build files (an adopter found one listed in their `.slnx` solution file). Separate
    thread documents from technical documentation: re-home integration guides and build
@@ -50,4 +60,4 @@ relay/notification only carries pointers. This repo adopted the layout 2026-07-3
 CmdCLD is additionally the *host* of the relay (CMDCLD-REQ-001, shipped 2026-07-30):
 stage-only pty delivery of pointer nudges, MCP `relay_notify`/`list_sessions` with
 host-stamped sender identity, and the `cmdcld-exchange` plugin whose `exchange` skill
-teaches this protocol — rules 1–8 — to any session on the machine.
+teaches this protocol — rules 1–9 — to any session on the machine.

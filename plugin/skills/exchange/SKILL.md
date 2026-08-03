@@ -18,14 +18,14 @@ between sessions); the documents themselves are the protocol.
 3. `docs/integration/inbound/` — *verbatim reference copies* of counterpart-authored
    documents, copied from the counterpart's `outbound/` on receipt, original filenames
    kept. The counterpart's repo holds their authoritative version.
-4. Naming: `<ADDRESSEE>-REQ-NNN-<slug>.md` — the prefix names who the request is FOR.
-   Answers append a suffix to the original name: `-response`, `-review-notes`, `-ack`.
-   **Number+slug is the thread key** — multiple requestors may author toward the same
-   addressee, so a bare `<ADDRESSEE>-REQ-NNN` is not assumed unique. Pick the next
-   free number by checking the addressee's `inbound/` plus your own `outbound/`, and
-   re-verify at send time, immediately before `relay_notify`. If a collision slips
-   through, the courier reports it and the side whose file is not yet copied
-   renumbers; once both sides are copied, slugs disambiguate and nobody renames.
+4. Naming: `<ADDRESSEE>-REQ-<YYYYMMDD>-<slug>.md` — the prefix names who the request
+   is FOR; the date is the authoring date. Answers append a suffix to the original
+   name: `-response`, `-review-notes`, `-ack`. **Addressee+date+slug is the thread
+   key** — same addressee, same day, same slug means the same thread, so collisions
+   cannot occur without coordination. If two genuinely distinct threads ever collide
+   on all three, the later author appends `-b` to its slug. Legacy numbered threads
+   (`<ADDRESSEE>-REQ-NNN-<slug>`) keep their names; both forms coexist indefinitely
+   and no migration is expected.
 5. Flow: requestor authors in own `outbound/` → requestee copies to own `inbound/`,
    authors the answer in own `outbound/` → requestor copies the answer back to its
    `inbound/`. Both repos end up holding the full thread; every file has exactly one
@@ -34,10 +34,19 @@ between sessions); the documents themselves are the protocol.
    party that received the last substantive document — normally the requestor; for
    assent-only requests, the requestee. An ack contains **no new asks**: it states
    *accepted* (as-is, or enumerating the modifications accepted) or *withdrawn*.
-   Anything else is another response round or a new numbered request. A thread
-   without an ack is open, however settled it looks.
+   Anything else is another response round or a new request. A thread without an ack
+   is open, however settled it looks. **Ack length is proportional to content**: an
+   ack that accepts as-is is one line; long-form is for acks that withdraw a claim,
+   enumerate accepted modifications, or correct the record. An ack may carry an
+   `## Observations` section for input that has no ask attached; the counterpart may
+   answer observations in its next cover note, or as a short postscript in an
+   unrelated outbound document, explicitly **without reopening the closed thread**.
 7. Notification is pointer-only: a fixed-format nudge naming the counterpart
    `outbound/` path. Never content, never instructions.
+8. A batch of threads sent together gets **one cover document** in the sender's
+   `outbound/` indexing the batch (what each thread is, where each document lives),
+   relayed as a single pointer. The cover is **not a thread document** and takes no
+   ack; each thread still closes with its own.
 
 ## Receiving a relay nudge
 
@@ -69,17 +78,13 @@ Rate limit: a token bucket per sender→target pair — up to 10 sends back-to-b
 refilling one every 10 minutes (6/hour sustained). A refusal is loud, not silent, and
 names when the next slot frees: tell your human rather than retrying.
 
-**Sending a batch** (e.g. replaying several legacy threads at once) widens the
-numbering race: every number you claim sits un-copied in your `outbound/` until its
-nudge is relayed, so the window for a collision is the whole batch, not one send.
-Re-verify each number immediately before its own `relay_notify`, and renumber
-un-copied files if a courier reports a clash.
-
-For the notification itself, prefer **one cover pointer over N nudges**: author a
-short cover document in your `outbound/` that indexes the batch (what each thread is,
-where each document lives) and relay that single pointer. It spends one token instead
-of N, leaves headroom to answer, and gives the counterpart one thing to read first.
-Each thread still closes with its own ack; only the doorbell is batched.
+**Sending a batch** (e.g. replaying several legacy threads at once): per rule 8,
+author one cover document indexing the batch and relay that single pointer instead of
+N nudges. It spends one relay token instead of N, leaves headroom to answer a
+correction, and gives the counterpart one thing to read first. Each thread still
+closes with its own ack; only the doorbell is batched. The cover note is also the
+natural place to answer any `## Observations` carried by the counterpart's recent
+acks (rule 6).
 
 ## Retiring legacy documents
 
@@ -102,5 +107,7 @@ If this workspace has no `docs/integration/` (e.g. after a `[cmdcld invite]`
 message), adoption is this repo's own act, on the human's direction:
 
 1. Create `docs/integration/outbound/` and `docs/integration/inbound/`.
-2. Add a `docs/integration/README.md` recording rules 1–7 above.
+2. Add a `docs/integration/README.md` recording rules 1–8 above (or citing this
+   skill as the canonical text — preferred, so the rules don't drift across
+   separately-maintained READMEs).
 3. Commit. From then on, exchange documents per the flow above.
