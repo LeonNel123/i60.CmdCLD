@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { dirname } from 'path'
+import { AGENT_CLIS as SUPPORTED_AGENT_CLIS } from '../../shared/agent-cli'
 import { councilPath } from './state-files'
 import { isCouncilGate, isCouncilIntensity, isReviewerRisk, isReviewerVerdict } from './types'
 import type { CouncilArbitrationAction, CouncilControl, CouncilGate, CouncilState, ProStage } from './types'
@@ -58,7 +59,7 @@ export function loadCouncilRuntime(projectPath: string): CouncilRuntimeSnapshot 
 
 const CONTROLS = new Set<CouncilControl>(['idle', 'running', 'paused', 'blocked', 'stopped'])
 const STAGES = new Set<ProStage>(['research', 'discovery', 'planning', 'implementation', 'phase-review', 'final-review', 'done'])
-const AGENT_CLIS = new Set(['claude', 'codex'])
+const AGENT_CLIS = new Set<string>(SUPPORTED_AGENT_CLIS)
 const ARBITRATION_ACTIONS = new Set<CouncilArbitrationAction>([
   'continue',
   'instruct-implementer',
