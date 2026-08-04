@@ -310,6 +310,14 @@ export function getAutopilotRuntimeGuardrail(agentCli: AgentCli, args: string): 
     return { agentCli: normalized, canStart: true, reason: null, warnings }
   }
 
+  if (normalized === 'grok') {
+    const warnings: string[] = []
+    if (hasOptionValue(['--permission-mode'], 'bypassPermissions')) {
+      warnings.push('Grok permission bypass is enabled; Autopilot will still enforce app-level pause, cost, and marker guardrails.')
+    }
+    return { agentCli: normalized, canStart: true, reason: null, warnings }
+  }
+
   if (has('resume --last')) {
     return {
       agentCli: normalized,
@@ -388,6 +396,14 @@ export function getCouncilReviewerRuntimeGuardrail(agentCli: AgentCli, args: str
     const warnings: string[] = []
     if (hasAny('--dangerously-skip-permissions') || hasOptionValue(['--permission-mode'], 'bypassPermissions')) {
       warnings.push('Claude permission bypass is enabled for a reviewer session; prefer a review-only permission mode.')
+    }
+    return { agentCli: normalized, canStart: true, reason: null, warnings }
+  }
+
+  if (normalized === 'grok') {
+    const warnings: string[] = []
+    if (hasOptionValue(['--permission-mode'], 'bypassPermissions')) {
+      warnings.push('Grok permission bypass is enabled for a reviewer session; prefer a review-only permission mode.')
     }
     return { agentCli: normalized, canStart: true, reason: null, warnings }
   }

@@ -273,4 +273,32 @@ describe('grok agent CLI', () => {
     const dangerous = options.filter((o) => o.dangerous).map((o) => o.id)
     expect(dangerous).toEqual(['grok-permission-bypass'])
   })
+
+  it('lets grok start Autopilot and warns on permission bypass', () => {
+    const clean = getAutopilotRuntimeGuardrail('grok', '--effort high')
+    expect(clean).toEqual({ agentCli: 'grok', canStart: true, reason: null, warnings: [] })
+
+    const bypass = getAutopilotRuntimeGuardrail('grok', '--permission-mode bypassPermissions')
+    expect(bypass.canStart).toBe(true)
+    expect(bypass.warnings).toEqual([
+      'Grok permission bypass is enabled; Autopilot will still enforce app-level pause, cost, and marker guardrails.',
+    ])
+  })
+
+  it('lets grok act as council reviewer and warns on permission bypass', () => {
+    const clean = getCouncilReviewerRuntimeGuardrail('grok', '')
+    expect(clean).toEqual({ agentCli: 'grok', canStart: true, reason: null, warnings: [] })
+
+    const bypass = getCouncilReviewerRuntimeGuardrail('grok', '--permission-mode=bypassPermissions')
+    expect(bypass.canStart).toBe(true)
+    expect(bypass.warnings).toEqual([
+      'Grok permission bypass is enabled for a reviewer session; prefer a review-only permission mode.',
+    ])
+  })
+
+  it('keeps codex guardrails codex-only after adding grok', () => {
+    // grok must never hit the codex sandbox/approval requirements
+    expect(getAutopilotRuntimeGuardrail('grok', '').canStart).toBe(true)
+    expect(getAutopilotRuntimeGuardrail('codex', '').canStart).toBe(false)
+  })
 })
