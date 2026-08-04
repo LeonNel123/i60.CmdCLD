@@ -27,6 +27,7 @@ describe('detectAgentCliAvailability', () => {
     execFileSyncMock.mockImplementation((cmd: string, args: string[]) => {
       if (cmd === 'where.exe' && args[0] === 'claude') return Buffer.from('C:\\bin\\claude.exe\r\n')
       if (cmd === 'where.exe' && args[0] === 'codex') return Buffer.from('C:\\bin\\codex.ps1\r\n')
+      if (cmd === 'where.exe' && args[0] === 'grok') return Buffer.from('C:\\Users\\dev\\.grok\\bin\\grok.exe\r\n')
       throw new Error('not found')
     })
 
@@ -35,6 +36,7 @@ describe('detectAgentCliAvailability', () => {
 
     expect(result.claude).toEqual({ available: true, path: 'C:\\bin\\claude.exe' })
     expect(result.codex).toEqual({ available: true, path: 'C:\\bin\\codex.ps1' })
+    expect(result.grok).toEqual({ available: true, path: 'C:\\Users\\dev\\.grok\\bin\\grok.exe' })
   })
 
   it('uses which outside Windows and reports missing commands without throwing', async () => {
@@ -49,5 +51,6 @@ describe('detectAgentCliAvailability', () => {
 
     expect(result.claude).toEqual({ available: true, path: '/usr/local/bin/claude' })
     expect(result.codex).toEqual({ available: false, path: null })
+    expect(result.grok).toEqual({ available: false, path: null })
   })
 })

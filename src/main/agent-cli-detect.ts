@@ -1,6 +1,6 @@
 import { execFileSync } from 'child_process'
 import { platform } from 'os'
-import type { AgentCli } from '../shared/agent-cli'
+import { AGENT_CLIS, AGENT_CLI_COMMANDS, type AgentCli } from '../shared/agent-cli'
 
 export interface AgentCliAvailability {
   available: boolean
@@ -26,8 +26,7 @@ function detectCommand(command: string): AgentCliAvailability {
 }
 
 export function detectAgentCliAvailability(): AgentCliAvailabilityMap {
-  return {
-    claude: detectCommand('claude'),
-    codex: detectCommand('codex'),
-  }
+  return Object.fromEntries(
+    AGENT_CLIS.map((cli) => [cli, detectCommand(AGENT_CLI_COMMANDS[cli])]),
+  ) as AgentCliAvailabilityMap
 }
