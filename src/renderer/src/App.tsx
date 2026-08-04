@@ -830,6 +830,7 @@ export default function App() {
               agentCli={t.agentCli}
               claudeArgs={t.claudeArgs}
               codexArgs={t.codexArgs}
+              grokArgs={t.grokArgs}
               isPlainShell={t.isPlainShell}
               elevated={t.elevated}
               fontFamily={terminalFontFamily}
