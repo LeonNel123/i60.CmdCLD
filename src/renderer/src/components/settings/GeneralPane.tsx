@@ -55,7 +55,7 @@ export function GeneralPane(p: GeneralPaneProps) {
         disabled={!p.restoreSessionEnabled}
         onChange={p.onRestoreSessionResumeChange}
         label="Resume conversations on reopen"
-        hint="Adds --continue (Claude) / resume --last (Codex) when reopening, so each agent picks up its previous conversation."
+        hint="Adds --continue (Claude, Grok) / resume --last (Codex) when reopening, so each agent picks up its previous conversation."
       />
 
       <Field
