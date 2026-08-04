@@ -301,4 +301,9 @@ describe('grok agent CLI', () => {
     expect(getAutopilotRuntimeGuardrail('grok', '').canStart).toBe(true)
     expect(getAutopilotRuntimeGuardrail('codex', '').canStart).toBe(false)
   })
+
+  it('keeps codex council-reviewer guardrails codex-only after adding grok', () => {
+    expect(getCouncilReviewerRuntimeGuardrail('grok', '').warnings).toEqual([])
+    expect(getCouncilReviewerRuntimeGuardrail('codex', '').warnings.length).toBeGreaterThan(0)
+  })
 })
