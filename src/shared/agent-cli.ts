@@ -1,4 +1,4 @@
-export type AgentCli = 'claude' | 'codex'
+export type AgentCli = 'claude' | 'codex' | 'grok'
 
 export interface AgentCliLaunchOption {
   id: string
@@ -18,6 +18,7 @@ export interface AgentCliLaunchOptionGroup {
 export interface AgentArgsSettings {
   claudeArgs?: string
   codexArgs?: string
+  grokArgs?: string
 }
 
 export interface AutopilotRuntimeGuardrail {
@@ -32,11 +33,21 @@ export const DEFAULT_AGENT_CLI: AgentCli = 'claude'
 export const AGENT_CLI_LABELS: Record<AgentCli, string> = {
   claude: 'Claude',
   codex: 'Codex',
+  grok: 'Grok',
 }
+
+export const AGENT_CLIS = Object.keys(AGENT_CLI_LABELS) as AgentCli[]
 
 export const AGENT_CLI_COMMANDS: Record<AgentCli, string> = {
   claude: 'claude',
   codex: 'codex',
+  grok: 'grok',
+}
+
+export const AGENT_CLI_ARGS_PLACEHOLDERS: Record<AgentCli, string> = {
+  claude: 'e.g. --dangerously-skip-permissions --continue',
+  codex: 'e.g. --sandbox workspace-write',
+  grok: 'e.g. --permission-mode acceptEdits --continue',
 }
 
 export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup[]> = {
@@ -190,14 +201,63 @@ export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup
       ],
     },
   ],
+  grok: [
+    {
+      id: 'session',
+      label: 'Session',
+      mode: 'single',
+      options: [
+        { id: 'grok-continue', label: 'Continue', args: '--continue' },
+      ],
+    },
+    {
+      id: 'permission',
+      label: 'Permission Mode',
+      mode: 'single',
+      options: [
+        { id: 'grok-permission-default', label: 'Default', args: '--permission-mode default' },
+        { id: 'grok-permission-auto', label: 'Auto', args: '--permission-mode auto' },
+        { id: 'grok-permission-accept-edits', label: 'Accept Edits', args: '--permission-mode acceptEdits' },
+        { id: 'grok-permission-dont-ask', label: "Don't Ask", args: '--permission-mode dontAsk' },
+        { id: 'grok-permission-plan', label: 'Plan', args: '--permission-mode plan' },
+        { id: 'grok-permission-bypass', label: 'Bypass Permissions', args: '--permission-mode bypassPermissions', dangerous: true },
+      ],
+    },
+    {
+      id: 'effort',
+      label: 'Effort',
+      mode: 'single',
+      options: [
+        { id: 'grok-effort-low', label: 'Low', args: '--effort low' },
+        { id: 'grok-effort-medium', label: 'Medium', args: '--effort medium' },
+        { id: 'grok-effort-high', label: 'High', args: '--effort high' },
+      ],
+    },
+    {
+      id: 'features',
+      label: 'Features',
+      mode: 'multi',
+      options: [
+        { id: 'grok-no-alt-screen', label: 'Inline Scrollback', args: '--no-alt-screen' },
+        { id: 'grok-disable-web-search', label: 'No Web Search', args: '--disable-web-search' },
+        { id: 'grok-no-plan', label: 'No Plan Mode', args: '--no-plan' },
+      ],
+    },
+  ],
 }
 
 export function normalizeAgentCli(value: unknown): AgentCli {
-  return value === 'codex' ? 'codex' : DEFAULT_AGENT_CLI
+  return typeof value === 'string' && (AGENT_CLIS as string[]).includes(value) ? (value as AgentCli) : DEFAULT_AGENT_CLI
+}
+
+const AGENT_ARGS_KEYS: Record<AgentCli, keyof AgentArgsSettings> = {
+  claude: 'claudeArgs',
+  codex: 'codexArgs',
+  grok: 'grokArgs',
 }
 
 export function getArgsForAgent(agentCli: AgentCli, settings: AgentArgsSettings): string {
-  return agentCli === 'codex' ? settings.codexArgs || '' : settings.claudeArgs || ''
+  return settings[AGENT_ARGS_KEYS[agentCli]] || ''
 }
 
 export function buildAgentLaunchCommand(agentCli: AgentCli, args: string | undefined): string {
@@ -206,9 +266,18 @@ export function buildAgentLaunchCommand(agentCli: AgentCli, args: string | undef
   return trimmed ? `${command} ${trimmed}\r` : `${command}\r`
 }
 
+/** How each CLI resumes a previous conversation. 'flag' = claude-style
+ *  --continue/--resume flags; 'subcommand' = codex-style `resume --last`,
+ *  which must precede any options. */
+const RESUME_STYLE: Record<AgentCli, 'flag' | 'subcommand'> = {
+  claude: 'flag',
+  grok: 'flag',
+  codex: 'subcommand',
+}
+
 export function stripResumeArgsForQuickLaunch(agentCli: AgentCli, args: string): string {
   let next = args
-  if (agentCli === 'claude') {
+  if (RESUME_STYLE[agentCli] === 'flag') {
     next = next.replace(/(^|\s)(--continue|-c)(?=\s|$)/g, ' ')
   } else {
     next = next.replace(/(^|\s)resume(\s+--last)?(?=\s|$)/g, ' ')
@@ -218,11 +287,10 @@ export function stripResumeArgsForQuickLaunch(agentCli: AgentCli, args: string):
 
 export function ensureResumeArgs(agentCli: AgentCli, args: string): string {
   const trimmed = args.trim()
-  if (agentCli === 'claude') {
+  if (RESUME_STYLE[agentCli] === 'flag') {
     if (/(^|\s)(--continue|-c|--resume|-r)(?=\s|$)/.test(trimmed)) return trimmed
     return trimmed ? `${trimmed} --continue` : '--continue'
   }
-  // codex resumes via a subcommand, which must precede any options
   if (/(^|\s)resume(?=\s|$)/.test(trimmed)) return trimmed
   return trimmed ? `resume --last ${trimmed}` : 'resume --last'
 }

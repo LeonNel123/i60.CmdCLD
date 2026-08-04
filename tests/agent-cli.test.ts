@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AGENT_CLIS,
+  AGENT_CLI_LABELS,
+  AGENT_CLI_COMMANDS,
   AGENT_CLI_OPTION_GROUPS,
   applyAgentCliLaunchOption,
   buildAgentLaunchCommand,
@@ -210,5 +213,64 @@ describe('getCouncilReviewerRuntimeGuardrail', () => {
     expect(result.canStart).toBe(true)
     expect(result.warnings.join(' ')).toContain('read-only')
     expect(result.warnings.join(' ')).toContain('ask-for-approval never')
+  })
+})
+
+describe('grok agent CLI', () => {
+  it('is a first-class CLI in the shared tables', () => {
+    expect(AGENT_CLIS).toEqual(['claude', 'codex', 'grok'])
+    expect(AGENT_CLI_LABELS.grok).toBe('Grok')
+    expect(AGENT_CLI_COMMANDS.grok).toBe('grok')
+  })
+
+  it('normalizes grok and still defaults unknown values to claude', () => {
+    expect(normalizeAgentCli('grok')).toBe('grok')
+    expect(normalizeAgentCli('codex')).toBe('codex')
+    expect(normalizeAgentCli('gemini')).toBe('claude')
+    expect(normalizeAgentCli(undefined)).toBe('claude')
+  })
+
+  it('resolves grok launch args from grokArgs only', () => {
+    expect(getArgsForAgent('grok', { claudeArgs: '--continue', codexArgs: '-s workspace-write', grokArgs: '--effort high' })).toBe('--effort high')
+    expect(getArgsForAgent('grok', { claudeArgs: '--continue' })).toBe('')
+  })
+
+  it('builds the grok launch command', () => {
+    expect(buildAgentLaunchCommand('grok', '')).toBe('grok\r')
+    expect(buildAgentLaunchCommand('grok', ' --continue ')).toBe('grok --continue\r')
+  })
+
+  it('treats grok resume args claude-style, never codex-style', () => {
+    expect(stripResumeArgsForQuickLaunch('grok', '--continue --effort high')).toBe('--effort high')
+    expect(stripResumeArgsForQuickLaunch('grok', '-c')).toBe('')
+    expect(ensureResumeArgs('grok', '')).toBe('--continue')
+    expect(ensureResumeArgs('grok', '--effort high')).toBe('--effort high --continue')
+    expect(ensureResumeArgs('grok', '--continue')).toBe('--continue')
+    expect(ensureResumeArgs('grok', '--resume abc')).toBe('--resume abc')
+    // The codex subcommand must never leak into grok args.
+    expect(ensureResumeArgs('grok', '')).not.toContain('resume --last')
+  })
+
+  it('exposes grok launch option groups that toggle cleanly', () => {
+    const groupIds = AGENT_CLI_OPTION_GROUPS.grok.map((g) => g.id)
+    expect(groupIds).toEqual(['session', 'permission', 'effort', 'features'])
+
+    const withBypass = applyAgentCliLaunchOption('grok', '', 'grok-permission-bypass')
+    expect(withBypass).toBe('--permission-mode bypassPermissions')
+    expect(getActiveAgentCliLaunchOptionIds('grok', withBypass)).toContain('grok-permission-bypass')
+
+    // single-mode group: choosing another permission mode replaces bypass
+    const withPlan = applyAgentCliLaunchOption('grok', withBypass, 'grok-permission-plan')
+    expect(withPlan).toBe('--permission-mode plan')
+
+    // multi-mode group: features accumulate
+    const features = applyAgentCliLaunchOption('grok', applyAgentCliLaunchOption('grok', '', 'grok-no-alt-screen'), 'grok-disable-web-search')
+    expect(features).toBe('--no-alt-screen --disable-web-search')
+  })
+
+  it('marks bypassPermissions as the only dangerous grok option', () => {
+    const options = AGENT_CLI_OPTION_GROUPS.grok.flatMap((g) => g.options)
+    const dangerous = options.filter((o) => o.dangerous).map((o) => o.id)
+    expect(dangerous).toEqual(['grok-permission-bypass'])
   })
 })
