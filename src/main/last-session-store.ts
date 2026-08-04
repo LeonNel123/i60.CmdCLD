@@ -7,6 +7,7 @@ export interface SavedProject {
   agentCli?: AgentCli
   claudeArgs: string
   codexArgs?: string
+  grokArgs?: string
   isPlainShell: boolean
 }
 
