@@ -483,6 +483,7 @@ ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: Agen
   const launchArgs = typeof launchArgsRaw === 'string' ? launchArgsRaw : getArgsForAgent(agentCli, {
     claudeArgs: settings.get('claudeArgs'),
     codexArgs: settings.get('codexArgs'),
+    grokArgs: settings.get('grokArgs'),
   })
   const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli, launchArgs }
   // Folder trust is a nicety — a failure here shouldn't kill the tile.
@@ -716,6 +717,7 @@ function getAutopilotRuntimeStartContext(terminalId: string): { ok: true; agentC
   const launchArgs = meta.launchArgs ?? getArgsForAgent(agentCli, {
     claudeArgs: settings.get('claudeArgs'),
     codexArgs: settings.get('codexArgs'),
+    grokArgs: settings.get('grokArgs'),
   })
   const guardrail = getAutopilotRuntimeGuardrail(agentCli, launchArgs)
   if (!guardrail.canStart) {
@@ -1005,6 +1007,7 @@ ipcMain.handle('autopilot-council:start', async (event, args: {
   const reviewerLaunchArgs = getArgsForAgent(args.reviewerCli, {
     claudeArgs: settings.get('claudeArgs'),
     codexArgs: settings.get('codexArgs'),
+    grokArgs: settings.get('grokArgs'),
   })
   const reviewerGuardrail = getCouncilReviewerRuntimeGuardrail(args.reviewerCli, reviewerLaunchArgs)
   if (!reviewerGuardrail.canStart) return { ok: false, error: reviewerGuardrail.reason ?? 'Reviewer CLI cannot start.' }

@@ -10,6 +10,7 @@ export interface AppSettings {
   defaultAgentCli: AgentCli
   claudeArgs: string
   codexArgs: string
+  grokArgs: string
   askBeforeLaunch: boolean
   defaultViewMode: 'grid' | 'focused'
   notifyOnIdle: boolean
@@ -35,6 +36,7 @@ const DEFAULTS: AppSettings = {
   defaultAgentCli: DEFAULT_AGENT_CLI,
   claudeArgs: '',
   codexArgs: '',
+  grokArgs: '',
   askBeforeLaunch: false,
   defaultViewMode: 'grid',
   notifyOnIdle: false,

@@ -306,3 +306,10 @@ describe('buildResumePromptPro (Wave 4.0)', () => {
     expect(k).toContain('reviews/phase-2.md')
   })
 })
+
+describe('grok PRO doer prompt', () => {
+  it('gives grok the base PRO contract without codex guardrails', () => {
+    expect(buildDoerSystemPromptPro('grok')).toBe(buildDoerSystemPromptPro('claude'))
+    expect(buildDoerSystemPromptPro('grok')).not.toContain('CODEX RUNTIME GUARDRAILS')
+  })
+})

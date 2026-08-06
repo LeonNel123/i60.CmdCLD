@@ -247,3 +247,14 @@ describe('Classic GROUNDING (Wave 3.5)', () => {
     expect(k).toContain('Repository impact')
   })
 })
+
+describe('grok doer prompt', () => {
+  it('gives grok the same base doer contract as claude', () => {
+    expect(buildDoerSystemPrompt('grok')).toBe(buildDoerSystemPrompt('claude'))
+    expect(buildDoerSystemPrompt('grok')).not.toContain('CODEX RUNTIME GUARDRAILS')
+  })
+
+  it('applies the no-git guardrails to grok when git is unavailable', () => {
+    expect(buildDoerSystemPrompt('grok', { gitAvailable: false })).toContain('NO-GIT WORKSPACE GUARDRAILS')
+  })
+})

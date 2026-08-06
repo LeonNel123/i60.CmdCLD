@@ -39,6 +39,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   const [agentArgsTab, setAgentArgsTab] = useState<AgentCli>('claude')
   const [claudeArgs, setClaudeArgs] = useState('')
   const [codexArgs, setCodexArgs] = useState('')
+  const [grokArgs, setGrokArgs] = useState('')
   const [cliAvailability, setCliAvailability] = useState<Record<AgentCli, { available: boolean; path: string | null }> | null>(null)
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
@@ -95,6 +96,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
       setAgentArgsTab(loadedAgent)
       setClaudeArgs(s.claudeArgs)
       setCodexArgs(s.codexArgs ?? '')
+      setGrokArgs(s.grokArgs ?? '')
       setAskBeforeLaunch(s.askBeforeLaunch)
       setDefaultViewMode(s.defaultViewMode)
       setNotifyOnIdle(s.notifyOnIdle)
@@ -194,6 +196,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
     window.api.settingsSet('defaultAgentCli', defaultAgentCli)
     window.api.settingsSet('claudeArgs', claudeArgs)
     window.api.settingsSet('codexArgs', codexArgs)
+    window.api.settingsSet('grokArgs', grokArgs)
     window.api.settingsSet('askBeforeLaunch', askBeforeLaunch)
     window.api.settingsSet('defaultViewMode', defaultViewMode)
     window.api.settingsSet('notifyOnIdle', notifyOnIdle)
@@ -265,6 +268,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
             agentArgsTab={agentArgsTab} onAgentArgsTabChange={setAgentArgsTab}
             claudeArgs={claudeArgs} onClaudeArgsChange={setClaudeArgs}
             codexArgs={codexArgs} onCodexArgsChange={setCodexArgs}
+            grokArgs={grokArgs} onGrokArgsChange={setGrokArgs}
             cliAvailability={cliAvailability}
           />
         )

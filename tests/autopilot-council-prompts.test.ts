@@ -42,4 +42,12 @@ describe('autopilot council prompts', () => {
     expect(p).toMatch(/\.autopilot-council\/inbox\/reply\.txt/)
     expect(p).not.toMatch(/\.autopilot-pro\/outbox\/marker\.json/)
   })
+
+  it('ensures grok implementer has no codex-only guardrails and matches claude', () => {
+    const grokPrompt = buildCouncilImplementerPrompt('grok')
+    const claudePrompt = buildCouncilImplementerPrompt('claude')
+
+    expect(grokPrompt).not.toContain('CODEX COUNCIL IMPLEMENTER GUARDRAIL')
+    expect(grokPrompt).toBe(claudePrompt)
+  })
 })

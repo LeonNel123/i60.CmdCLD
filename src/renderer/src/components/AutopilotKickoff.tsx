@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react'
-import { AGENT_CLI_LABELS, getAutopilotRuntimeGuardrail, type AgentCli } from '../../../shared/agent-cli'
+import { AGENT_CLIS, AGENT_CLI_LABELS, getAutopilotRuntimeGuardrail, type AgentCli } from '../../../shared/agent-cli'
 
 type AutopilotMode = 'classic' | 'pro' | 'council'
 type CouncilIntensity = 'light' | 'balanced' | 'strict'
+
+function firstOtherCli(cli: AgentCli): AgentCli {
+  return AGENT_CLIS.find((candidate) => candidate !== cli) ?? 'claude'
+}
 
 interface Props {
   terminalId: string
@@ -22,7 +26,7 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<AutopilotMode>('classic')
-  const [reviewerCli, setReviewerCli] = useState<AgentCli>(agentCli === 'claude' ? 'codex' : 'claude')
+  const [reviewerCli, setReviewerCli] = useState<AgentCli>(firstOtherCli(agentCli))
   const [intensity, setIntensity] = useState<CouncilIntensity>('balanced')
   const [artifacts, setArtifacts] = useState<{ hasClassic: boolean; hasPro: boolean; hasCouncil: boolean }>({
     hasClassic: false,
@@ -32,7 +36,7 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
   const guardrail = getAutopilotRuntimeGuardrail(agentCli, launchArgs)
 
   useEffect(() => {
-    setReviewerCli(agentCli === 'claude' ? 'codex' : 'claude')
+    setReviewerCli(firstOtherCli(agentCli))
   }, [agentCli])
 
   useEffect(() => {
@@ -185,7 +189,7 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
               onChange={(e) => setReviewerCli(e.target.value as AgentCli)}
               style={{ background: '#0d1117', color: '#ccc', border: '1px solid #2d2d2d', borderRadius: 4, padding: '2px 6px', fontSize: 11 }}
             >
-              {(['claude', 'codex'] as const).filter((cli) => cli !== agentCli).map((cli) => (
+              {AGENT_CLIS.filter((cli) => cli !== agentCli).map((cli) => (
                 <option key={cli} value={cli}>{AGENT_CLI_LABELS[cli]}</option>
               ))}
             </select>

@@ -76,6 +76,7 @@ interface TerminalPanelProps {
   agentCli?: AgentCli
   claudeArgs?: string
   codexArgs?: string
+  grokArgs?: string
   isPlainShell?: boolean
   elevated?: boolean
   fontFamily?: string
@@ -96,6 +97,7 @@ export function TerminalPanel({
   agentCli = 'claude',
   claudeArgs,
   codexArgs,
+  grokArgs,
   isPlainShell,
   elevated,
   fontFamily,
@@ -471,7 +473,7 @@ export function TerminalPanel({
       if (!activePtys.has(id)) {
         // First mount — create PTY and launch the selected agent CLI.
         activePtys.add(id)
-        const launchArgs = agentCli === 'codex' ? codexArgs : claudeArgs
+        const launchArgs = { claude: claudeArgs, codex: codexArgs, grok: grokArgs }[agentCli]
         window.api.createTerminal(id, folderPath, agentCli, launchArgs, elevated).catch((err) => {
           // Surface the real reason — a bare failure banner is undebuggable.
           const raw = err instanceof Error ? err.message : String(err)
@@ -538,7 +540,7 @@ export function TerminalPanel({
       webglAddon = null
       try { term.dispose() } catch {}
     }
-  }, [id, folderPath, agentCli, claudeArgs, codexArgs, isPlainShell])
+  }, [id, folderPath, agentCli, claudeArgs, codexArgs, grokArgs, isPlainShell])
 
   // Live-apply font-setting changes to the existing terminal, no re-mount.
   // Skips the first run: the mount effect above already built the terminal
@@ -670,9 +672,9 @@ export function TerminalPanel({
                 shell
               </span>
             )}
-            {!isPlainShell && agentCli === 'codex' && (
+            {!isPlainShell && agentCli !== 'claude' && (
               <span style={{ color: '#888', fontSize: '10px', marginLeft: '6px', fontWeight: 400 }}>
-                {AGENT_CLI_LABELS.codex}
+                {AGENT_CLI_LABELS[agentCli]}
               </span>
             )}
           </span>

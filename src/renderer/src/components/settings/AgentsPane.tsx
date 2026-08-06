@@ -1,4 +1,4 @@
-import { AGENT_CLI_COMMANDS, AGENT_CLI_LABELS, type AgentCli } from '../../../../shared/agent-cli'
+import { AGENT_CLIS, AGENT_CLI_ARGS_PLACEHOLDERS, AGENT_CLI_COMMANDS, AGENT_CLI_LABELS, type AgentCli } from '../../../../shared/agent-cli'
 import { AgentLaunchOptions } from '../AgentLaunchOptions'
 import { Field, PaneHeading, PillGroup, TextInput } from './controls'
 
@@ -11,12 +11,16 @@ export interface AgentsPaneProps {
   onClaudeArgsChange: (v: string) => void
   codexArgs: string
   onCodexArgsChange: (v: string) => void
+  grokArgs: string
+  onGrokArgsChange: (v: string) => void
   cliAvailability: Record<AgentCli, { available: boolean; path: string | null }> | null
 }
 
 export function AgentsPane(p: AgentsPaneProps) {
-  const activeArgs = p.agentArgsTab === 'codex' ? p.codexArgs : p.claudeArgs
-  const setActiveArgs = p.agentArgsTab === 'codex' ? p.onCodexArgsChange : p.onClaudeArgsChange
+  const argsByAgent: Record<AgentCli, string> = { claude: p.claudeArgs, codex: p.codexArgs, grok: p.grokArgs }
+  const setterByAgent: Record<AgentCli, (v: string) => void> = { claude: p.onClaudeArgsChange, codex: p.onCodexArgsChange, grok: p.onGrokArgsChange }
+  const activeArgs = argsByAgent[p.agentArgsTab]
+  const setActiveArgs = setterByAgent[p.agentArgsTab]
   const activeAvailability = p.cliAvailability?.[p.agentArgsTab]
 
   return (
@@ -27,7 +31,7 @@ export function AgentsPane(p: AgentsPaneProps) {
         <PillGroup
           value={p.defaultAgentCli}
           onChange={(cli) => { p.onDefaultAgentCliChange(cli); p.onAgentArgsTabChange(cli) }}
-          options={(['claude', 'codex'] as AgentCli[]).map((cli) => ({
+          options={AGENT_CLIS.map((cli) => ({
             value: cli,
             label: `${AGENT_CLI_LABELS[cli]} ${p.cliAvailability ? (p.cliAvailability[cli]?.available ? 'available' : 'missing') : ''}`,
           }))}
@@ -49,7 +53,7 @@ export function AgentsPane(p: AgentsPaneProps) {
         <PillGroup
           value={p.agentArgsTab}
           onChange={p.onAgentArgsTabChange}
-          options={(['claude', 'codex'] as AgentCli[]).map((cli) => ({ value: cli, label: AGENT_CLI_LABELS[cli] }))}
+          options={AGENT_CLIS.map((cli) => ({ value: cli, label: AGENT_CLI_LABELS[cli] }))}
         />
       </Field>
 
@@ -66,7 +70,7 @@ export function AgentsPane(p: AgentsPaneProps) {
             mono
             value={activeArgs}
             onChange={(e) => setActiveArgs(e.target.value)}
-            placeholder={p.agentArgsTab === 'codex' ? 'e.g. --sandbox workspace-write' : 'e.g. --dangerously-skip-permissions --continue'}
+            placeholder={AGENT_CLI_ARGS_PLACEHOLDERS[p.agentArgsTab]}
             style={{ flex: 1, width: undefined }}
           />
           <button
