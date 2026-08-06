@@ -77,19 +77,35 @@ keeping it but making the sequence per requestor→addressee pair. Both were acc
 days apart, by different sessions — **and the two amendments then collided with each
 other on this repo's own `CMDCLD-REQ-002`**, which argued the case better than either
 document did. The current form takes the requestor prefix from one and the date from
-the other: the prefix makes an `inbound/` sort by sender and read like an inbox, the
-date removes the count and every rule a count needed.
+the other, and between them they remove the only field in a filename that ever required
+knowing what someone else had already done (Toms.Security's framing).
+
+**What the prefix buys, precisely.** Not "an `inbound/` reads like an inbox" — that
+undersells it. Under addressee-only naming a folder *can* group by sender, but only by
+luck: Toms.Security's `inbound/` held sixteen `TOMSSEC-REQ-*` files that happened to
+sort into a CmdCLD block and a Mocha block because Mocha claimed 004–009 as one
+contiguous batch. One more CmdCLD thread landing at 010 would have split it. The prefix
+makes that grouping guaranteed rather than accidental, and it makes the sender legible
+without opening the file.
 
 **The slug is part of the key.** One pair can open two threads in a day, and then the
 slug is all that separates them — so reproduce it **verbatim** on answers, and pick it
 to be distinctive rather than generic. (An earlier draft of this skill demoted it to a
 label, correctly for pair-numbered names, wrongly for these.)
 
-**Legacy forms are never renamed.** Three are in the record and all are visually
-distinct from the current form and from each other:
-`<ADDRESSEE>-REQ-NNN-<slug>` (until 2026-08-06), and briefly on 2026-08-06 both
-`<ADDRESSEE>-REQ-<YYYYMMDD>-<slug>` and `<REQUESTOR>-to-<ADDRESSEE>-REQ-NNN-<slug>`.
-No migration is expected of anyone, ever.
+**Legacy forms are never renamed.** Four are in the record, all visually distinct from
+the current form and from each other:
+
+- `REQ-NNN-<slug>` — no addressee code at all, in `docs/integration/requests/`.
+  The oldest, predating the prefix convention entirely, and the form Mocha's
+  `REQ-001…005` to Toms.Security are filed under. Reported by Mocha 2026-08-06, whose
+  six-thread batch under this scheme is part of the evidence that retired numbering.
+- `<ADDRESSEE>-REQ-NNN-<slug>` — until 2026-08-06.
+- `<ADDRESSEE>-REQ-<YYYYMMDD>-<slug>` and `<REQUESTOR>-to-<ADDRESSEE>-REQ-NNN-<slug>` —
+  both briefly on 2026-08-06, the two competing amendments before they were reconciled.
+
+No migration is expected of anyone, ever. The list exists so legacy files can be
+recognised, not so they can be converted.
 
 ## Repo codes
 
