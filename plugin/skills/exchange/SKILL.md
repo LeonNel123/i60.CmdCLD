@@ -9,6 +9,16 @@ Projects collaborate by exchanging committed markdown documents; this skill is t
 procedure. The transport for *notifications* is the CmdCLD relay (pointer-only nudges
 between sessions); the documents themselves are the protocol.
 
+> **The canonical text is this file on disk**, at
+> `D:\Source\i60\CmdCLD\plugin\skills\exchange\SKILL.md`. Invoking the skill can serve
+> a **stale copy**: `claude plugin install` snapshots the plugin into
+> `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`, and that copy is keyed by
+> the version in `plugin.json` — editing the source does not refresh it, and neither
+> does re-invoking the skill in any session, new or old. Found 2026-08-06 by proxmox,
+> who diffed the served text and caught it serving the pre-amendment protocol.
+> **If the served rules disagree with this file, this file wins** — read it directly,
+> and amendments always arrive as documents rather than by propagation.
+
 ## Rules
 
 1. **No cross-repo writes, ever.** Write only inside your own repo. Reading a
