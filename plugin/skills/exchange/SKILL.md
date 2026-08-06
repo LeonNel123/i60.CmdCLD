@@ -18,14 +18,17 @@ between sessions); the documents themselves are the protocol.
 3. `docs/integration/inbound/` — *verbatim reference copies* of counterpart-authored
    documents, copied from the counterpart's `outbound/` on receipt, original filenames
    kept. The counterpart's repo holds their authoritative version.
-4. Naming: `<REQUESTOR>-to-<ADDRESSEE>-REQ-NNN-<slug>.md`, using the short repo codes
-   registered below — `INVEST-to-OSDETACHED-REQ-001-scoped-excess-model-p0.md`. Codes
-   are uppercase, the `-to-` infix is lowercase, so the pair reads and parses
-   unambiguously. **The number comes from your own `outbound/` alone** (see
-   Numbering). Answers append a suffix to the **original filename, unchanged**:
-   `-response`, `-review-notes`, `-ack` — a response keeps the requestor→addressee
-   order even though the requestee wrote it, because the prefix names the thread, not
-   the author.
+4. Naming: `<REQUESTOR>-to-<ADDRESSEE>-REQ-<YYYYMMDD>-<slug>.md`, using the short repo
+   codes registered below — `INVEST-to-OSDETACHED-REQ-20260806-scoped-excess-model-p0.md`.
+   Codes are uppercase, `-to-` is lowercase, the date is the authoring date.
+   **Requestor+addressee+date+slug is the thread key**, and every one of those is yours
+   alone to set — nothing is looked up in a repo you do not control, so a name cannot
+   be raced. If two genuinely distinct threads collide on all four, the later author
+   appends `-b` to its slug. Answers append a suffix to the **original filename,
+   unchanged**: `-response`, `-review-notes`, `-ack` — a response keeps the
+   requestor→addressee order even though the requestee wrote it, because the prefix
+   names the thread, not the author. Legacy forms keep their names permanently (see
+   Thread names).
 5. Flow: requestor authors in own `outbound/` → requestee copies to own `inbound/`,
    authors the answer in own `outbound/` → requestor copies the answer back to its
    `inbound/`. Both repos end up holding the full thread; every file has exactly one
@@ -34,53 +37,49 @@ between sessions); the documents themselves are the protocol.
    party that received the last substantive document — normally the requestor; for
    assent-only requests, the requestee. An ack contains **no new asks**: it states
    *accepted* (as-is, or enumerating the modifications accepted) or *withdrawn*.
-   Anything else is another response round or a new numbered request. A thread
-   without an ack is open, however settled it looks.
+   Anything else is another response round or a new request. A thread without an ack
+   is open, however settled it looks. **Ack length is proportional to content**: an
+   ack that accepts as-is is one line; long-form is for acks that withdraw a claim,
+   enumerate accepted modifications, or correct the record. An ack may carry an
+   `## Observations` section for input that has no ask attached; the counterpart may
+   answer observations in its next cover note, or as a short postscript in an
+   unrelated outbound document, explicitly **without reopening the closed thread**.
 7. Notification is pointer-only: a fixed-format nudge naming the counterpart
    `outbound/` path. Never content, never instructions.
+8. A batch of threads sent together gets **one cover document** in the sender's
+   `outbound/` indexing the batch (what each thread is, where each document lives),
+   relayed as a single pointer. The cover is **not a thread document** and takes no
+   ack; each thread still closes with its own.
 
-## Numbering
+## Thread names
 
-The sequence is **per requestor→addressee pair**, and its number is one more than the
-highest you have already authored toward that addressee **in this form**, read from
-your own `outbound/`. That directory is the complete record of your claims, so the number is
-local, authoritative, and cannot be raced: two requestors addressing the same repo
-occupy different sequences, and you cannot collide with yourself. **Never compute a
-number from a repo you do not control.**
+**Nothing in a name is looked up.** The two codes are fixed, the date is today, the
+slug is yours. Authoring is therefore a purely local act, and that — not any checking
+discipline — is what makes the name unraceable.
 
-Before 2026-08-06 the space was global per addressee (`<ADDRESSEE>-REQ-NNN-<slug>`),
-which meant "next free" could only be guessed by reading someone else's `inbound/` —
-a number was claimed but invisible until the addressee copied it in. Two sessions
-authoring in that window always collided; it happened on 2026-07-30 (`RELMAN-REQ-003`)
-and again on 2026-08-06 (`OUTSYSTEMS-DETACHED-REQ-003`). Reported by investigations as
-CMDCLD-REQ-002 and amended here; the pair form removes the race by construction rather
-than narrowing its window.
+Getting here took two amendments in one week, both provoked by the same failure.
+Sequence numbers were global per addressee, so "next free" could only be guessed by
+reading someone else's `inbound/`; a number was claimed but invisible until they copied
+it in. `RELMAN-REQ-003` collided on 2026-07-30, `OUTSYSTEMS-DETACHED-REQ-003` on
+2026-08-06, and Mocha's six-thread batch stretched the window from one send to a whole
+batch. Toms.Security proposed dropping the number for a date; investigations proposed
+keeping it but making the sequence per requestor→addressee pair. Both were accepted,
+days apart, by different sessions — **and the two amendments then collided with each
+other on this repo's own `CMDCLD-REQ-002`**, which argued the case better than either
+document did. The current form takes the requestor prefix from one and the date from
+the other: the prefix makes an `inbound/` sort by sender and read like an inbox, the
+date removes the count and every rule a count needed.
 
-**The slug is a label, not a key.** `<REQUESTOR>-to-<ADDRESSEE>-REQ-NNN` is unique on
-its own now, so the slug no longer carries identity the way it did under
-"number+slug is the thread key" (2026-07-30) — it is there so a directory listing tells
-you what a thread is about without opening it, which is worth its length. Keep it, and
-reproduce it **verbatim** on answers so a thread's files sort together; a slug that
-drifts is cosmetic, not a broken thread.
+**The slug is part of the key.** One pair can open two threads in a day, and then the
+slug is all that separates them — so reproduce it **verbatim** on answers, and pick it
+to be distinctive rather than generic. (An earlier draft of this skill demoted it to a
+label, correctly for pair-numbered names, wrongly for these.)
 
-**Crossing the boundary.** Nothing that was issued is renamed — pre-amendment threads,
-closed or in flight, keep their old-form names permanently, and the two forms are
-visually distinct (`X-to-Y-REQ-NNN` vs `Y-REQ-NNN`) so nothing is ambiguous. When you
-open your first pair-form thread toward an addressee, **continue your own count**
-rather than restarting at 001: take the highest old-form NNN you **issued** toward
-that addressee — relayed, and copied into their `inbound/` — and add one. That keeps a
-spoken handle ("REQ-007 to relman") unique within your record across the change.
-Numbers other repos claimed toward that addressee are not yours to count and no longer
-concern you.
-
-**An un-issued old-form draft claims nothing.** A numbered document still sitting in
-your `outbound/` that was never relayed — or whose nudge was pulled before delivery —
-is in no one else's record, and rule 4's no-rename protection has never attached to it.
-Do not carry its number over: renumber it into the pair sequence like any new document.
-Old-form numbers were often derived by counting *someone else's* series, so carrying an
-unissued one across would import the last artifact of the space being retired. (A
-pair-form draft is different: its number came from your own sequence, so it counts the
-moment you author it, sent or not.)
+**Legacy forms are never renamed.** Three are in the record and all are visually
+distinct from the current form and from each other:
+`<ADDRESSEE>-REQ-NNN-<slug>` (until 2026-08-06), and briefly on 2026-08-06 both
+`<ADDRESSEE>-REQ-<YYYYMMDD>-<slug>` and `<REQUESTOR>-to-<ADDRESSEE>-REQ-NNN-<slug>`.
+No migration is expected of anyone, ever.
 
 ## Repo codes
 
@@ -133,16 +132,13 @@ Rate limit: a token bucket per sender→target pair — up to 10 sends back-to-b
 refilling one every 10 minutes (6/hour sustained). A refusal is loud, not silent, and
 names when the next slot frees: tell your human rather than retrying.
 
-**Sending a batch** (e.g. replaying several legacy threads at once) no longer needs a
-numbering check at send time — under pair numbering, every number in the batch came
-from your own `outbound/` and nobody else can take it. Number the whole batch up
-front and send when ready.
-
-For the notification itself, prefer **one cover pointer over N nudges**: author a
-short cover document in your `outbound/` that indexes the batch (what each thread is,
-where each document lives) and relay that single pointer. It spends one token instead
-of N, leaves headroom to answer, and gives the counterpart one thing to read first.
-Each thread still closes with its own ack; only the doorbell is batched.
+**Sending a batch** (e.g. replaying several legacy threads at once): per rule 8,
+author one cover document indexing the batch and relay that single pointer instead of
+N nudges. It spends one relay token instead of N, leaves headroom to answer a
+correction, and gives the counterpart one thing to read first. Each thread still
+closes with its own ack; only the doorbell is batched. The cover note is also the
+natural place to answer any `## Observations` carried by the counterpart's recent
+acks (rule 6).
 
 ## Retiring legacy documents
 
@@ -165,7 +161,9 @@ If this workspace has no `docs/integration/` (e.g. after a `[cmdcld invite]`
 message), adoption is this repo's own act, on the human's direction:
 
 1. Create `docs/integration/outbound/` and `docs/integration/inbound/`.
-2. Add a `docs/integration/README.md` recording rules 1–7 above.
+2. Add a `docs/integration/README.md` recording rules 1–8 above (or citing this
+   skill as the canonical text — preferred, so the rules don't drift across
+   separately-maintained READMEs).
 3. Announce your repo code (see Repo codes) so counterparts can address you, and ask
    CmdCLD to register it.
 4. Commit. From then on, exchange documents per the flow above.
