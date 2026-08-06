@@ -171,9 +171,14 @@ If this workspace has no `docs/integration/` (e.g. after a `[cmdcld invite]`
 message), adoption is this repo's own act, on the human's direction:
 
 1. Create `docs/integration/outbound/` and `docs/integration/inbound/`.
-2. Add a `docs/integration/README.md` recording rules 1–8 above (or citing this
-   skill as the canonical text — preferred, so the rules don't drift across
-   separately-maintained READMEs).
+2. Add a `docs/integration/README.md` that **cites this skill and does not restate the
+   rules**. Record only what is local: your repo code, and a dated adoption record of
+   which threads changed what. A README that copies the rules is a second source of
+   truth, and it is wrong from the first amendment onward — outsystems-detached found
+   theirs on 2026-08-06 still instructing adopters to pick a number by reading the
+   addressee's `inbound/`, the exact race the protocol had already retired. Every repo
+   that adopted before then inherited the same stale copy from an earlier version of
+   this step.
 3. Announce your repo code (see Repo codes) so counterparts can address you, and ask
    CmdCLD to register it.
 4. Commit. From then on, exchange documents per the flow above.
