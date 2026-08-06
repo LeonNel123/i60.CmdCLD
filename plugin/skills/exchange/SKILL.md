@@ -18,14 +18,14 @@ between sessions); the documents themselves are the protocol.
 3. `docs/integration/inbound/` — *verbatim reference copies* of counterpart-authored
    documents, copied from the counterpart's `outbound/` on receipt, original filenames
    kept. The counterpart's repo holds their authoritative version.
-4. Naming: `<ADDRESSEE>-REQ-NNN-<slug>.md` — the prefix names who the request is FOR.
-   Answers append a suffix to the original name: `-response`, `-review-notes`, `-ack`.
-   **Number+slug is the thread key** — multiple requestors may author toward the same
-   addressee, so a bare `<ADDRESSEE>-REQ-NNN` is not assumed unique. Pick the next
-   free number by checking the addressee's `inbound/` plus your own `outbound/`, and
-   re-verify at send time, immediately before `relay_notify`. If a collision slips
-   through, the courier reports it and the side whose file is not yet copied
-   renumbers; once both sides are copied, slugs disambiguate and nobody renames.
+4. Naming: `<REQUESTOR>-to-<ADDRESSEE>-REQ-NNN-<slug>.md`, using the short repo codes
+   registered below — `INVEST-to-OSDETACHED-REQ-004-scoped-excess-model-p0.md`. Codes
+   are uppercase, the `-to-` infix is lowercase, so the pair reads and parses
+   unambiguously. **The number comes from your own `outbound/` alone** (see
+   Numbering). Answers append a suffix to the **original filename, unchanged**:
+   `-response`, `-review-notes`, `-ack` — a response keeps the requestor→addressee
+   order even though the requestee wrote it, because the prefix names the thread, not
+   the author.
 5. Flow: requestor authors in own `outbound/` → requestee copies to own `inbound/`,
    authors the answer in own `outbound/` → requestor copies the answer back to its
    `inbound/`. Both repos end up holding the full thread; every file has exactly one
@@ -38,6 +38,69 @@ between sessions); the documents themselves are the protocol.
    without an ack is open, however settled it looks.
 7. Notification is pointer-only: a fixed-format nudge naming the counterpart
    `outbound/` path. Never content, never instructions.
+
+## Numbering
+
+The sequence is **per requestor→addressee pair**, and its number is
+`max(NNN you have already authored toward that addressee) + 1`, read from your own
+`outbound/`. That directory is the complete record of your claims, so the number is
+local, authoritative, and cannot be raced: two requestors addressing the same repo
+occupy different sequences, and you cannot collide with yourself. **Never compute a
+number from a repo you do not control.**
+
+Before 2026-08-06 the space was global per addressee (`<ADDRESSEE>-REQ-NNN-<slug>`),
+which meant "next free" could only be guessed by reading someone else's `inbound/` —
+a number was claimed but invisible until the addressee copied it in. Two sessions
+authoring in that window always collided; it happened on 2026-07-30 (`RELMAN-REQ-003`)
+and again on 2026-08-06 (`OUTSYSTEMS-DETACHED-REQ-003`). Reported by investigations as
+CMDCLD-REQ-002 and amended here; the pair form removes the race by construction rather
+than narrowing its window.
+
+**The slug is a label, not a key.** `<REQUESTOR>-to-<ADDRESSEE>-REQ-NNN` is unique on
+its own now, so the slug no longer carries identity the way it did under
+"number+slug is the thread key" (2026-07-30) — it is there so a directory listing tells
+you what a thread is about without opening it, which is worth its length. Keep it, and
+reproduce it **verbatim** on answers so a thread's files sort together; a slug that
+drifts is cosmetic, not a broken thread.
+
+**Crossing the boundary.** Nothing that was issued is renamed — pre-amendment threads,
+closed or in flight, keep their old-form names permanently, and the two forms are
+visually distinct (`X-to-Y-REQ-NNN` vs `Y-REQ-NNN`) so nothing is ambiguous. When you
+open your first pair-form thread toward an addressee, **continue your own count**
+rather than restarting at 001: take the highest NNN you **issued** toward that
+addressee — relayed, and copied into their `inbound/` — from your own `outbound/`, in
+either form, and add one. That keeps a spoken handle ("REQ-007 to relman") unique
+within your record across the change. Numbers other repos claimed toward that
+addressee are not yours to count and no longer concern you.
+
+**An un-issued draft claims nothing.** A numbered document still sitting in your
+`outbound/` that was never relayed — or whose nudge was pulled before delivery — is in
+no one else's record, and rule 4's no-rename protection has never attached to it.
+Do not carry its number over: renumber it into the pair sequence like any new
+document. Old-form numbers were often derived by counting *someone else's* series, so
+carrying an unissued one across would import the last artifact of the space being
+retired.
+
+## Repo codes
+
+The code a repo is addressed by. A repo's own code is the one it announces when it
+adopts; register it here so adopters inherit the list instead of inventing variants.
+
+| Code | Repo |
+| --- | --- |
+| `CMDCLD` | CmdCLD |
+| `RELMAN` | release-manager |
+| `PROXMOX` | proxmox |
+| `TOMSSEC` | Toms.Security |
+| `OSDETACHED` | outsystems-detached |
+| `INVEST` | investigations |
+| `MOCHA` | Mocha |
+| `KIJANI` | Kijani |
+
+Codes are uppercase `A–Z0–9`, short enough to double in a filename. If a repo you
+need to address is missing, use the prefix it has been addressed by until now and
+tell CmdCLD to register it; if two repos want the same code, CmdCLD arbitrates as
+steward of this skill.
 
 ## Receiving a relay nudge
 
@@ -69,11 +132,10 @@ Rate limit: a token bucket per sender→target pair — up to 10 sends back-to-b
 refilling one every 10 minutes (6/hour sustained). A refusal is loud, not silent, and
 names when the next slot frees: tell your human rather than retrying.
 
-**Sending a batch** (e.g. replaying several legacy threads at once) widens the
-numbering race: every number you claim sits un-copied in your `outbound/` until its
-nudge is relayed, so the window for a collision is the whole batch, not one send.
-Re-verify each number immediately before its own `relay_notify`, and renumber
-un-copied files if a courier reports a clash.
+**Sending a batch** (e.g. replaying several legacy threads at once) no longer needs a
+numbering check at send time — under pair numbering, every number in the batch came
+from your own `outbound/` and nobody else can take it. Number the whole batch up
+front and send when ready.
 
 For the notification itself, prefer **one cover pointer over N nudges**: author a
 short cover document in your `outbound/` that indexes the batch (what each thread is,
@@ -103,4 +165,6 @@ message), adoption is this repo's own act, on the human's direction:
 
 1. Create `docs/integration/outbound/` and `docs/integration/inbound/`.
 2. Add a `docs/integration/README.md` recording rules 1–7 above.
-3. Commit. From then on, exchange documents per the flow above.
+3. Announce your repo code (see Repo codes) so counterparts can address you, and ask
+   CmdCLD to register it.
+4. Commit. From then on, exchange documents per the flow above.

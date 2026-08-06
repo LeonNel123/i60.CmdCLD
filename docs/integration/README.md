@@ -15,17 +15,19 @@ relay/notification only carries pointers. This repo adopted the layout 2026-07-3
    to us, their responses to ours), copied verbatim from the counterpart's `outbound/`
    on receipt, original filenames kept. Copies are point-in-time; the counterpart's
    repo holds their authoritative version.
-4. **Naming**: `<ADDRESSEE>-REQ-NNN-<slug>.md` (the prefix names who the request is FOR —
-   `CMDCLD-REQ-001-*` is a request to us; `RELMAN-REQ-002-*` is ours to
-   release-manager). Answers append a suffix to the original name: `-response`,
-   `-review-notes`, .... **Number+slug is the thread key** — with multiple requestors
-   authoring toward the same addressee, a bare `<ADDRESSEE>-REQ-NNN` is not assumed
-   unique (adopted 2026-07-30 via TOMSSEC-REQ-003, after two requestors took
-   `RELMAN-REQ-003` in the same window). Pick the next free number by checking the
-   addressee's `inbound/` plus your own `outbound/`, and re-verify **at send time**,
-   immediately before `relay_notify`; if a collision slips through anyway, the
-   courier reports it and the uncopied side renumbers — once both sides are copied,
-   slugs disambiguate and nobody renames.
+4. **Naming**: `<REQUESTOR>-to-<ADDRESSEE>-REQ-NNN-<slug>.md` using registered short repo
+   codes — `INVEST-to-CMDCLD-REQ-002-*` is investigations' second request to us;
+   `CMDCLD-to-RELMAN-REQ-004-*` is ours to release-manager. Codes uppercase, `-to-`
+   lowercase. Answers append a suffix to the **original filename, unchanged**:
+   `-response`, `-review-notes`, `-ack` — a response keeps the requestor→addressee
+   order even though the requestee wrote it. **The number is per requestor→addressee
+   pair and comes from our own `outbound/` alone** — one more than the highest we have
+   authored toward that addressee, in either form. Never computed from a repo we do not
+   control (adopted 2026-08-06 via CMDCLD-REQ-002, after the global-per-addressee space
+   raced twice in eight days: `RELMAN-REQ-003` on 07-30, `OUTSYSTEMS-DETACHED-REQ-003`
+   on 08-06). Old-form names are **never renamed**; the two forms are visually distinct
+   and coexist permanently. The repo-code registry lives in the `exchange` skill; ours
+   is `CMDCLD`.
 5. **Flow**: requestor authors in own `outbound/` → requestee copies to own `inbound/`,
    authors the answer in own `outbound/` → requestor copies the answer to own
    `inbound/`. Both repos end up with the full thread, each file written by exactly one
