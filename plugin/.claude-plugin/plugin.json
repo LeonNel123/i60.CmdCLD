@@ -1,7 +1,7 @@
 {
   "name": "cmdcld-exchange",
   "description": "Cross-project exchange protocol (docs/integration) + CmdCLD session relay tools (relay_notify, list_sessions)",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": {
     "name": "CmdCLD"
   }
