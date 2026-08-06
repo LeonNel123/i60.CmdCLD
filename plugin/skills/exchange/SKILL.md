@@ -19,7 +19,7 @@ between sessions); the documents themselves are the protocol.
    documents, copied from the counterpart's `outbound/` on receipt, original filenames
    kept. The counterpart's repo holds their authoritative version.
 4. Naming: `<REQUESTOR>-to-<ADDRESSEE>-REQ-NNN-<slug>.md`, using the short repo codes
-   registered below — `INVEST-to-OSDETACHED-REQ-004-scoped-excess-model-p0.md`. Codes
+   registered below — `INVEST-to-OSDETACHED-REQ-001-scoped-excess-model-p0.md`. Codes
    are uppercase, the `-to-` infix is lowercase, so the pair reads and parses
    unambiguously. **The number comes from your own `outbound/` alone** (see
    Numbering). Answers append a suffix to the **original filename, unchanged**:
@@ -41,9 +41,9 @@ between sessions); the documents themselves are the protocol.
 
 ## Numbering
 
-The sequence is **per requestor→addressee pair**, and its number is
-`max(NNN you have already authored toward that addressee) + 1`, read from your own
-`outbound/`. That directory is the complete record of your claims, so the number is
+The sequence is **per requestor→addressee pair**, and its number is one more than the
+highest you have already authored toward that addressee **in this form**, read from
+your own `outbound/`. That directory is the complete record of your claims, so the number is
 local, authoritative, and cannot be raced: two requestors addressing the same repo
 occupy different sequences, and you cannot collide with yourself. **Never compute a
 number from a repo you do not control.**
@@ -67,19 +67,20 @@ drifts is cosmetic, not a broken thread.
 closed or in flight, keep their old-form names permanently, and the two forms are
 visually distinct (`X-to-Y-REQ-NNN` vs `Y-REQ-NNN`) so nothing is ambiguous. When you
 open your first pair-form thread toward an addressee, **continue your own count**
-rather than restarting at 001: take the highest NNN you **issued** toward that
-addressee — relayed, and copied into their `inbound/` — from your own `outbound/`, in
-either form, and add one. That keeps a spoken handle ("REQ-007 to relman") unique
-within your record across the change. Numbers other repos claimed toward that
-addressee are not yours to count and no longer concern you.
+rather than restarting at 001: take the highest old-form NNN you **issued** toward
+that addressee — relayed, and copied into their `inbound/` — and add one. That keeps a
+spoken handle ("REQ-007 to relman") unique within your record across the change.
+Numbers other repos claimed toward that addressee are not yours to count and no longer
+concern you.
 
-**An un-issued draft claims nothing.** A numbered document still sitting in your
-`outbound/` that was never relayed — or whose nudge was pulled before delivery — is in
-no one else's record, and rule 4's no-rename protection has never attached to it.
-Do not carry its number over: renumber it into the pair sequence like any new
-document. Old-form numbers were often derived by counting *someone else's* series, so
-carrying an unissued one across would import the last artifact of the space being
-retired.
+**An un-issued old-form draft claims nothing.** A numbered document still sitting in
+your `outbound/` that was never relayed — or whose nudge was pulled before delivery —
+is in no one else's record, and rule 4's no-rename protection has never attached to it.
+Do not carry its number over: renumber it into the pair sequence like any new document.
+Old-form numbers were often derived by counting *someone else's* series, so carrying an
+unissued one across would import the last artifact of the space being retired. (A
+pair-form draft is different: its number came from your own sequence, so it counts the
+moment you author it, sent or not.)
 
 ## Repo codes
 
