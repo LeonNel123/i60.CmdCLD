@@ -9,7 +9,7 @@ Projects collaborate by exchanging committed markdown documents; this skill is t
 procedure. The transport for *notifications* is the CmdCLD relay (pointer-only nudges
 between sessions); the documents themselves are the protocol.
 
-> **Protocol version 1.2.0.** The text you are reading is canonical *for the version it
+> **Protocol version 1.3.0.** The text you are reading is canonical *for the version it
 > stamps*. There is no file in anyone's checkout you have to open first: until 1.2.0
 > this note named a path inside CmdCLD's working copy, which is not reachable from
 > another machine, and was wrong even locally.
@@ -209,9 +209,18 @@ message), adoption is this repo's own act, on the human's direction:
    addressee's `inbound/`, the exact race the protocol had already retired. Every repo
    that adopted before then inherited the same stale copy from an earlier version of
    this step.
-3. Announce your repo code (see Repo codes) so counterparts can address you, and ask
+3. Keep the **bootstrap line** in that README — literally, not as a citation. How to
+   install this skill is in [Installing this skill](#installing-this-skill), but a repo
+   that has not installed it cannot read that, so the
+   `claude plugin marketplace add …` command is the one piece of shared text a README
+   is meant to carry. Take it from the `[cmdcld invite]` message or CmdCLD's
+   `plugin/README.md`. It goes stale whenever the source or pin moves, and that is
+   accepted: it is a bootstrap, not a source of truth. Once the plugin is installed the
+   skill's own section wins, so keep it to the add/install pair and cite the skill for
+   everything after — refreshing, auto-update, version checks.
+4. Announce your repo code (see Repo codes) so counterparts can address you, and ask
    CmdCLD to register it.
-4. Commit. From then on, exchange documents per the flow above.
+5. Commit. From then on, exchange documents per the flow above.
 
 ## Installing this skill
 
