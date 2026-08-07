@@ -23,6 +23,7 @@ verbatim copies of counterpart-authored ones.
 | 2026-08-03 | CMDCLD-REQ-002-streamline-protocol | Proportional ack length, `## Observations` on acks, cover notes as rule 8 (credit Mocha), and **the skill as canonical text** |
 | 2026-08-06 | CMDCLD-REQ-002-per-pair-thread-numbering | Per-pair numbering *(superseded the same day)* |
 | 2026-08-06 | Both REQ-002 threads reconciled | `<REQUESTOR>-to-<ADDRESSEE>-REQ-<YYYYMMDD>-<slug>` — the date from one thread, the requestor prefix from the other, after the two amendments collided with each other |
+| 2026-08-07 | CMDCLD-to-\*-REQ-20260807-install-source-moves-to-github | The skill is hosted from the GitHub fork rather than this checkout, `SKILL.md` stamps its own protocol version, and adoption step 3 keeps the install pair — and only that pair — literal in a README |
 
 ## Notes for whoever reads this next
 
