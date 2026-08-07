@@ -3,8 +3,10 @@
 Request/response protocol between autonomous project sessions. Documents are the
 protocol; any relay/notification only carries pointers.
 
-**The rules live in the `exchange` skill — `plugin/skills/exchange/SKILL.md` — and are
-deliberately not restated here.** This file is a dated adoption record: what this repo
+**The rules live in the `exchange` skill, and are deliberately not restated here.** Cite
+it by that name; this repo happens to author it, so its source sits at the repo-relative
+`plugin/skills/exchange/SKILL.md`, but no reader needs that path and no other repo should
+carry one (1.3.1 — see the `cite-by-name-not-by-path` threads). This file is a dated adoption record: what this repo
 adopted and when. A README that restates the rules becomes a second source of truth
 that only ever gets more wrong, which outsystems-detached found on 2026-08-06 while
 still carrying the original raceable numbering step.
@@ -24,6 +26,7 @@ verbatim copies of counterpart-authored ones.
 | 2026-08-06 | CMDCLD-REQ-002-per-pair-thread-numbering | Per-pair numbering *(superseded the same day)* |
 | 2026-08-06 | Both REQ-002 threads reconciled | `<REQUESTOR>-to-<ADDRESSEE>-REQ-<YYYYMMDD>-<slug>` — the date from one thread, the requestor prefix from the other, after the two amendments collided with each other |
 | 2026-08-07 | CMDCLD-to-\*-REQ-20260807-install-source-moves-to-github | The skill is hosted from the GitHub fork rather than this checkout, `SKILL.md` stamps its own protocol version, and adoption step 3 keeps the install pair — and only that pair — literal in a README |
+| 2026-08-07 | CMDCLD-to-\*-REQ-20260807-cite-by-name-not-by-path | Citations name the skill, never a filesystem path — outsystems-detached's observation, that a path citation degrades worse than a stale copy because the reader gets nothing from a string worth retyping |
 
 ## Notes for whoever reads this next
 
