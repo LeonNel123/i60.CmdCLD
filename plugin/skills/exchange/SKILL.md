@@ -9,15 +9,29 @@ Projects collaborate by exchanging committed markdown documents; this skill is t
 procedure. The transport for *notifications* is the CmdCLD relay (pointer-only nudges
 between sessions); the documents themselves are the protocol.
 
-> **The canonical text is this file on disk**, at
-> `D:\Source\i60\CmdCLD\plugin\skills\exchange\SKILL.md`. Invoking the skill can serve
-> a **stale copy**: `claude plugin install` snapshots the plugin into
-> `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`, and that copy is keyed by
-> the version in `plugin.json` — editing the source does not refresh it, and neither
-> does re-invoking the skill in any session, new or old. Found 2026-08-06 by proxmox,
-> who diffed the served text and caught it serving the pre-amendment protocol.
-> **If the served rules disagree with this file, this file wins** — read it directly,
-> and amendments always arrive as documents rather than by propagation.
+> **Protocol version 1.2.0.** The text you are reading is canonical *for the version it
+> stamps*. There is no file in anyone's checkout you have to open first: until 1.2.0
+> this note named a path inside CmdCLD's working copy, which is not reachable from
+> another machine, and was wrong even locally.
+>
+> What still needs checking is **freshness**. `claude plugin install` snapshots the
+> plugin into `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`, keyed by the
+> version in `plugin.json`; nothing refreshes that copy — not editing the source, not
+> re-invoking the skill in any session, new or old. Found 2026-08-06 by proxmox, who
+> diffed the served text and caught it serving the pre-amendment protocol.
+>
+> **If a document cites a protocol version higher than the one stamped above, you are
+> running a stale snapshot.** Refresh it — once per machine, then restart the session:
+>
+> ```
+> claude plugin marketplace update cmdcld
+> claude plugin update cmdcld-exchange@cmdcld
+> ```
+>
+> If `cmdcld` is not a registered marketplace, see [Installing this
+> skill](#installing-this-skill). Amendments still arrive as **documents**, never by
+> propagation: a refresh gets you the current rules, it does not tell you what changed
+> or why you agreed to it.
 
 ## Rules
 
@@ -198,3 +212,30 @@ message), adoption is this repo's own act, on the human's direction:
 3. Announce your repo code (see Repo codes) so counterparts can address you, and ask
    CmdCLD to register it.
 4. Commit. From then on, exchange documents per the flow above.
+
+## Installing this skill
+
+The skill ships as the `cmdcld-exchange` plugin, hosted in a public repo — no CmdCLD
+checkout, and no particular machine, is required to install or refresh it:
+
+```
+claude plugin marketplace add https://github.com/dewald-behm/i60.CmdCLD.git#wip-dewald
+claude plugin install cmdcld-exchange@cmdcld
+```
+
+The `#wip-dewald` suffix pins the branch; the plugin is not on `master` yet, and a
+plain `owner/repo` shorthand would clone `master` and find no catalog. When the branch
+merges, the pin drops and the source becomes `dewald-behm/i60.CmdCLD` — that change
+will arrive as a document, like every other amendment.
+
+**Then turn auto-update on**, in `/plugin` → **Marketplaces** → `cmdcld` → *Enable
+auto-update*. It is on by default only for official Anthropic marketplaces, so a
+third-party one you just added will otherwise never refresh itself — this repo's own
+entry sat eight days stale that way. With it on, a new version lands in the background
+after session start and applies on `/reload-plugins` or at next launch, and you can
+skip the two `update` commands in the note at the top.
+
+Installing is per machine, not per session, and the cache is shared: refresh with the
+two `update` commands in the note at the top, then restart each running session. The
+plugin also carries the relay MCP config; the relay tools only appear in sessions
+CmdCLD launched, and the document protocol needs no host at all.

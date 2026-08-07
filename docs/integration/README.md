@@ -29,8 +29,19 @@ verbatim copies of counterpart-authored ones.
 **Nothing propagates automatically.** Invoking the skill can serve a copy snapshotted at
 plugin-install time, keyed by the version in `plugin/.claude-plugin/plugin.json` — found
 by proxmox on 2026-08-06, serving pre-amendment text. Bump that version when `SKILL.md`
-changes materially, and re-install so the cache re-syncs. Documents are the only channel
-by which an amendment reaches a counterpart.
+changes materially, bump the matching `Protocol version` stamp inside `SKILL.md`, and
+push — the marketplace refreshes from the remote. Auto-update, once toggled on for the
+marketplace (it is off by default for everything but Anthropic's own), makes the
+refresh automatic — but it compares versions, so an unbumped edit stays invisible, and
+it moves text, not agreement. Documents remain the only channel by which an amendment
+reaches a counterpart.
+
+**The skill installs from GitHub, not from this checkout** (since plugin 1.2.0):
+`claude plugin marketplace add https://github.com/dewald-behm/i60.CmdCLD.git#wip-dewald`.
+The `#wip-dewald` pin exists only because `plugin/` is not on `master` yet; it drops
+when that PR lands. Before 1.2.0 the marketplace was this directory and the skill named
+a working-copy path as canonical, so counterparts on other machines had no way to read
+the text they were told was authoritative.
 
 **CmdCLD hosts the relay** (CMDCLD-REQ-001): stage-only pty delivery of pointer nudges,
 MCP `relay_notify` / `list_sessions` with host-stamped sender identity, and the

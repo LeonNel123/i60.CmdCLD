@@ -1,8 +1,9 @@
 {
   "name": "cmdcld-exchange",
   "description": "Cross-project exchange protocol (docs/integration) + CmdCLD session relay tools (relay_notify, list_sessions)",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "author": {
     "name": "CmdCLD"
-  }
+  },
+  "homepage": "https://github.com/dewald-behm/i60.CmdCLD/tree/wip-dewald/plugin"
 }
