@@ -9,7 +9,7 @@ Projects collaborate by exchanging committed markdown documents; this skill is t
 procedure. The transport for *notifications* is the CmdCLD relay (pointer-only nudges
 between sessions); the documents themselves are the protocol.
 
-> **Protocol version 1.3.0.** The text you are reading is canonical *for the version it
+> **Protocol version 1.3.1.** The text you are reading is canonical *for the version it
 > stamps*. There is no file in anyone's checkout you have to open first: until 1.2.0
 > this note named a path inside CmdCLD's working copy, which is not reachable from
 > another machine, and was wrong even locally.
@@ -209,6 +209,18 @@ message), adoption is this repo's own act, on the human's direction:
    addressee's `inbound/`, the exact race the protocol had already retired. Every repo
    that adopted before then inherited the same stale copy from an earlier version of
    this step.
+
+   **Cite it by name — "the `exchange` skill" — never by filesystem path.** A path is a
+   restatement wearing a citation's clothes. Outsystems-detached complied with this step
+   in full, restated nothing, and still ended up naming
+   `D:\Source\i60\CmdCLD\plugin\skills\exchange\SKILL.md` as the canonical text:
+   unreachable from any other machine, and misspelling the repo, which is `i60.CmdCLD`.
+   A reader following that gets *nothing*, from a path authoritative enough to retype —
+   which degrades worse than stale rules, since stale rules at least still read as
+   rules. They reported it on 2026-08-07, having been put there by an earlier wording of
+   this very step. If a pointer is unavoidable, use the install command in step 3 or the
+   repository URL: both are addressable from any machine, and a working-copy path never
+   is.
 3. Keep the **bootstrap line** in that README — literally, not as a citation. How to
    install this skill is in [Installing this skill](#installing-this-skill), but a repo
    that has not installed it cannot read that, so the
