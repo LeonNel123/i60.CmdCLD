@@ -3,7 +3,7 @@ import type { RecentFolder } from '../types/api'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import {
   ChevronLeft, ChevronRight, ChevronDown, Star, X, LayoutGrid,
-  FolderOpen, Sparkles, TerminalSquare, AppWindow, FolderPlus, Settings,
+  FolderOpen, Sparkles, TerminalSquare, AppWindow, FolderPlus, Settings, RadioTower,
 } from './icons'
 
 interface TerminalEntry {
@@ -35,6 +35,8 @@ interface SidebarProps {
   onNewWindow: () => void
   onNewProject: () => void
   onOpenSettings: () => void
+  onToggleBroadcast: () => void
+  broadcastActive?: boolean
   hasProjectsRoot: boolean
   uiScale?: number
 }
@@ -139,6 +141,8 @@ export function Sidebar({
   onNewWindow,
   onNewProject,
   onOpenSettings,
+  onToggleBroadcast,
+  broadcastActive = false,
   hasProjectsRoot,
   uiScale = 1,
 }: SidebarProps) {
@@ -319,6 +323,15 @@ export function Sidebar({
         >
           <span style={{ color: '#94a3b8', display: 'flex', flexShrink: 0 }}><TerminalSquare width={14} height={14} /></span>
           {!collapsed && <span>Quick Shell</span>}
+        </button>
+        <button
+          onClick={onToggleBroadcast}
+          style={btnStyle(broadcastActive)}
+          className="sidebar-btn"
+          title="Broadcast — send one prompt to every agent console (Ctrl+B)"
+        >
+          <span style={{ color: '#22c55e', display: 'flex', flexShrink: 0 }}><RadioTower width={14} height={14} /></span>
+          {!collapsed && <span>Broadcast</span>}
         </button>
         <button onClick={onNewWindow} style={btnStyle()} className="sidebar-btn" title="New Window">
           <span style={{ color: '#aaa', display: 'flex', flexShrink: 0 }}><AppWindow width={14} height={14} /></span>

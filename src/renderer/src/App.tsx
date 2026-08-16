@@ -8,6 +8,7 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { SettingsDialog } from './components/settings/SettingsDialog'
 import { LaunchDialog } from './components/LaunchDialog'
 import { MarkdownViewer } from './components/MarkdownViewer'
+import { BroadcastBar } from './components/BroadcastBar'
 import { Toast } from './components/Toast'
 import { WelcomeBackCard } from './components/WelcomeBackCard'
 import { EmptyWorkspace } from './components/EmptyWorkspace'
@@ -93,6 +94,7 @@ export default function App() {
   const [quickShellMenu, setQuickShellMenu] = useState<{ x: number; y: number } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [autopilotKickoffFor, setAutopilotKickoffFor] = useState<string | null>(null)  // terminalId
+  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [autopilotRunning, setAutopilotRunning] = useState<Set<string>>(new Set())
   const [autopilotPanelFor, setAutopilotPanelFor] = useState<string | null>(null)
   const [autopilotDefaults, setAutopilotDefaults] = useState({ costCap: 1.0, maxIterations: 40 })
@@ -709,6 +711,12 @@ export default function App() {
         setViewMode({ type: 'grid' })
         return
       }
+      // Mod+B: toggle the broadcast bar
+      if (mod && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) {
+        e.preventDefault()
+        setBroadcastOpen((v) => !v)
+        return
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -756,10 +764,15 @@ export default function App() {
         onNewWindow={handleNewWindow}
         onNewProject={() => setShowNewProject(true)}
         onOpenSettings={() => setShowSettings(true)}
+        onToggleBroadcast={() => setBroadcastOpen((v) => !v)}
+        broadcastActive={broadcastOpen}
         hasProjectsRoot={Boolean(projectsRoot)}
         uiScale={chromeScale(uiScalePct)}
       />
-      <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+      {/* Content column: the terminal area shrinks to make room for the
+          broadcast bar docked underneath, rather than being overlapped. */}
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
         <ErrorBoundary>
         {terminals.length === 0 && savedSessionProjects.length > 0 && !welcomeDismissed && (
           <WelcomeBackCard
@@ -845,6 +858,10 @@ export default function App() {
           </div>
         ))}
         </ErrorBoundary>
+      </div>
+      {broadcastOpen && (
+        <BroadcastBar terminals={terminals} onClose={() => setBroadcastOpen(false)} />
+      )}
       </div>
 
       {autopilotPanelFor && (
