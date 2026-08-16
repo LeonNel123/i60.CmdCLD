@@ -266,6 +266,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('autopilot:attachStatus', terminalId),
   autopilotAttachCancel: (terminalId: string) =>
     ipcRenderer.invoke('autopilot:attachCancel', terminalId),
+  broadcastRefine: (args: { text: string; targetLabels?: string[] }): Promise<{ ok: boolean; text?: string; error?: string }> =>
+    ipcRenderer.invoke('broadcast:refine', args),
+  broadcastSend: (args: { terminalIds: string[]; text: string }): Promise<{ ok: boolean; results: Array<{ id: string; ok: boolean; error?: string }> }> =>
+    ipcRenderer.invoke('broadcast:send', args),
   onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, terminalId: string, state: unknown) => callback(terminalId, state)
     ipcRenderer.on('autopilot:update', listener)

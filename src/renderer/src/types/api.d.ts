@@ -241,6 +241,8 @@ export interface ElectronAPI {
   }>
   autopilotAttachStatus: (terminalId: string) => Promise<AttachSessionStatus | null>
   autopilotAttachCancel: (terminalId: string) => Promise<{ ok: boolean }>
+  broadcastRefine: (args: { text: string; targetLabels?: string[] }) => Promise<{ ok: boolean; text?: string; error?: string }>
+  broadcastSend: (args: { terminalIds: string[]; text: string }) => Promise<{ ok: boolean; results: Array<{ id: string; ok: boolean; error?: string }> }>
   onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void) => () => void
 }
 
