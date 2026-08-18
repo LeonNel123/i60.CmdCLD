@@ -269,6 +269,10 @@ try {
   // session, persisted queue, stage-only delivery through the shared pty
   // writer so relay and autopilot writes stay serialized per terminal.
   relayIdleWatcher = new SessionIdleWatcher()
+  // 'created' matters as much as 'data': a just-spawned pty is silent, and
+  // without the spawn record the watcher would call it idle and let a queued
+  // relay land on the shell prompt before `claude` is even typed.
+  ptyManager.on('created', ({ id }: { id: string }) => relayIdleWatcher.noteStart(id))
   ptyManager.on('data', ({ id }: { id: string }) => relayIdleWatcher.noteData(id))
   ptyManager.on('exit', ({ id }: { id: string }) => relayIdleWatcher.noteExit(id))
   relayManager = new RelayManager({
