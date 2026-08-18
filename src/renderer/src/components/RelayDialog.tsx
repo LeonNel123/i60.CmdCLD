@@ -298,7 +298,7 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '12px' }}>
           <div style={{ display: 'flex', gap: '10px' }}>
             <div style={{ flex: 1 }}>
-              <label style={labelStyle}>To session (or name@MACHINE for another machine)</label>
+              <label style={labelStyle}>To project/session — the name is the key, wherever it runs (@MACHINE only to pin one machine)</label>
               <input
                 value={to}
                 onChange={(e) => setTo(e.target.value)}

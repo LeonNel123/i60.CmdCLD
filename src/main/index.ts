@@ -140,9 +140,22 @@ let hubNudgeWatcher: HubNudgeWatcher
 // machine ("session@WORKBOX") go out via the hub; everything else is local.
 async function routeRelaySend(req: RelayRequest): Promise<RelaySendResult> {
   const target = splitTarget(req.to)
+  // Explicit foreign machine pin: hub, always.
   if (target.machine && target.machine.toLowerCase() !== os.hostname().toLowerCase()) {
     const res = await hubNudgeWatcher.sendViaHub(req)
     return { ok: res.ok, status: res.ok ? 'queued' : 'refused', id: '', error: res.error }
+  }
+  // Bare name: the project is the key. A local session wins; otherwise the
+  // nudge rides the hub addressed by name alone and whichever machine hosts
+  // that project delivers it. If the document isn't hub-resident the hub
+  // can't carry it, so it falls back to the local queue.
+  if (!target.machine) {
+    const needle = req.to.trim().toLowerCase()
+    const local = ptyManager.listAll().some((m) => m.id === req.to || m.name.toLowerCase() === needle)
+    if (!local) {
+      const res = await hubNudgeWatcher.sendViaHub(req)
+      if (res.ok) return { ok: true, status: 'queued', id: '' }
+    }
   }
   return relayManager.send(req)
 }

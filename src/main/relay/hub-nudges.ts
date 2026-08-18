@@ -5,10 +5,11 @@
 // polls the hub clones it holds, delivers records addressed to sessions it
 // hosts into the local relay inbox, and commits a delivered marker back.
 //
-// Records are one file each and markers are separate files, so two machines
-// never edit the same file and the worst race is a rebase on push. Delivery
-// stays human-paced end to end: the receiving side lands in the inbox
-// (flashing envelope), never in a composer.
+// Records are one file each and delivered markers are per-machine files, so
+// no two machines ever write the same path — a bare-name nudge that two hosts
+// both deliver simply reaches that project's session on both, and the pushes
+// merge cleanly. Delivery stays human-paced end to end: the receiving side
+// lands in the inbox (flashing envelope), never in a composer.
 
 import { execFile } from 'child_process'
 import { promisify } from 'util'
@@ -113,11 +114,13 @@ export class HubNudgeWatcher {
     }
     const dir = join(clone, NUDGES_DIR)
     if (!existsSync(dir)) return
-    const files = readdirSync(dir).filter((f) => f.endsWith('.json') && !f.endsWith('.delivered.json'))
+    const files = readdirSync(dir).filter((f) => f.endsWith('.json') && !f.includes('.delivered'))
     const delivered: string[] = []
     const localNames = this.deps.listLocalSessionNames().map((n) => n.toLowerCase())
+    const allEntries = readdirSync(dir)
     for (const f of files) {
-      if (existsSync(join(dir, f.replace(/\.json$/, '.delivered.json')))) continue
+      const stem = f.replace(/\.json$/, '')
+      if (allEntries.some((e) => e.startsWith(`${stem}.delivered`))) continue
       let raw: unknown
       try { raw = JSON.parse(readFileSync(join(dir, f), 'utf8')) } catch { continue }
       if (!isRecord(raw)) continue
@@ -129,7 +132,7 @@ export class HubNudgeWatcher {
       const ok = await this.deps.deliver({ from: raw.from, to: target.name, subject: raw.subject, path: absolute })
       if (!ok) continue
       writeFileSync(
-        join(dir, f.replace(/\.json$/, '.delivered.json')),
+        join(dir, `${f.replace(/\.json$/, '')}.delivered-${this.machine.toLowerCase()}.json`),
         JSON.stringify({ by: this.machine, ts: this.now() }, null, 2),
       )
       delivered.push(raw.id)
