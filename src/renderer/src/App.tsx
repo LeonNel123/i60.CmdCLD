@@ -8,6 +8,7 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { SettingsDialog } from './components/settings/SettingsDialog'
 import { LaunchDialog } from './components/LaunchDialog'
 import { MarkdownViewer } from './components/MarkdownViewer'
+import { BroadcastBar } from './components/BroadcastBar'
 import { Toast } from './components/Toast'
 import { WelcomeBackCard } from './components/WelcomeBackCard'
 import { EmptyWorkspace } from './components/EmptyWorkspace'
@@ -29,6 +30,8 @@ import {
   normalizeAgentCli,
   stripResumeArgsForQuickLaunch,
   ensureResumeArgs,
+  AGENT_CLIS,
+  AGENT_CLI_LABELS,
   type AgentCli,
 } from '../../shared/agent-cli'
 import {
@@ -50,6 +53,7 @@ interface TerminalEntry {
   agentCli?: AgentCli
   claudeArgs?: string
   codexArgs?: string
+  grokArgs?: string
   isPlainShell?: boolean
   // Admin shell via elevation bridge. Deliberately not persisted to the
   // last-session store — restoring it would fire a UAC prompt at startup.
@@ -95,6 +99,7 @@ export default function App() {
   const [defaultAgentCli, setDefaultAgentCli] = useState<AgentCli>('claude')
   const [claudeArgs, setClaudeArgs] = useState('--dangerously-skip-permissions')
   const [codexArgs, setCodexArgs] = useState('')
+  const [grokArgs, setGrokArgs] = useState('')
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
   const [notifyOnIdle, setNotifyOnIdle] = useState(false)
   const [projectsRoot, setProjectsRoot] = useState('')
@@ -105,12 +110,13 @@ export default function App() {
   const [favoriteFolders, setFavoriteFolders] = useState<string[]>([])
   const [restoreSessionEnabled, setRestoreSessionEnabled] = useState(false)
   const [restoreSessionResume, setRestoreSessionResume] = useState(false)
-  const [savedSessionProjects, setSavedSessionProjects] = useState<Array<{ path: string; agentCli?: AgentCli; claudeArgs: string; codexArgs?: string; isPlainShell: boolean; minimized?: boolean }>>([])
+  const [savedSessionProjects, setSavedSessionProjects] = useState<Array<{ path: string; agentCli?: AgentCli; claudeArgs: string; codexArgs?: string; grokArgs?: string; isPlainShell: boolean; minimized?: boolean }>>([])
   const [welcomeDismissed, setWelcomeDismissed] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ path: string; x: number; y: number } | null>(null)
   const [quickShellMenu, setQuickShellMenu] = useState<{ x: number; y: number } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [autopilotKickoffFor, setAutopilotKickoffFor] = useState<string | null>(null)  // terminalId
+  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [autopilotRunning, setAutopilotRunning] = useState<Set<string>>(new Set())
   const [autopilotPanelFor, setAutopilotPanelFor] = useState<string | null>(null)
   const [relayDialogFor, setRelayDialogFor] = useState<string | null>(null)  // terminalId
@@ -217,6 +223,7 @@ export default function App() {
         setDefaultAgentCli(normalizeAgentCli(settings.defaultAgentCli))
         setClaudeArgs(settings.claudeArgs)
         setCodexArgs(settings.codexArgs ?? '')
+        setGrokArgs(settings.grokArgs ?? '')
         setAskBeforeLaunch(settings.askBeforeLaunch)
         setNotifyOnIdle(settings.notifyOnIdle)
         setProjectsRoot(settings.projectsRoot)
@@ -274,6 +281,7 @@ export default function App() {
         agentCli: t.agentCli ?? 'claude',
         claudeArgs: t.claudeArgs ?? '',
         codexArgs: t.codexArgs ?? '',
+        grokArgs: t.grokArgs ?? '',
         isPlainShell: t.isPlainShell ?? false,
         minimized: minimizedIds.has(t.id),
       }))
@@ -292,6 +300,7 @@ export default function App() {
         agentCli: t.agentCli ?? 'claude',
         claudeArgs: t.claudeArgs ?? '',
         codexArgs: t.codexArgs ?? '',
+        grokArgs: t.grokArgs ?? '',
         isPlainShell: t.isPlainShell ?? false,
         minimized: minimizedIds.has(t.id),
       }))
@@ -362,6 +371,7 @@ export default function App() {
           agentCli: normalizeAgentCli(session.agentCli),
           claudeArgs: session.claudeArgs,
           codexArgs: session.codexArgs ?? '',
+          grokArgs: session.grokArgs ?? '',
         }
         const next = [...prev, newEntry]
         if (prev.length === 0 && defaultViewMode === 'focused') {
@@ -386,6 +396,7 @@ export default function App() {
       agentCli: normalizedAgent,
       claudeArgs: normalizedAgent === 'claude' ? args : '',
       codexArgs: normalizedAgent === 'codex' ? args : '',
+      grokArgs: normalizedAgent === 'grok' ? args : '',
     }
 
     const newTerminals = [...terminals, newEntry]
@@ -424,14 +435,14 @@ export default function App() {
   const startAddFolder = useCallback((folderPath: string, agentOverride?: AgentCli) => {
     const name = folderPath.split(/[\\/]/).pop() || folderPath
     const agentCli = agentOverride ?? defaultAgentCli
-    const argsByAgent = { claude: claudeArgs, codex: codexArgs }
-    const args = getArgsForAgent(agentCli, { claudeArgs, codexArgs })
+    const argsByAgent = { claude: claudeArgs, codex: codexArgs, grok: grokArgs }
+    const args = getArgsForAgent(agentCli, { claudeArgs, codexArgs, grokArgs })
     if (askBeforeLaunch) {
       setPendingLaunch({ path: folderPath, name, agentCli, args, argsByAgent })
     } else {
       createTerminal(folderPath, args, agentCli)
     }
-  }, [askBeforeLaunch, claudeArgs, codexArgs, createTerminal, defaultAgentCli])
+  }, [askBeforeLaunch, claudeArgs, codexArgs, grokArgs, createTerminal, defaultAgentCli])
 
   // Spawn a plain shell for the same folder path as an existing terminal
   const handleSpawnShell = useCallback((folderPath: string, parentColor: string) => {
@@ -482,10 +493,12 @@ export default function App() {
     const argsByAgent = {
       claude: stripResumeArgsForQuickLaunch('claude', claudeArgs),
       codex: stripResumeArgsForQuickLaunch('codex', codexArgs),
+      grok: stripResumeArgsForQuickLaunch('grok', grokArgs),
     }
     const quickArgs = getArgsForAgent(agentCli, {
       claudeArgs: argsByAgent.claude,
       codexArgs: argsByAgent.codex,
+      grokArgs: argsByAgent.grok,
     })
     const name = homeDir.split(/[\\/]/).pop() || homeDir
     if (askBeforeLaunch) {
@@ -493,7 +506,7 @@ export default function App() {
     } else {
       createTerminal(homeDir, quickArgs, agentCli)
     }
-  }, [askBeforeLaunch, claudeArgs, codexArgs, createTerminal, defaultAgentCli])
+  }, [askBeforeLaunch, claudeArgs, codexArgs, grokArgs, createTerminal, defaultAgentCli])
 
   // Open a plain shell in the user's home folder — no Claude.
   const handleQuickShell = useCallback(async () => {
@@ -602,6 +615,7 @@ export default function App() {
               agentCli,
               claudeArgs: resume ? ensureResumeArgs('claude', p.claudeArgs) : p.claudeArgs,
               codexArgs: resume ? ensureResumeArgs('codex', p.codexArgs ?? '') : (p.codexArgs ?? ''),
+              grokArgs: resume ? ensureResumeArgs('grok', p.grokArgs ?? '') : (p.grokArgs ?? ''),
             }
       })
       const next = [...prev, ...newEntries]
@@ -738,6 +752,7 @@ export default function App() {
       setDefaultAgentCli(normalizeAgentCli(s.defaultAgentCli))
       setClaudeArgs(s.claudeArgs)
       setCodexArgs(s.codexArgs ?? '')
+      setGrokArgs(s.grokArgs ?? '')
       setAskBeforeLaunch(s.askBeforeLaunch)
       setNotifyOnIdle(s.notifyOnIdle)
       setProjectsRoot(s.projectsRoot)
@@ -817,6 +832,12 @@ export default function App() {
         setViewMode({ type: 'grid' })
         return
       }
+      // Mod+B: toggle the broadcast bar
+      if (mod && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) {
+        e.preventDefault()
+        setBroadcastOpen((v) => !v)
+        return
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -865,11 +886,15 @@ export default function App() {
         onNewWindow={handleNewWindow}
         onNewProject={() => setShowNewProject(true)}
         onOpenSettings={() => setShowSettings(true)}
+        onToggleBroadcast={() => setBroadcastOpen((v) => !v)}
+        broadcastActive={broadcastOpen}
         hasProjectsRoot={Boolean(projectsRoot)}
         uiScale={chromeScale(uiScalePct)}
       />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+      {/* Content column: the terminal area shrinks to make room for the
+          broadcast bar docked underneath, rather than being overlapped. */}
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
         <ErrorBoundary>
         {terminals.length === 0 && savedSessionProjects.length > 0 && !welcomeDismissed && (
           <WelcomeBackCard
@@ -916,6 +941,7 @@ export default function App() {
                   agentCli={t.agentCli}
                   claudeArgs={t.claudeArgs}
                   codexArgs={t.codexArgs}
+                  grokArgs={t.grokArgs}
                   isPlainShell={t.isPlainShell}
                   elevated={t.elevated}
                   fontFamily={terminalFontFamily}
@@ -955,6 +981,7 @@ export default function App() {
               agentCli={t.agentCli}
               claudeArgs={t.claudeArgs}
               codexArgs={t.codexArgs}
+              grokArgs={t.grokArgs}
               isPlainShell={t.isPlainShell}
               elevated={t.elevated}
               fontFamily={terminalFontFamily}
@@ -988,6 +1015,9 @@ export default function App() {
         onRestore={handleRestore}
         onClose={handleRequestClose}
       />
+      {broadcastOpen && (
+        <BroadcastBar terminals={terminals} onClose={() => setBroadcastOpen(false)} />
+      )}
       </div>
 
       {autopilotPanelFor && (
@@ -1092,16 +1122,17 @@ export default function App() {
             .filter((t) => t.path === path && !t.isPlainShell)
             .map((t) => normalizeAgentCli(t.agentCli)),
         )
-        const claudeRunning = runningAgents.has('claude')
-        const codexRunning = runningAgents.has('codex')
         return (
           <ContextMenu
             x={contextMenu.x}
             y={contextMenu.y}
             onClose={() => setContextMenu(null)}
             items={[
-              { label: claudeRunning ? 'Open another Claude' : 'Open with Claude', icon: TerminalSquare, onClick: () => startAddFolder(path, 'claude') },
-              { label: codexRunning ? 'Open another Codex' : 'Open with Codex', icon: TerminalSquare, onClick: () => startAddFolder(path, 'codex') },
+              ...AGENT_CLIS.map((cli) => ({
+                label: runningAgents.has(cli) ? `Open another ${AGENT_CLI_LABELS[cli]}` : `Open with ${AGENT_CLI_LABELS[cli]}`,
+                icon: TerminalSquare,
+                onClick: () => startAddFolder(path, cli),
+              })),
               { label: 'Open in new window', icon: AppWindow, onClick: () => { window.api.windowCreate().catch(() => {}) } },
               { label: 'Start with Autopilot', icon: Sparkles, onClick: () => {
                 // Open the project (this creates a terminal), then trigger kickoff for that terminal.
@@ -1144,7 +1175,7 @@ export default function App() {
                 terminalId={t.id}
                 projectPath={t.path}
                 agentCli={normalizeAgentCli(t.agentCli)}
-                launchArgs={normalizeAgentCli(t.agentCli) === 'codex' ? t.codexArgs ?? '' : t.claudeArgs ?? ''}
+                launchArgs={getArgsForAgent(normalizeAgentCli(t.agentCli), { claudeArgs: t.claudeArgs, codexArgs: t.codexArgs, grokArgs: t.grokArgs })}
                 defaultCostCap={autopilotDefaults.costCap}
                 defaultMaxIterations={autopilotDefaults.maxIterations}
                 onStarted={() => {

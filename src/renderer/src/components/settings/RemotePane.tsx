@@ -6,6 +6,8 @@ export interface RemotePaneProps {
   onRemoteToggle: (enabled: boolean) => void
   remotePort: number
   onRemotePortChange: (v: number) => void
+  remoteLanAccess: boolean
+  onRemoteLanAccessChange: (v: boolean) => void
   remoteUrls: string[]
   remoteError: string
   tsStatus: TailscaleStatus | null
@@ -54,8 +56,16 @@ export function RemotePane(p: RemotePaneProps) {
         </div>
       </Field>
 
+      <CheckboxRow
+        checked={p.remoteLanAccess}
+        onChange={p.onRemoteLanAccessChange}
+        disabled={p.remoteAccess}
+        label="Allow LAN access (unauthenticated — Tailscale recommended)"
+        hint={p.remoteAccess ? 'Disable Remote Access to change' : 'Off: dashboard is reachable only from this machine and Tailscale Serve.'}
+      />
+
       {p.remoteAccess && p.remoteUrls.length > 0 && (
-        <Field label="Connect from" hint="Click to copy. Open in any browser on your network.">
+        <Field label="Connect from" hint={p.remoteLanAccess ? 'Click to copy. Open in any browser on your network.' : 'Click to copy. Local only — use Tailscale Serve below for other devices.'}>
           {p.remoteUrls.map((url) => (
             <div
               key={url}

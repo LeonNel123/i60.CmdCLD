@@ -93,6 +93,7 @@ export interface ProState {
     pendingTopics: string[]
     spendByTopic: Record<string, number>
     topicBudgets: Record<string, number>
+    topicsRegistered?: boolean
   }
   researchHistory?: { slug: string; costUsd: number; outcome: 'written' | 'declined' | 'overrun' | 'reused' }[]
 }

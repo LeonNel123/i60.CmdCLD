@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import {
+  AGENT_CLIS,
+  AGENT_CLI_ARGS_PLACEHOLDERS,
   AGENT_CLI_COMMANDS,
   AGENT_CLI_LABELS,
   type AgentCli,
@@ -60,7 +62,7 @@ export function LaunchDialog({ folderName, defaultAgentCli, defaultArgs, default
             Agent CLI
           </label>
           <div style={{ display: 'flex', gap: '6px' }}>
-            {(['claude', 'codex'] as AgentCli[]).map((cli) => (
+            {AGENT_CLIS.map((cli) => (
               <button
                 key={cli}
                 onClick={() => selectAgent(cli)}
@@ -101,7 +103,7 @@ export function LaunchDialog({ folderName, defaultAgentCli, defaultArgs, default
               onChange={(e) => setArgs(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') onLaunch(args, agentCli) }}
               autoFocus
-              placeholder={agentCli === 'codex' ? 'e.g. --sandbox workspace-write' : 'e.g. --dangerously-skip-permissions --continue'}
+              placeholder={AGENT_CLI_ARGS_PLACEHOLDERS[agentCli]}
               style={{
                 flex: 1,
                 background: '#0d1117',

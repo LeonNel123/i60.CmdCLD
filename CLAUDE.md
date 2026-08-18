@@ -25,7 +25,7 @@ src/
     index.ts             # IPC handlers, window/lifecycle
     pty-manager.ts       # node-pty wrapping + scrollback
     store.ts, recent-db.ts, settings.ts, window-registry.ts
-    remote-server.ts     # Express + Socket.IO remote access
+    remote-server.ts     # Express + Socket.IO remote access (loopback-bound; Host/Origin gate in remote-guard.ts; LAN via remoteLanAccess setting)
     autopilot/           # Classic autopilot orchestrator (see below)
     autopilot-pro/       # PRO orchestrator (Wave 3.0 stage-based)
     autopilot-council/   # (auxiliary; left untouched in current change set)

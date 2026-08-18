@@ -252,4 +252,16 @@ describe('council runtime state', () => {
     const root = project()
     expectInvalidInternalsNotSaved(root, { packetSequence: 4, repeatedBlockByGate: { plan } })
   })
+
+  it('accepts persisted snapshots with a grok CLI', () => {
+    const root = project()
+    saveCouncilRuntime(
+      root,
+      { ...state(), implementerCli: 'grok', reviewerCli: 'claude' },
+      { packetSequence: 4, repeatedBlockByGate: {} },
+    )
+    const loaded = loadCouncilRuntime(root)
+    expect(loaded?.state.implementerCli).toBe('grok')
+    expect(loaded?.state.reviewerCli).toBe('claude')
+  })
 })

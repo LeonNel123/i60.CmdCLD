@@ -39,6 +39,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   const [agentArgsTab, setAgentArgsTab] = useState<AgentCli>('claude')
   const [claudeArgs, setClaudeArgs] = useState('')
   const [codexArgs, setCodexArgs] = useState('')
+  const [grokArgs, setGrokArgs] = useState('')
   const [cliAvailability, setCliAvailability] = useState<Record<AgentCli, { available: boolean; path: string | null }> | null>(null)
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
@@ -62,6 +63,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   // Remote access (applies immediately)
   const [remoteAccess, setRemoteAccess] = useState(false)
   const [remotePort, setRemotePort] = useState(3456)
+  const [remoteLanAccess, setRemoteLanAccess] = useState(false)
   const [remoteUrls, setRemoteUrls] = useState<string[]>([])
   const [remoteError, setRemoteError] = useState('')
   const [tsStatus, setTsStatus] = useState<TailscaleStatus | null>(null)
@@ -94,12 +96,14 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
       setAgentArgsTab(loadedAgent)
       setClaudeArgs(s.claudeArgs)
       setCodexArgs(s.codexArgs ?? '')
+      setGrokArgs(s.grokArgs ?? '')
       setAskBeforeLaunch(s.askBeforeLaunch)
       setDefaultViewMode(s.defaultViewMode)
       setNotifyOnIdle(s.notifyOnIdle)
       setProjectsRoot(s.projectsRoot)
       setRemoteAccess(s.remoteAccess ?? false)
       setRemotePort(s.remotePort ?? 3456)
+      setRemoteLanAccess(s.remoteLanAccess ?? false)
       setFavoriteFolders(s.favoriteFolders ?? [])
       setRestoreSessionEnabled(s.restoreSessionEnabled ?? false)
       setRestoreSessionResume(s.restoreSessionResume ?? false)
@@ -192,6 +196,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
     window.api.settingsSet('defaultAgentCli', defaultAgentCli)
     window.api.settingsSet('claudeArgs', claudeArgs)
     window.api.settingsSet('codexArgs', codexArgs)
+    window.api.settingsSet('grokArgs', grokArgs)
     window.api.settingsSet('askBeforeLaunch', askBeforeLaunch)
     window.api.settingsSet('defaultViewMode', defaultViewMode)
     window.api.settingsSet('notifyOnIdle', notifyOnIdle)
@@ -263,6 +268,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
             agentArgsTab={agentArgsTab} onAgentArgsTabChange={setAgentArgsTab}
             claudeArgs={claudeArgs} onClaudeArgsChange={setClaudeArgs}
             codexArgs={codexArgs} onCodexArgsChange={setCodexArgs}
+            grokArgs={grokArgs} onGrokArgsChange={setGrokArgs}
             cliAvailability={cliAvailability}
           />
         )
@@ -280,6 +286,8 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
           <RemotePane
             remoteAccess={remoteAccess} onRemoteToggle={(v) => { void handleRemoteToggle(v) }}
             remotePort={remotePort} onRemotePortChange={setRemotePort}
+            remoteLanAccess={remoteLanAccess}
+            onRemoteLanAccessChange={(v) => { setRemoteLanAccess(v); void window.api.settingsSet('remoteLanAccess', v) }}
             remoteUrls={remoteUrls} remoteError={remoteError}
             tsStatus={tsStatus} tsBusy={tsBusy} tsError={tsError}
             onTailscaleServeToggle={(v) => { void handleTailscaleServeToggle(v) }}

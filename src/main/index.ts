@@ -45,6 +45,7 @@ import {
   normalizeAgentCli,
   type AgentCli,
 } from '../shared/agent-cli'
+import { BROADCAST_REFINE_SYSTEM_PROMPT, buildRefineUserMessage } from '../shared/broadcast'
 
 // File logger for debugging startup issues
 const logPath = join(app.getPath('userData'), 'cmdcld.log')
@@ -513,6 +514,7 @@ ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: Agen
   const launchArgs = typeof launchArgsRaw === 'string' ? launchArgsRaw : getArgsForAgent(agentCli, {
     claudeArgs: settings.get('claudeArgs'),
     codexArgs: settings.get('codexArgs'),
+    grokArgs: settings.get('grokArgs'),
   })
   const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli, launchArgs }
   // Folder trust is a nicety — a failure here shouldn't kill the tile.
@@ -889,6 +891,7 @@ function getAutopilotRuntimeStartContext(terminalId: string): { ok: true; agentC
   const launchArgs = meta.launchArgs ?? getArgsForAgent(agentCli, {
     claudeArgs: settings.get('claudeArgs'),
     codexArgs: settings.get('codexArgs'),
+    grokArgs: settings.get('grokArgs'),
   })
   const guardrail = getAutopilotRuntimeGuardrail(agentCli, launchArgs)
   if (!guardrail.canStart) {
@@ -1140,6 +1143,49 @@ ipcMain.handle('autopilot:attachConfirm', async (_event, args: { terminalId: str
   }
 })
 
+// Broadcast: one prompt to several agent consoles. Refine rewrites the user's
+// rough text with the Autopilot provider/model; Send injects through the queued
+// writer so multi-line prompts arrive paste-wrapped and submit exactly once.
+ipcMain.handle('broadcast:refine', async (_event, args: { text: string; targetLabels?: string[] }) => {
+  const raw = typeof args?.text === 'string' ? args.text.trim() : ''
+  if (!raw) return { ok: false, error: 'Nothing to refine.' }
+  const provider = settings.get('autopilotApiProvider')
+  const model = settings.get('autopilotPlannerModel')
+  const apiKey = readAutopilotKey(provider)
+  if (!apiKey) return { ok: false, error: `No API key for ${provider}. Add one in Settings → Autopilot.` }
+  try {
+    const client = makeAutopilotApiClient(provider, apiKey, model)
+    const { text } = await client.chat({
+      system: BROADCAST_REFINE_SYSTEM_PROMPT,
+      user: buildRefineUserMessage(raw, Array.isArray(args.targetLabels) ? args.targetLabels : []),
+      maxTokens: 1024,
+    })
+    const refined = text.trim()
+    return refined ? { ok: true, text: refined } : { ok: false, error: 'The model returned an empty rewrite.' }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+})
+
+ipcMain.handle('broadcast:send', async (_event, args: { terminalIds: string[]; text: string }) => {
+  const text = typeof args?.text === 'string' ? args.text.replace(/\r?\n$/, '') : ''
+  const ids = Array.isArray(args?.terminalIds) ? args.terminalIds.filter((id): id is string => typeof id === 'string') : []
+  if (!text.trim() || ids.length === 0) return { ok: false, results: [] }
+  const results = await Promise.all(ids.map(async (id) => {
+    if (!ptyManager.has(id)) return { id, ok: false, error: 'Terminal session not found.' }
+    if (autopilots.has(id) || autopilotPros.has(id) || autopilotCouncils.has(id) || hasActiveAttachSession(id)) {
+      return { id, ok: false, error: 'Autopilot owns this terminal.' }
+    }
+    try {
+      await autopilotPtyWriter.write(id, `${text}\r`)
+      return { id, ok: true }
+    } catch (err) {
+      return { id, ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }))
+  return { ok: results.every((r) => r.ok), results }
+})
+
 ipcMain.handle('autopilot:attachStatus', (_event, terminalId: string) => {
   return attachSessions.get(terminalId) ?? null
 })
@@ -1236,6 +1282,7 @@ ipcMain.handle('autopilot-council:start', async (event, args: {
   const reviewerLaunchArgs = getArgsForAgent(args.reviewerCli, {
     claudeArgs: settings.get('claudeArgs'),
     codexArgs: settings.get('codexArgs'),
+    grokArgs: settings.get('grokArgs'),
   })
   const reviewerGuardrail = getCouncilReviewerRuntimeGuardrail(args.reviewerCli, reviewerLaunchArgs)
   if (!reviewerGuardrail.canStart) return { ok: false, error: reviewerGuardrail.reason ?? 'Reviewer CLI cannot start.' }

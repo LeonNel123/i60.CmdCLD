@@ -385,6 +385,7 @@ export class AutopilotProStateMachine {
           pendingTopics: [],
           spendByTopic: {},
           topicBudgets: {},
+          topicsRegistered: false,
         }
         this.appendActivity('research-stage-entered', signals.triggerReason)
 
@@ -567,7 +568,7 @@ export class AutopilotProStateMachine {
         }
       }
 
-      if (this.state.researchInFlight.pendingTopics.length === 0) {
+      if (this.state.researchInFlight.topicsRegistered && this.state.researchInFlight.pendingTopics.length === 0) {
         const trigger = this.state.researchInFlight.triggerStage
         this.state.researchInFlight = undefined
         this.appendActivity('research-stage-complete', `returning to ${trigger}`)
@@ -887,9 +888,26 @@ export class AutopilotProStateMachine {
           this.appendActivity('research-dispatch', `${t.slug} approved, budget $${budget.toFixed(2)}`)
         }
 
+        // If every proposed topic was declined or reused, there's nothing left
+        // to research this round. When we're actually in the research stage
+        // (the stage-(-1) auto-trigger flow), requesting a confirming approve
+        // here is a dead end — approve hard-requires an ARTIFACT path, and
+        // nothing ever advances the stage out of 'research'. End it inline,
+        // mirroring the natural research-complete path above. Mid-flight
+        // research digressions dispatched from another stage (state.stage is
+        // still e.g. 'discovery') keep the prior confirm-with-approve behavior.
+        let endedResearchInline: ProStage | null = null
         if (pending.length === 0) {
-          lines.push('No new research; proceeding back to ' + (this.state.researchInFlight?.triggerStage ?? this.state.stage) + '.')
-          lines.push('Emit DECISION_SHAPE: approve to confirm.')
+          const trigger = this.state.researchInFlight?.triggerStage ?? 'discovery'
+          if (this.state.stage === 'research') {
+            this.state.researchInFlight = undefined
+            this.appendActivity('research-stage-complete', `no new research needed — returning to ${trigger}`)
+            lines.push(`No new research needed; proceed to ${trigger}.`)
+            endedResearchInline = trigger
+          } else {
+            lines.push('No new research; proceeding back to ' + trigger + '.')
+            lines.push('Emit DECISION_SHAPE: approve to confirm.')
+          }
         } else {
           lines.push('')
           lines.push('Proceed; emit DECISION_SHAPE: research while in-flight (with RESEARCH_TOPIC: <slug>) and DECISION_SHAPE: approve once each artifact is written.')
@@ -912,7 +930,10 @@ export class AutopilotProStateMachine {
             pendingTopics: [...(this.state.researchInFlight?.pendingTopics ?? []), ...pending],
             spendByTopic: this.state.researchInFlight?.spendByTopic ?? {},
             topicBudgets: { ...(this.state.researchInFlight?.topicBudgets ?? {}), ...budgets },
+            topicsRegistered: true,
           }
+        } else if (endedResearchInline) {
+          this.transition(endedResearchInline, 'research ended — all topics declined/reused')
         }
 
         this.notify()
@@ -921,8 +942,17 @@ export class AutopilotProStateMachine {
 
       case 'transition': {
         if (result.action === 'advance') {
-          // Validate gates before allowing advance
-          this.maybeAdvanceStage()
+          if (this.state.stage === 'research') {
+            // Escape hatch: the planner can abandon research (e.g. the doer
+            // never proposed topics). Return to the stage that triggered it.
+            const trigger = this.state.researchInFlight?.triggerStage ?? 'discovery'
+            this.state.researchInFlight = undefined
+            this.appendActivity('research-stage-complete', `advance during research — returning to ${trigger}`)
+            this.transition(trigger, 'research ended by planner advance')
+          } else {
+            // Validate gates before allowing advance
+            this.maybeAdvanceStage()
+          }
           const reply = `Stage now: ${this.state.stage}. ${result.why}`
           this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-resume', `stage→${this.state.stage}`)
@@ -1104,7 +1134,8 @@ export class AutopilotProStateMachine {
     return this.outputVolumeSinceReset >= this.maxDoerOutputPerReset
   }
 
-  private transition(_phase: ProStage, reason: string): void {
+  private transition(phase: ProStage, reason: string): void {
+    this.state.stage = phase
     this.appendActivity('orchestrator-pause', reason)
     this.clearSilenceTimer()
   }
@@ -1391,7 +1422,7 @@ export class AutopilotProStateMachine {
     const cost = this.state.researchInFlight.spendByTopic[slug] ?? 0
     this.recordResearchHistory(slug, cost, 'written')
     this.appendActivity('research-write', `${slug} written, cost $${cost.toFixed(3)}`)
-    if (this.state.researchInFlight.pendingTopics.length === 0) {
+    if (this.state.researchInFlight.topicsRegistered && this.state.researchInFlight.pendingTopics.length === 0) {
       const trigger = this.state.researchInFlight.triggerStage
       this.state.researchInFlight = undefined
       this.appendActivity('research-stage-complete', `returning to ${trigger}`)

@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { formatRelativeTime } from '../utils/format-relative-time'
+import { AGENT_CLI_LABELS, normalizeAgentCli } from '../../../shared/agent-cli'
 
 interface Subgoal {
   id: string
@@ -112,7 +113,7 @@ export function getCouncilPanelSummary(state: any): null | {
   packetLine: string | null
 } {
   if (!state || state.mode !== 'council') return null
-  const label = (cli: string) => cli === 'codex' ? 'Codex' : 'Claude'
+  const label = (cli: string) => AGENT_CLI_LABELS[normalizeAgentCli(cli)]
   const intensity = String(state.intensity ?? 'balanced')
   const title = intensity.charAt(0).toUpperCase() + intensity.slice(1)
   return {

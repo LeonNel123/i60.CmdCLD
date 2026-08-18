@@ -26,6 +26,7 @@ interface RuntimeStatePro extends RuntimeFlags {
     pendingTopics: string[]
     spendByTopic: Record<string, number>
     topicBudgets: Record<string, number>
+    topicsRegistered?: boolean
   }
   researchHistory?: { slug: string; costUsd: number; outcome: 'written' | 'declined' | 'overrun' | 'reused' }[]
 }
@@ -98,9 +99,11 @@ function validate(rt: RuntimeStatePro, projectPath: string, artifacts: Record<st
     if (!hasFinalReview && !allReviewsApproved) return false
   }
 
-  // Self-validate researchInFlight: an empty pendingTopics list is inconsistent
-  // (it should have been cleared once empty). Drop it rather than fail the load.
-  if (rt.researchInFlight && rt.researchInFlight.pendingTopics.length === 0) {
+  // Self-validate researchInFlight: empty pendingTopics WITH topics already
+  // registered means research completed but wasn't cleared — inconsistent,
+  // drop it. Empty without topicsRegistered is legitimate: research stage
+  // entered, doer hasn't proposed topics yet.
+  if (rt.researchInFlight && rt.researchInFlight.topicsRegistered && rt.researchInFlight.pendingTopics.length === 0) {
     rt.researchInFlight = undefined
   }
 

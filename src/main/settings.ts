@@ -13,12 +13,14 @@ export interface AppSettings {
   defaultAgentCli: AgentCli
   claudeArgs: string
   codexArgs: string
+  grokArgs: string
   askBeforeLaunch: boolean
   defaultViewMode: 'grid' | 'focused'
   notifyOnIdle: boolean
   projectsRoot: string
   remoteAccess: boolean
   remotePort: number
+  remoteLanAccess: boolean
   favoriteFolders: string[]
   restoreSessionEnabled: boolean
   restoreSessionResume: boolean
@@ -38,12 +40,14 @@ const DEFAULTS: AppSettings = {
   defaultAgentCli: DEFAULT_AGENT_CLI,
   claudeArgs: '',
   codexArgs: '',
+  grokArgs: '',
   askBeforeLaunch: false,
   defaultViewMode: 'grid',
   notifyOnIdle: false,
   projectsRoot: '',
   remoteAccess: false,
   remotePort: 3456,
+  remoteLanAccess: false,
   favoriteFolders: [],
   restoreSessionEnabled: false,
   restoreSessionResume: false,

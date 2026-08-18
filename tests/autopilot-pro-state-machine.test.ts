@@ -1322,3 +1322,121 @@ describe('research runtime persistence + overrun (Wave 1.6)', () => {
     expect(writes.some((w) => w.includes('exceeded budget'))).toBe(true)
   })
 })
+
+describe('research stage', () => {
+  const RESEARCH_IDEA = 'evaluate https://example.com/docs for this integration'
+
+  it('enters research at start when the idea has research signals', async () => {
+    const sm = makeSm(undefined, [], { researchEnabled: true, freeTextIdea: RESEARCH_IDEA })
+    await sm.start()
+    expect(sm.state.stage).toBe('research')
+    expect(sm.state.researchInFlight).toBeDefined()
+  })
+
+  it('does not declare research complete before any topics are registered', async () => {
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'working on it' })), writes, {
+      researchEnabled: true,
+      freeTextIdea: RESEARCH_IDEA,
+    })
+    await sm.start()
+    writes.length = 0
+    sm.feedPty('[ORCH:WAITING] scoping the work\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(writes.some((w) => w.includes('Research complete.'))).toBe(false)
+    expect(sm.state.stage).toBe('research')
+    expect(sm.state.researchInFlight).toBeDefined()
+  })
+
+  it('returns to discovery when all research topics are written and approved', async () => {
+    const writes: string[] = []
+    const plans: ProDecideResult[] = [
+      { shape: 'research', topics: [{ slug: 'example-docs', approve: true, budgetUsd: 0.5 }] },
+      { shape: 'approve', verdict: 'approve' },
+      { shape: 'reply', text: 'ack' },
+    ]
+    const sm = makeSm(fakeChatClient(() => plans.shift() ?? { shape: 'reply', text: 'x' }), writes, {
+      researchEnabled: true,
+      freeTextIdea: 'evaluate https://example.com/docs for this integration',
+    })
+    await sm.start()
+    expect(sm.state.stage).toBe('research')
+
+    // Doer proposes a topic; planner approves it.
+    sm.feedPty('[ORCH:WAITING] research topics?\nDECISION_SHAPE: research\n')
+    await flush()
+    expect(sm.state.researchInFlight?.pendingTopics).toEqual(['example-docs'])
+
+    // Doer writes the artifact and asks for approval.
+    mkdirSync(join(TMP, 'docs/research'), { recursive: true })
+    writeFileSync(join(TMP, 'docs/research/example-docs.md'), '# findings')
+    sm.feedPty('[ORCH:WAITING] wrote findings\nDECISION_SHAPE: approve\nARTIFACT: docs/research/example-docs.md\n')
+    await flush()
+
+    // The completion scan runs at the top of the NEXT settle.
+    sm.feedPty('[ORCH:WAITING] what next\nDECISION_SHAPE: reply\n')
+    await flush()
+    expect(writes.some((w) => w.includes('Research complete. 1 artifact(s)'))).toBe(true)
+    expect(sm.state.researchInFlight).toBeUndefined()
+    expect(sm.state.stage).toBe('discovery')
+  })
+
+  it('returns to discovery when every proposed research topic is declined or reused', async () => {
+    const writes: string[] = []
+    const sm = makeSm(
+      fakeChatClient(() => ({
+        shape: 'research',
+        topics: [{ slug: 'example-docs', approve: false, reason: 'covered' }],
+      })),
+      writes,
+      { researchEnabled: true, freeTextIdea: RESEARCH_IDEA },
+    )
+    await sm.start()
+    expect(sm.state.stage).toBe('research')
+
+    sm.feedPty('[ORCH:WAITING] research topics?\nDECISION_SHAPE: research\n')
+    await flush()
+
+    // No dead-end "emit approve" instruction — the stage ends inline.
+    expect(writes.some((w) => w.includes('proceed to discovery'))).toBe(true)
+    expect(writes.some((w) => w.includes('Emit DECISION_SHAPE: approve to confirm'))).toBe(false)
+    expect(sm.state.researchInFlight).toBeUndefined()
+    expect(sm.state.stage).toBe('discovery')
+  })
+
+  it('returns to discovery when every proposed research topic is reused from existing docs', async () => {
+    const writes: string[] = []
+    const sm = makeSm(
+      fakeChatClient(() => ({
+        shape: 'research',
+        topics: [{ slug: 'example-docs', approve: true, reuse: 'docs/research/example-docs.md' }],
+      })),
+      writes,
+      { researchEnabled: true, freeTextIdea: RESEARCH_IDEA },
+    )
+    await sm.start()
+    expect(sm.state.stage).toBe('research')
+
+    sm.feedPty('[ORCH:WAITING] research topics?\nDECISION_SHAPE: research\n')
+    await flush()
+
+    expect(sm.state.researchInFlight).toBeUndefined()
+    expect(sm.state.stage).toBe('discovery')
+  })
+
+  it('escapes research when the planner decides transition advance', async () => {
+    const writes: string[] = []
+    const sm = makeSm(
+      fakeChatClient(() => ({ shape: 'transition', action: 'advance', why: 'no research needed' })),
+      writes,
+      { researchEnabled: true, freeTextIdea: 'evaluate https://example.com/docs for this integration' },
+    )
+    await sm.start()
+    expect(sm.state.stage).toBe('research')
+    sm.feedPty('[ORCH:WAITING] skip research?\nDECISION_SHAPE: transition\n')
+    await flush()
+    expect(sm.state.stage).toBe('discovery')
+    expect(sm.state.researchInFlight).toBeUndefined()
+    expect(writes.some((w) => w.includes('Stage now: discovery'))).toBe(true)
+  })
+})

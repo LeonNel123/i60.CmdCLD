@@ -4,7 +4,9 @@ import { Server as SocketServer } from 'socket.io'
 import { join } from 'path'
 import { existsSync, statSync, mkdirSync, writeFileSync } from 'fs'
 import { networkInterfaces } from 'os'
-import { PtyManager, TerminalMeta } from './pty-manager'
+import type { AddressInfo } from 'net'
+import type { PtyManager, TerminalMeta } from './pty-manager'
+import { isRequestAllowed } from './remote-guard'
 import { Settings } from './settings'
 import { RecentDB } from './recent-db'
 import { trustFolder } from './claude-config'
@@ -49,22 +51,46 @@ export class RemoteServer {
       }
 
       this.startTime = Date.now()
+      const lanAccess = this.settings.get('remoteLanAccess')
+      const guardOpts = {
+        lanAccess,
+        lanAddresses: lanAccess ? this.getLanAddresses() : [],
+      }
       this.app = express()
+      // Host/Origin gate — registered before static files and the API so
+      // every route is covered. Kills DNS rebinding + cross-site sockets.
+      this.app.use((req: any, res: any, next: any) => {
+        if (isRequestAllowed(req.headers.host, req.headers.origin, guardOpts)) { next(); return }
+        res.status(403).json({ error: 'Forbidden' })
+      })
       this.app.use(express.json())
       this.httpServer = createServer(this.app)
-      this.io = new SocketServer(this.httpServer)
+      this.io = new SocketServer(this.httpServer, {
+        allowRequest: (req, callback) => {
+          callback(null, isRequestAllowed(req.headers.host, req.headers.origin as string | undefined, guardOpts))
+        },
+      })
 
       this.setupStaticFiles()
       this.setupRestApi()
       this.setupSocketEvents()
       this.setupPtyListeners()
 
-      this.httpServer.listen(port, '0.0.0.0', () => {
-        const urls = this.getLocalUrls(port)
-        resolve({ port, urls })
+      // Loopback by default; 0.0.0.0 only when the user opted into LAN mode.
+      let started = false
+      this.httpServer.listen(port, lanAccess ? '0.0.0.0' : '127.0.0.1', () => {
+        started = true
+        const boundPort = (this.httpServer!.address() as AddressInfo).port
+        resolve({ port: boundPort, urls: this.getLocalUrls(boundPort) })
       })
 
       this.httpServer.on('error', (err) => {
+        // Bind-time failure rejects start(); a runtime error after listen
+        // must not call reject() on a settled promise or silently tear down.
+        if (started) {
+          console.error('[remote-server] runtime error:', err)
+          return
+        }
         this.cleanup()
         reject(err)
       })
@@ -99,7 +125,23 @@ export class RemoteServer {
     this.boundListeners = []
   }
 
+  private getLanAddresses(): string[] {
+    const out: string[] = []
+    const nets = networkInterfaces()
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name] || []) {
+        if (net.family === 'IPv4' && !net.internal) out.push(net.address.toLowerCase())
+      }
+    }
+    return out
+  }
+
   private getLocalUrls(port: number): string[] {
+    // Bound to loopback: LAN URLs would be dead links. Tailscale serve
+    // (which proxies to localhost) is surfaced separately by the settings UI.
+    if (!this.settings.get('remoteLanAccess')) {
+      return [`http://localhost:${port}`]
+    }
     const urls: string[] = []
     const nets = networkInterfaces()
     for (const name of Object.keys(nets)) {
@@ -167,7 +209,7 @@ export class RemoteServer {
     })
 
     app.post('/api/sessions', (req: any, res: any) => {
-      const { path: cwd, agentCli: agentCliRaw, claudeArgs, codexArgs } = req.body
+      const { path: cwd, agentCli: agentCliRaw, claudeArgs, codexArgs, grokArgs } = req.body
       if (!cwd || typeof cwd !== 'string') {
         res.status(400).json({ error: 'path is required' })
         return
@@ -188,10 +230,12 @@ export class RemoteServer {
       const argsByAgent: Record<AgentCli, string> = {
         claude: typeof claudeArgs === 'string' ? claudeArgs : this.settings.get('claudeArgs'),
         codex: typeof codexArgs === 'string' ? codexArgs : this.settings.get('codexArgs'),
+        grok: typeof grokArgs === 'string' ? grokArgs : this.settings.get('grokArgs'),
       }
       const args = getArgsForAgent(agentCli, {
         claudeArgs: argsByAgent.claude,
         codexArgs: argsByAgent.codex,
+        grokArgs: argsByAgent.grok,
       })
       const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli, launchArgs: args }
       const wc = this.getWebContents()
@@ -226,6 +270,7 @@ export class RemoteServer {
             agentCli,
             claudeArgs: argsByAgent.claude,
             codexArgs: argsByAgent.codex,
+            grokArgs: argsByAgent.grok,
           })
         }
       } catch {}
@@ -291,6 +336,7 @@ export class RemoteServer {
         defaultAgentCli: all.defaultAgentCli,
         claudeArgs: all.claudeArgs,
         codexArgs: all.codexArgs,
+        grokArgs: all.grokArgs,
         cliAvailability: detectAgentCliAvailability(),
       })
     })
