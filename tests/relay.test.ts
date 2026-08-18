@@ -468,3 +468,20 @@ describe('hub outbound paths (protocol 1.4.0)', () => {
     expect(res).toMatchObject({ ok: true, status: 'delivered' })
   })
 })
+
+describe('queue expiry', () => {
+  it('expires queued items after 7 days with a log entry', async () => {
+    const h = makeHarness({ sessions: [] })
+    await h.manager.send({ from: 'a', to: 'ghost', subject: 's', path: OUTBOUND_DOC })
+    expect(h.manager.getState().queue).toHaveLength(1)
+    // makeHarness clock advances 1ms per now() call; jump it via many ticks is
+    // impractical, so re-create the manager with the item aged past expiry.
+    const persisted = h.saved()
+    persisted.queue[0].createdAt = -700_000_000 // > 7 days before the test clock
+    const h2 = makeHarness({ persisted })
+    await h2.manager.tick()
+    expect(h2.manager.getState().queue).toHaveLength(0)
+    const last = h2.manager.getState().log.at(-1)
+    expect(last).toMatchObject({ status: 'cancelled', detail: 'expired after 7 days' })
+  })
+})

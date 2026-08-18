@@ -58,6 +58,11 @@ export interface RelayManagerDeps {
 // The bucket is derived from the log rather than stored, so it needs no schema
 // change and no timer: replay the pair's accepted sends in order, refilling
 // between them. Refusals are not sends and cost nothing.
+// Queued nudges whose target never appears eventually stop being pending mail
+// and start being clutter (observed: sends from a decommissioned session name
+// sitting queued for 11 days). They expire with a log entry instead.
+const QUEUE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000
+
 const BURST_CAPACITY = 10
 const SUSTAINED_PER_HOUR = 6
 const REFILL_INTERVAL_MS = (60 * 60 * 1000) / SUSTAINED_PER_HOUR
@@ -169,6 +174,14 @@ export class RelayManager extends EventEmitter {
       // evaluated. The next tick delivers the next one.
       const deliveredTo = new Set<string>()
       for (const item of this.queue) {
+        if (this.now() - item.createdAt > QUEUE_EXPIRY_MS) {
+          this.appendLog({
+            id: item.id, ts: this.now(), from: item.from, to: item.to,
+            subject: item.subject, path: item.path, status: 'cancelled', detail: 'expired after 7 days',
+          })
+          changed = true
+          continue
+        }
         const resolution = this.resolveTarget(item.to)
         if (resolution.kind === 'resolved' && !this.deps.canAutoSubmit?.(resolution.id)) {
           // Inbox targets deliver regardless of idleness, several per tick —
