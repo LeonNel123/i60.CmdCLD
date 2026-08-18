@@ -298,6 +298,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('relay:sessions'),
   relayCancel: (id: string): Promise<boolean> =>
     ipcRenderer.invoke('relay:cancel', id),
+  relayCompose: (req: { fromTerminalId: string; to: string; subject: string; body: string; hubClone: string }): Promise<{ ok: boolean; fileName?: string; path?: string; sendStatus?: string; error?: string }> =>
+    ipcRenderer.invoke('relay:compose', req),
   relayInboxMarkRead: (terminalId: string): Promise<void> =>
     ipcRenderer.invoke('relay:inboxMarkRead', terminalId),
   relayInboxDismiss: (id: string): Promise<boolean> =>

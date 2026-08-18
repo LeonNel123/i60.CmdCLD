@@ -36,6 +36,7 @@ import { SessionIdleWatcher } from './relay/idle-watcher'
 import { SessionTokens } from './relay/session-tokens'
 import { startMcpServer } from './relay/mcp-server'
 import { HubNudgeWatcher, splitTarget } from './relay/hub-nudges'
+import { composeInHub } from './relay/compose'
 import type { RelayRequest, RelaySendResult, RelayState } from './relay/types'
 import { detectAgentCliAvailability } from './agent-cli-detect'
 import {
@@ -1024,6 +1025,19 @@ ipcMain.handle('relay:send', (_event, req: { fromTerminalId: string; to: string;
   }
   const request: RelayRequest = { from, to: req.to, subject: req.subject, path: req.path }
   return routeRelaySend(request)
+})
+// Compose-and-send: author the document into a hub, push, then nudge. The
+// sender identity is host-stamped from the terminal, like every send path.
+ipcMain.handle('relay:compose', async (_event, req: { fromTerminalId: string; to: string; subject: string; body: string; hubClone: string }) => {
+  const meta = ptyManager.getMeta(req.fromTerminalId)
+  if (!meta) return { ok: false, error: 'sender session no longer exists' }
+  const composed = await composeInHub({
+    hubClone: req.hubClone, fromName: meta.name, fromProjectPath: meta.path,
+    to: req.to, subject: req.subject, body: req.body,
+  })
+  if (!composed.ok || !composed.path) return composed
+  const sent = await routeRelaySend({ from: meta.name, to: req.to, subject: req.subject, path: composed.path })
+  return { ok: sent.ok, fileName: composed.fileName, path: composed.path, sendStatus: sent.status, error: sent.error }
 })
 ipcMain.handle('relay:inboxMarkRead', (_event, terminalId: string) => {
   relayManager.inboxMarkRead(terminalId)
