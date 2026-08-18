@@ -25,7 +25,7 @@ const TOOLS = [
   {
     name: 'relay_notify',
     description:
-      'Notify another CmdCLD session that a document awaits it. Delivers a fixed-format, pointer-only nudge into that session (staged in its composer; a human submits it). The sender name is stamped by the host from your session identity. The path must be a file inside an exchange authoring location: a repo\'s docs/integration/outbound/, or a domain exchange hub\'s outbound/ (a hub root has inbound/ and REPOS.md beside it).',
+      'Notify another CmdCLD session that a document awaits it. Delivers a fixed-format, pointer-only nudge into that session\'s inbox (its envelope flashes; a human stages or dismisses it). The sender name is stamped by the host from your session identity. The path must be a file inside an exchange authoring location: a repo\'s docs/integration/outbound/, or a domain exchange hub\'s outbound/ (a hub root has inbound/ and REPOS.md beside it). Bare target names route to whichever machine hosts that session; name@MACHINE pins one machine.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -112,7 +112,7 @@ export async function handleMcpMessage(
         }
         return rpcResult(msg.id, toolText(
           res.status === 'delivered'
-            ? `Relay staged in the target session's composer (id ${res.id}). A human submits it there.`
+            ? `Nudge delivered to the target session's inbox (id ${res.id}). Its envelope flashes; a human stages or dismisses it there.`
             : `Relay queued (id ${res.id}) — it will stage when the target session is idle and resolvable.`))
       }
       return rpcError(msg.id, -32602, `Unknown tool: ${name}`)
