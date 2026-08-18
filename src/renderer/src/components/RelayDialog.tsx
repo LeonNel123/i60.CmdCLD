@@ -37,7 +37,20 @@ const sectionHeading = { color: '#888', fontSize: '11px', marginBottom: '6px', t
 export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNotify }: RelayDialogProps) {
   // Sessions come from the main process so targets span every window.
   const [sessions, setSessions] = useState<Array<{ id: string; name: string }>>([])
+  const [suggestions, setSuggestions] = useState<{ machines: string[]; pastTargets: string[] }>({ machines: [], pastTargets: [] })
   const targets = useMemo(() => sessions.filter((s) => s.id !== fromTerminalId), [sessions, fromTerminalId])
+  // Datalist entries: live sessions, every target used before, and the
+  // name@MACHINE cross-product of known session names × hub machines — so
+  // typing "Sec" also offers "Security@WORKBOX"-style completions.
+  const targetOptions = useMemo(() => {
+    const names = new Set<string>(targets.map((t) => t.name))
+    for (const t of suggestions.pastTargets) names.add(t.replace(/@[^@]*$/, ''))
+    const options = new Set<string>([...targets.map((t) => t.name), ...suggestions.pastTargets])
+    for (const name of names) {
+      for (const machine of suggestions.machines) options.add(`${name}@${machine}`)
+    }
+    return [...options].slice(0, 60)
+  }, [targets, suggestions])
   const [to, setTo] = useState('')
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
@@ -84,6 +97,7 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
   useEffect(() => {
     let alive = true
     window.api.relaySessions().then((s) => { if (alive) setSessions(s) }).catch(() => {})
+    window.api.relayTargetSuggestions().then((s) => { if (alive) setSuggestions(s) }).catch(() => {})
     window.api.relayState().then((s) => {
       if (!alive) return
       setState(s)
@@ -293,8 +307,8 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
                 placeholder={targets.length > 0 ? targets[0].name : 'session name'}
               />
               <datalist id="relay-target-sessions">
-                {targets.map((t) => (
-                  <option key={t.id} value={t.name} />
+                {targetOptions.map((name) => (
+                  <option key={name} value={name} />
                 ))}
               </datalist>
             </div>

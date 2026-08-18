@@ -1039,6 +1039,23 @@ ipcMain.handle('relay:compose', async (_event, req: { fromTerminalId: string; to
   const sent = await routeRelaySend({ from: meta.name, to: req.to, subject: req.subject, path: composed.path })
   return { ok: sent.ok, fileName: composed.fileName, path: composed.path, sendStatus: sent.status, error: sent.error }
 })
+// Target autocomplete: machine names from the hubs' MACHINES.md headings
+// ("## WORKBOX — …"), plus every target the relay has successfully used.
+ipcMain.handle('relay:targetSuggestions', () => {
+  const machines = new Set<string>()
+  for (const clone of settings.get('relayHubClones')) {
+    try {
+      const md = readFileSync(join(clone, 'MACHINES.md'), 'utf8')
+      for (const m of md.matchAll(/^##\s+([A-Za-z0-9_.-]+)/gm)) machines.add(m[1])
+    } catch { /* no MACHINES.md — nothing to suggest */ }
+  }
+  machines.delete(os.hostname())
+  const pastTargets = new Set<string>()
+  for (const entry of relayManager.getState().log) {
+    if ((entry.status === 'delivered' || entry.status === 'queued') && entry.to) pastTargets.add(entry.to)
+  }
+  return { machines: [...machines], pastTargets: [...pastTargets] }
+})
 ipcMain.handle('relay:inboxMarkRead', (_event, terminalId: string) => {
   relayManager.inboxMarkRead(terminalId)
 })

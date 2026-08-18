@@ -257,6 +257,7 @@ export interface ElectronAPI {
   relayCheckAdoption: (projectPath: string) => Promise<boolean>
   relayStageInvite: (terminalId: string) => Promise<{ ok: boolean; error?: string }>
   relayCompose: (req: { fromTerminalId: string; to: string; subject: string; body: string; hubClone: string }) => Promise<{ ok: boolean; fileName?: string; path?: string; sendStatus?: string; error?: string }>
+  relayTargetSuggestions: () => Promise<{ machines: string[]; pastTargets: string[] }>
   relayInboxMarkRead: (terminalId: string) => Promise<void>
   relayInboxDismiss: (id: string) => Promise<boolean>
   relayInboxStage: (id: string) => Promise<{ ok: boolean; error?: string }>
