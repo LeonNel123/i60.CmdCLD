@@ -35,7 +35,9 @@ import { RelayStore } from './relay/relay-store'
 import { SessionIdleWatcher } from './relay/idle-watcher'
 import { SessionTokens } from './relay/session-tokens'
 import { startMcpServer } from './relay/mcp-server'
-import type { RelayRequest, RelayState } from './relay/types'
+import { HubNudgeWatcher, splitTarget } from './relay/hub-nudges'
+import { composeInHub } from './relay/compose'
+import type { RelayRequest, RelaySendResult, RelayState } from './relay/types'
 import { detectAgentCliAvailability } from './agent-cli-detect'
 import {
   buildAgentLaunchCommand,
@@ -133,6 +135,31 @@ let ptyManager: PtyManager
 let autopilotPtyWriter: QueuedPtyWriter
 let relayManager: RelayManager
 let relayIdleWatcher: SessionIdleWatcher
+let hubNudgeWatcher: HubNudgeWatcher
+
+// One send entry for both the UI and the MCP tool: targets naming another
+// machine ("session@WORKBOX") go out via the hub; everything else is local.
+async function routeRelaySend(req: RelayRequest): Promise<RelaySendResult> {
+  const target = splitTarget(req.to)
+  // Explicit foreign machine pin: hub, always.
+  if (target.machine && target.machine.toLowerCase() !== os.hostname().toLowerCase()) {
+    const res = await hubNudgeWatcher.sendViaHub(req)
+    return { ok: res.ok, status: res.ok ? 'queued' : 'refused', id: '', error: res.error }
+  }
+  // Bare name: the project is the key. A local session wins; otherwise the
+  // nudge rides the hub addressed by name alone and whichever machine hosts
+  // that project delivers it. If the document isn't hub-resident the hub
+  // can't carry it, so it falls back to the local queue.
+  if (!target.machine) {
+    const needle = req.to.trim().toLowerCase()
+    const local = ptyManager.listAll().some((m) => m.id === req.to || m.name.toLowerCase() === needle)
+    if (!local) {
+      const res = await hubNudgeWatcher.sendViaHub(req)
+      if (res.ok) return { ok: true, status: 'queued', id: '' }
+    }
+  }
+  return relayManager.send(req)
+}
 const relayTokens = new SessionTokens()
 // Set once the relay MCP server binds — awaited in whenReady before the
 // first window is created, so every pty spawn sees it. Stays '' only if the
@@ -277,7 +304,7 @@ try {
   ptyManager.on('data', ({ id }: { id: string }) => relayIdleWatcher.noteData(id))
   ptyManager.on('exit', ({ id }: { id: string }) => relayIdleWatcher.noteExit(id))
   relayManager = new RelayManager({
-    listSessions: () => ptyManager.listAll().map((m) => ({ id: m.id, name: m.name })),
+    listSessions: () => ptyManager.listAll().map((m) => ({ id: m.id, name: m.name, projectPath: m.path })),
     isIdle: (terminalId) => relayIdleWatcher.isIdle(terminalId),
     writeStaged: (terminalId, data) => autopilotPtyWriter.write(terminalId, data),
     store: new RelayStore(join(app.getPath('userData'), 'relay.json')),
@@ -296,6 +323,22 @@ try {
     }
   })
   setInterval(() => { void relayManager.tick() }, 1000)
+
+  // Cross-machine nudges ride the exchange hubs (git as transport). Polls the
+  // configured hub clones and lands foreign nudges in the local inbox.
+  hubNudgeWatcher = new HubNudgeWatcher({
+    hubClones: () => settings.get('relayHubClones'),
+    listLocalSessionNames: () => ptyManager.listAll().map((m) => m.name),
+    deliver: async (n) => {
+      const res = relayManager.send(n)
+      return (await res).ok
+    },
+    log: (msg) => log(msg),
+  })
+  // Always running: an empty clone list makes each poll a no-op, and a
+  // settings change takes effect without an app restart.
+  hubNudgeWatcher.start(Math.max(30, settings.get('relayHubPollSec')) * 1000)
+  setTimeout(() => { void hubNudgeWatcher.pollOnce() }, 10_000)
 
   // Auto-detect editors and set default if not configured
   const availableEditors = detectEditors()
@@ -842,6 +885,11 @@ ipcMain.handle('settings:getAll', () => {
 
 ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
   settings.set(key as any, value as any)
+  // Hub polling picks up interval changes immediately; the clone list is read
+  // live on every poll, so only the timer needs restarting.
+  if (key === 'relayHubPollSec') {
+    hubNudgeWatcher.start(Math.max(30, settings.get('relayHubPollSec')) * 1000)
+  }
 })
 
 ipcMain.handle('agent-cli:availability', () => detectAgentCliAvailability())
@@ -992,7 +1040,46 @@ ipcMain.handle('relay:send', (_event, req: { fromTerminalId: string; to: string;
     return { ok: false, status: 'refused', id: '', error: 'sender session no longer exists' }
   }
   const request: RelayRequest = { from, to: req.to, subject: req.subject, path: req.path }
-  return relayManager.send(request)
+  return routeRelaySend(request)
+})
+// Compose-and-send: author the document into a hub, push, then nudge. The
+// sender identity is host-stamped from the terminal, like every send path.
+ipcMain.handle('relay:compose', async (_event, req: { fromTerminalId: string; to: string; subject: string; body: string; hubClone: string }) => {
+  const meta = ptyManager.getMeta(req.fromTerminalId)
+  if (!meta) return { ok: false, error: 'sender session no longer exists' }
+  const composed = await composeInHub({
+    hubClone: req.hubClone, fromName: meta.name, fromProjectPath: meta.path,
+    to: req.to, subject: req.subject, body: req.body,
+  })
+  if (!composed.ok || !composed.path) return composed
+  const sent = await routeRelaySend({ from: meta.name, to: req.to, subject: req.subject, path: composed.path })
+  return { ok: sent.ok, fileName: composed.fileName, path: composed.path, sendStatus: sent.status, error: sent.error }
+})
+// Target autocomplete: machine names from the hubs' MACHINES.md headings
+// ("## WORKBOX — …"), plus every target the relay has successfully used.
+ipcMain.handle('relay:targetSuggestions', () => {
+  const machines = new Set<string>()
+  for (const clone of settings.get('relayHubClones')) {
+    try {
+      const md = readFileSync(join(clone, 'MACHINES.md'), 'utf8')
+      for (const m of md.matchAll(/^##\s+([A-Za-z0-9_.-]+)/gm)) machines.add(m[1])
+    } catch { /* no MACHINES.md — nothing to suggest */ }
+  }
+  machines.delete(os.hostname())
+  const pastTargets = new Set<string>()
+  for (const entry of relayManager.getState().log) {
+    if ((entry.status === 'delivered' || entry.status === 'queued') && entry.to) pastTargets.add(entry.to)
+  }
+  return { machines: [...machines], pastTargets: [...pastTargets] }
+})
+ipcMain.handle('relay:inboxMarkRead', (_event, terminalId: string) => {
+  relayManager.inboxMarkRead(terminalId)
+})
+ipcMain.handle('relay:inboxDismiss', (_event, id: string) => {
+  return relayManager.inboxDismiss(id)
+})
+ipcMain.handle('relay:inboxStage', (_event, id: string) => {
+  return relayManager.inboxStage(id)
 })
 ipcMain.handle('relay:state', () => {
   return relayManager.getState()
@@ -1563,7 +1650,7 @@ app.whenReady().then(async () => {
         projectPath: m.path,
         idle: relayIdleWatcher.isIdle(m.id),
       })),
-      sendRelay: (args) => relayManager.send(args),
+      sendRelay: (args) => routeRelaySend(args),
     })
     relayMcpUrl = handle.url
     log(`Relay MCP server listening at ${handle.url}`)

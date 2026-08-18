@@ -39,6 +39,10 @@ interface SidebarProps {
   broadcastActive?: boolean
   hasProjectsRoot: boolean
   uiScale?: number
+  // Unread relay nudges: per open session, and per project path for sessions
+  // that have since closed (badges favorites/recents rows).
+  relayUnreadByTerminal?: Map<string, number>
+  relayUnreadByPath?: Map<string, number>
 }
 
 const COLLAPSED_WIDTH = 36
@@ -50,6 +54,7 @@ interface RecentRowProps {
   folder: RecentFolder
   isFav: boolean
   isFavoriteSection: boolean
+  unread?: number
   onOpen: (path: string) => void
   onToggleFavorite: (path: string) => void
   onContextMenu: (path: string, x: number, y: number) => void
@@ -59,6 +64,7 @@ const RecentRow = memo(function RecentRow({
   folder,
   isFav,
   isFavoriteSection,
+  unread = 0,
   onOpen,
   onToggleFavorite,
   onContextMenu,
@@ -112,6 +118,14 @@ const RecentRow = memo(function RecentRow({
       }}>
         {folder.name}
       </span>
+      {unread > 0 && (
+        <span
+          title={`${unread} unread relay nudge${unread === 1 ? '' : 's'}`}
+          style={{ color: '#fbbf24', flexShrink: 0, display: 'flex', alignItems: 'center', animation: 'relay-envelope-flash 1.1s ease-in-out infinite' }}
+        >
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3.5l.5-.5h13l.5.5v9l-.5.5h-13l-.5-.5v-9zM2 5.07V12h12V5.07L8.31 9.5h-.62L2 5.07zM13.03 4H2.97L8 8.36 13.03 4z"/></svg>
+        </span>
+      )}
       <span style={{ color: '#5a5a5a', fontSize: '10px', flexShrink: 0, fontFamily: 'Menlo, Consolas, monospace' }}>
         {formatRelativeTime(folder.lastOpened)}
       </span>
@@ -140,6 +154,8 @@ export function Sidebar({
   onOpenSettings,
   onToggleBroadcast,
   broadcastActive = false,
+  relayUnreadByTerminal,
+  relayUnreadByPath,
   hasProjectsRoot,
   uiScale = 1,
 }: SidebarProps) {
@@ -304,6 +320,7 @@ export function Sidebar({
     }}>
       <style>{`
         .recent-row:hover .recent-star { opacity: 1 !important; }
+        @keyframes relay-envelope-flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         .recent-row:hover { background: rgba(255,255,255,0.05); }
         .sidebar-btn:hover { background: rgba(255,255,255,0.05) !important; }
         .sidebar-resize-handle:hover { background: rgba(255,255,255,0.14); }
@@ -441,6 +458,14 @@ export function Sidebar({
                   {t.name}
                 </span>
               )}
+              {(relayUnreadByTerminal?.get(t.id) ?? 0) > 0 && (
+                <span
+                  title={`${relayUnreadByTerminal!.get(t.id)} unread relay nudge(s)`}
+                  style={{ color: '#fbbf24', flexShrink: 0, marginLeft: 'auto', display: 'flex', alignItems: 'center', animation: 'relay-envelope-flash 1.1s ease-in-out infinite' }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3.5l.5-.5h13l.5.5v9l-.5.5h-13l-.5-.5v-9zM2 5.07V12h12V5.07L8.31 9.5h-.62L2 5.07zM13.03 4H2.97L8 8.36 13.03 4z"/></svg>
+                </span>
+              )}
             </button>
           )
         })}
@@ -473,6 +498,7 @@ export function Sidebar({
                     folder={f}
                     isFav={true}
                     isFavoriteSection={true}
+                    unread={relayUnreadByPath?.get(f.path) ?? 0}
                     onOpen={onOpenRecent}
                     onToggleFavorite={onToggleFavorite}
                     onContextMenu={onContextMenu}
@@ -496,6 +522,7 @@ export function Sidebar({
                     folder={f}
                     isFav={false}
                     isFavoriteSection={false}
+                    unread={relayUnreadByPath?.get(f.path) ?? 0}
                     onOpen={onOpenRecent}
                     onToggleFavorite={onToggleFavorite}
                     onContextMenu={onContextMenu}

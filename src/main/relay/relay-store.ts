@@ -7,6 +7,7 @@ import type { RelayState } from './types'
 // as Store/Settings.
 
 const LOG_CAP = 200
+const INBOX_CAP = 100
 
 export class RelayStore {
   private state: RelayState
@@ -20,14 +21,15 @@ export class RelayStore {
       if (existsSync(this.filePath)) {
         const raw = JSON.parse(readFileSync(this.filePath, 'utf-8'))
         if (raw && Array.isArray(raw.queue) && Array.isArray(raw.log)) {
-          return { queue: raw.queue, log: raw.log }
+          // inbox arrived after queue/log; older files simply lack it.
+          return { queue: raw.queue, log: raw.log, inbox: Array.isArray(raw.inbox) ? raw.inbox : [] }
         }
       }
     } catch {
       // corrupted file — start clean; the log is advisory, queued relays
       // are recoverable by re-sending.
     }
-    return { queue: [], log: [] }
+    return { queue: [], log: [], inbox: [] }
   }
 
   load(): RelayState {
@@ -38,6 +40,7 @@ export class RelayStore {
     this.state = {
       queue: state.queue,
       log: state.log.slice(-LOG_CAP),
+      inbox: state.inbox.slice(-INBOX_CAP),
     }
     try {
       mkdirSync(dirname(this.filePath), { recursive: true })

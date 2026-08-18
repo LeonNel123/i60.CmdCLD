@@ -145,7 +145,7 @@ function makeHarness(opts: {
   let sessions = opts.sessions ?? [{ id: 't1', name: 'toms-security' }]
   const idle = new Map<string, boolean>()
   const writes: Array<{ terminalId: string; data: string }> = []
-  let stored: RelayState = opts.persisted ?? { queue: [], log: [] }
+  let stored: RelayState = opts.persisted ?? { queue: [], log: [], inbox: [] }
   let now = 1_000_000
   const manager = new RelayManager({
     listSessions: () => sessions,
@@ -156,7 +156,7 @@ function makeHarness(opts: {
     },
     store: {
       load: () => stored,
-      save: (s) => { stored = { queue: [...s.queue], log: [...s.log] } },
+      save: (s) => { stored = { queue: [...s.queue], log: [...s.log], inbox: [...s.inbox] } },
     },
     canAutoSubmit: opts.canAutoSubmit,
     isFile: (p) => p.endsWith('.md'),
@@ -172,19 +172,17 @@ function makeHarness(opts: {
 }
 
 describe('RelayManager', () => {
-  it('delivers to an idle resolved session, staged (no trailing \\r)', async () => {
+  it('delivers into the target session inbox — nothing typed into the pty', async () => {
     const h = makeHarness()
     const res = await h.manager.send({ from: 'cmdcld', to: 'toms-security', subject: 'hi', path: OUTBOUND_DOC })
     expect(res.ok).toBe(true)
     expect(res.status).toBe('delivered')
-    expect(h.writes).toHaveLength(1)
-    expect(h.writes[0].terminalId).toBe('t1')
-    expect(h.writes[0].data.endsWith('\r')).toBe(false)
-    expect(h.writes[0].data).toContain('[cmdcld relay from cmdcld] hi — read: ')
-    const log = h.manager.getState().log
+    expect(h.writes).toHaveLength(0)
+    const { inbox, log } = h.manager.getState()
+    expect(inbox).toHaveLength(1)
+    expect(inbox[0]).toMatchObject({ terminalId: 't1', from: 'cmdcld', subject: 'hi', read: false })
     expect(log).toHaveLength(1)
-    expect(log[0].status).toBe('delivered')
-    expect(log[0].terminalId).toBe('t1')
+    expect(log[0]).toMatchObject({ status: 'delivered', terminalId: 't1', detail: 'inbox' })
   })
 
   it('resolves by terminal id as well as name', async () => {
@@ -193,23 +191,14 @@ describe('RelayManager', () => {
     expect(res.status).toBe('delivered')
   })
 
-  it('queues while the target is busy, delivers on tick when idle', async () => {
+  it('delivers to the inbox even while the target is busy — nothing to interrupt', async () => {
     const h = makeHarness()
     h.setIdle('t1', false)
     const res = await h.manager.send({ from: 'a', to: 'toms-security', subject: 's', path: OUTBOUND_DOC })
-    expect(res.status).toBe('queued')
-    expect(h.manager.getState().queue).toHaveLength(1)
-    expect(h.writes).toHaveLength(0)
-
-    await h.manager.tick()
-    expect(h.writes).toHaveLength(0) // still busy
-
-    h.setIdle('t1', true)
-    await h.manager.tick()
-    expect(h.writes).toHaveLength(1)
+    expect(res.status).toBe('delivered')
     expect(h.manager.getState().queue).toHaveLength(0)
-    const statuses = h.manager.getState().log.map((l) => l.status)
-    expect(statuses).toEqual(['queued', 'delivered'])
+    expect(h.manager.getState().inbox).toHaveLength(1)
+    expect(h.writes).toHaveLength(0)
   })
 
   it('queues unknown targets instead of dropping, and surfaces the reason', async () => {
@@ -220,15 +209,27 @@ describe('RelayManager', () => {
     // target appears later
     h.setSessions([{ id: 't9', name: 'nobody' }])
     await h.manager.tick()
-    expect(h.writes).toHaveLength(1)
-    expect(h.writes[0].terminalId).toBe('t9')
+    expect(h.writes).toHaveLength(0)
+    expect(h.manager.getState().inbox).toHaveLength(1)
+    expect(h.manager.getState().inbox[0].terminalId).toBe('t9')
   })
 
-  // Nudges carry no trailing newline: two in one tick concatenate into one
-  // unreadable composer line (observed in the live log — two ids delivered to
-  // the same terminal on the same millisecond).
-  it('delivers at most one queued relay per target per tick', async () => {
+  it('drains every queued nudge for an inbox target in one tick', async () => {
     const h = makeHarness({ sessions: [] })
+    await h.manager.send({ from: 'a', to: 'nobody', subject: 'first', path: OUTBOUND_DOC })
+    await h.manager.send({ from: 'a', to: 'nobody', subject: 'second', path: OUTBOUND_DOC })
+    h.setSessions([{ id: 't9', name: 'nobody' }])
+    await h.manager.tick()
+    expect(h.manager.getState().inbox.map((n) => n.subject)).toEqual(['first', 'second'])
+    expect(h.manager.getState().queue).toHaveLength(0)
+  })
+
+  // Pty injection (auto-submit targets) keeps the one-per-tick cap: nudges
+  // carry no trailing newline, so two in one tick concatenate into one
+  // unreadable composer line (observed in the live log — two ids delivered
+  // to the same terminal on the same millisecond).
+  it('delivers at most one queued relay per auto-submit target per tick', async () => {
+    const h = makeHarness({ sessions: [], canAutoSubmit: () => true })
     await h.manager.send({ from: 'a', to: 'nobody', subject: 'first', path: OUTBOUND_DOC })
     await h.manager.send({ from: 'a', to: 'nobody', subject: 'second', path: OUTBOUND_DOC })
     h.setSessions([{ id: 't9', name: 'nobody' }])
@@ -251,7 +252,7 @@ describe('RelayManager', () => {
     h.setSessions([{ id: 't1', name: 'one' }, { id: 't2', name: 'two' }])
 
     await h.manager.tick()
-    expect(h.writes.map((w) => w.terminalId)).toEqual(['t1', 't2'])
+    expect(h.manager.getState().inbox.map((n) => n.terminalId)).toEqual(['t1', 't2'])
     expect(h.manager.getState().queue).toHaveLength(0)
   })
 
@@ -287,9 +288,8 @@ describe('RelayManager', () => {
     expect(empty.error).toContain('subject')
   })
 
-  it('persists queue and log through the store, and restores them', async () => {
-    const h = makeHarness()
-    h.setIdle('t1', false)
+  it('persists queue, log, and inbox through the store, and restores them', async () => {
+    const h = makeHarness({ sessions: [] })
     await h.manager.send({ from: 'a', to: 'toms-security', subject: 's', path: OUTBOUND_DOC })
     const persisted = h.saved()
     expect(persisted.queue).toHaveLength(1)
@@ -297,12 +297,14 @@ describe('RelayManager', () => {
     // "restart": a fresh manager over the same store contents
     const h2 = makeHarness({ persisted })
     expect(h2.manager.getState().queue).toHaveLength(1)
+    h2.setSessions([{ id: 't1', name: 'toms-security' }])
     await h2.manager.tick()
-    expect(h2.writes).toHaveLength(1)
+    expect(h2.manager.getState().inbox).toHaveLength(1)
+    expect(h2.saved().inbox).toHaveLength(1)
   })
 
-  it('keeps the item queued when the pty write fails', async () => {
-    const h = makeHarness({ failWrite: true })
+  it('keeps the item queued when the auto-submit pty write fails', async () => {
+    const h = makeHarness({ failWrite: true, canAutoSubmit: () => true })
     const res = await h.manager.send({ from: 'a', to: 'toms-security', subject: 's', path: OUTBOUND_DOC })
     expect(res.status).toBe('queued')
     await h.manager.tick()
@@ -310,8 +312,7 @@ describe('RelayManager', () => {
   })
 
   it('cancel removes a queued relay and logs it', async () => {
-    const h = makeHarness()
-    h.setIdle('t1', false)
+    const h = makeHarness({ sessions: [] })
     const res = await h.manager.send({ from: 'a', to: 'toms-security', subject: 's', path: OUTBOUND_DOC })
     expect(h.manager.cancel(res.id)).toBe(true)
     expect(h.manager.getState().queue).toHaveLength(0)
@@ -350,15 +351,14 @@ describe('RelayManager', () => {
     const h = makeHarness()
     // Five relays that queue while busy and deliver later write ten log rows
     // under five ids. Counting rows charged busy targets double.
-    h.setIdle('t1', false)
+    h.setSessions([])
     for (let i = 0; i < 5; i += 1) {
       const res = await h.manager.send({ from: 'a', to: 'toms-security', subject: `q${i}`, path: OUTBOUND_DOC })
       expect(res.status).toBe('queued')
     }
-    h.setIdle('t1', true)
-    // One per tick — the target is a single terminal (see the per-tick cap).
-    for (let i = 0; i < 5; i += 1) await h.manager.tick()
-    expect(h.writes).toHaveLength(5)
+    h.setSessions([{ id: 't1', name: 'toms-security' }])
+    await h.manager.tick()
+    expect(h.manager.getState().inbox).toHaveLength(5)
     expect(h.manager.getState().log).toHaveLength(10)  // 5 queued + 5 delivered rows
 
     // Five tokens should remain, not zero.
@@ -372,13 +372,13 @@ describe('RelayManager', () => {
 
   it('refills one token per 10 minutes after a spent burst', async () => {
     let clock = 5_000_000
-    const stored: RelayState = { queue: [], log: [] }
+    const stored: RelayState = { queue: [], log: [], inbox: [] }
     const writes: Array<{ terminalId: string; data: string }> = []
     const manager = new RelayManager({
       listSessions: () => [{ id: 't1', name: 'toms-security' }],
       isIdle: () => true,
       writeStaged: async (terminalId, data) => { writes.push({ terminalId, data }) },
-      store: { load: () => stored, save: (s) => { stored.queue = [...s.queue]; stored.log = [...s.log] } },
+      store: { load: () => stored, save: (s) => { stored.queue = [...s.queue]; stored.log = [...s.log]; stored.inbox = [...s.inbox] } },
       isFile: () => true,
       now: () => clock,
     })
@@ -403,7 +403,8 @@ describe('RelayManager', () => {
 
     const staged = makeHarness({ canAutoSubmit: () => false })
     await staged.manager.send({ from: 'a', to: 'toms-security', subject: 's', path: OUTBOUND_DOC })
-    expect(staged.writes[0].data.endsWith('\r')).toBe(false)
+    expect(staged.writes).toHaveLength(0)
+    expect(staged.manager.getState().inbox).toHaveLength(1)
   })
 })
 
@@ -428,14 +429,14 @@ describe('hub outbound paths (protocol 1.4.0)', () => {
     manager: RelayManager
     writes: Array<{ terminalId: string; data: string }>
   } {
-    const stored: RelayState = { queue: [], log: [] }
+    const stored: RelayState = { queue: [], log: [], inbox: [] }
     const writes: Array<{ terminalId: string; data: string }> = []
     let now = 9_000_000
     const manager = new RelayManager({
       listSessions: () => [{ id: 't1', name: 'Security' }],
       isIdle: () => true,
       writeStaged: async (terminalId, data) => { writes.push({ terminalId, data }) },
-      store: { load: () => stored, save: (s) => { stored.queue = [...s.queue]; stored.log = [...s.log] } },
+      store: { load: () => stored, save: (s) => { stored.queue = [...s.queue]; stored.log = [...s.log]; stored.inbox = [...s.inbox] } },
       isFile: (p) => fs.files.includes(p),
       isDir: (p) => fs.dirs.includes(p),
       now: () => (now += 1),
@@ -450,7 +451,8 @@ describe('hub outbound paths (protocol 1.4.0)', () => {
     })
     const res = await manager.send({ from: 'i60.CmdCLD', to: 'Security', subject: 'hub pilot', path: HUB_DOC })
     expect(res).toMatchObject({ ok: true, status: 'delivered' })
-    expect(writes[0].data).toContain(HUB_DOC)
+    expect(writes).toHaveLength(0)
+    expect(manager.getState().inbox[0].path).toBe(HUB_DOC)
   })
 
   it('refuses an outbound-shaped path whose root lacks the hub signature', async () => {
@@ -464,5 +466,22 @@ describe('hub outbound paths (protocol 1.4.0)', () => {
     const { manager } = hubManager({ files: [OUTBOUND_DOC], dirs: [] })
     const res = await manager.send({ from: 'a', to: 'Security', subject: 's', path: OUTBOUND_DOC })
     expect(res).toMatchObject({ ok: true, status: 'delivered' })
+  })
+})
+
+describe('queue expiry', () => {
+  it('expires queued items after 7 days with a log entry', async () => {
+    const h = makeHarness({ sessions: [] })
+    await h.manager.send({ from: 'a', to: 'ghost', subject: 's', path: OUTBOUND_DOC })
+    expect(h.manager.getState().queue).toHaveLength(1)
+    // makeHarness clock advances 1ms per now() call; jump it via many ticks is
+    // impractical, so re-create the manager with the item aged past expiry.
+    const persisted = h.saved()
+    persisted.queue[0].createdAt = -700_000_000 // > 7 days before the test clock
+    const h2 = makeHarness({ persisted })
+    await h2.manager.tick()
+    expect(h2.manager.getState().queue).toHaveLength(0)
+    const last = h2.manager.getState().log.at(-1)
+    expect(last).toMatchObject({ status: 'cancelled', detail: 'expired after 7 days' })
   })
 })

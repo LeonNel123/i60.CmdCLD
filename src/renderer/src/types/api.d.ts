@@ -162,7 +162,7 @@ export interface ElectronAPI {
   getHomeDir: () => Promise<string>
   getVersion: () => Promise<string>
   projectCreate: (folderName: string) => Promise<string | null>
-  settingsGetAll: () => Promise<{ editor: string; defaultAgentCli: 'claude' | 'codex' | 'grok'; claudeArgs: string; codexArgs: string; grokArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; remoteLanAccess: boolean; favoriteFolders: string[]; restoreSessionEnabled: boolean; restoreSessionResume: boolean; terminalFontFamily: string; terminalFontSize: number; appFontFamily: string; uiScalePct: number; autopilotApiProvider: 'anthropic' | 'openrouter'; autopilotPlannerModel: string; autopilotDefaultCostCap: number; autopilotDefaultMaxIterations: number }>
+  settingsGetAll: () => Promise<{ editor: string; defaultAgentCli: 'claude' | 'codex' | 'grok'; claudeArgs: string; codexArgs: string; grokArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; remoteLanAccess: boolean; favoriteFolders: string[]; restoreSessionEnabled: boolean; restoreSessionResume: boolean; terminalFontFamily: string; terminalFontSize: number; appFontFamily: string; uiScalePct: number; autopilotApiProvider: 'anthropic' | 'openrouter'; autopilotPlannerModel: string; autopilotDefaultCostCap: number; autopilotDefaultMaxIterations: number; relayHubClones: string[]; relayHubPollSec: number }>
   settingsSet: (key: string, value: unknown) => Promise<void>
   agentCliAvailability: () => Promise<Record<'claude' | 'codex' | 'grok', { available: boolean; path: string | null }>>
   settingsGetBudgetState: (projectPath: string) => Promise<{
@@ -259,6 +259,11 @@ export interface ElectronAPI {
   relaySelectDocument: (projectPath: string) => Promise<string | null>
   relayCheckAdoption: (projectPath: string) => Promise<boolean>
   relayStageInvite: (terminalId: string) => Promise<{ ok: boolean; error?: string }>
+  relayCompose: (req: { fromTerminalId: string; to: string; subject: string; body: string; hubClone: string }) => Promise<{ ok: boolean; fileName?: string; path?: string; sendStatus?: string; error?: string }>
+  relayTargetSuggestions: () => Promise<{ machines: string[]; pastTargets: string[] }>
+  relayInboxMarkRead: (terminalId: string) => Promise<void>
+  relayInboxDismiss: (id: string) => Promise<boolean>
+  relayInboxStage: (id: string) => Promise<{ ok: boolean; error?: string }>
   onRelayUpdate: (callback: (state: RelayState) => void) => () => void
 }
 
@@ -284,9 +289,21 @@ interface RelayLogEntry {
   detail?: string
 }
 
+interface RelayInboxItem {
+  id: string
+  from: string
+  subject: string
+  path: string
+  ts: number
+  terminalId: string
+  projectPath?: string
+  read: boolean
+}
+
 interface RelayState {
   queue: RelayItem[]
   log: RelayLogEntry[]
+  inbox: RelayInboxItem[]
 }
 
 interface RelaySendResult {

@@ -40,9 +40,28 @@ export interface RelayLogEntry {
   detail?: string
 }
 
+// A delivered-but-not-yet-acted-on nudge. Deliveries land here (flashing the
+// target session's envelope) instead of being typed into the composer; the
+// human stages, opens, or dismisses from the dialog. Only the autopilot
+// auto-submit path still writes into the pty directly.
+export interface RelayInboxItem {
+  id: string
+  from: string
+  subject: string
+  path: string
+  ts: number
+  // Session the nudge was delivered to.
+  terminalId: string
+  // Project of that session at delivery time — lets the sidebar badge a
+  // project whose session has since closed.
+  projectPath?: string
+  read: boolean
+}
+
 export interface RelayState {
   queue: RelayItem[]
   log: RelayLogEntry[]
+  inbox: RelayInboxItem[]
 }
 
 export interface RelaySendResult {
