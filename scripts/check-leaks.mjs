@@ -23,17 +23,23 @@ function git(...args) {
 }
 
 function loadPatterns() {
-  let file
-  try { file = git('config', 'leakcheck.patternsfile').trim() } catch { /* unset */ }
-  if (!file || !existsSync(file)) {
-    console.warn(`check-leaks: no pattern file (${file || 'leakcheck.patternsfile unset'}) — skipping scan`)
+  let value
+  try { value = git('config', 'leakcheck.patternsfile').trim() } catch { /* unset */ }
+  // Semicolon-separated list: company hub file, plus any personal-domain files.
+  const files = (value || '').split(';').map((f) => f.trim()).filter(Boolean)
+  const found = files.filter((f) => existsSync(f))
+  for (const f of files) if (!found.includes(f)) console.warn(`check-leaks: pattern file missing: ${f}`)
+  if (!found.length) {
+    console.warn('check-leaks: no pattern files (leakcheck.patternsfile unset or all missing) — skipping scan')
     process.exit(0)
   }
-  return readFileSync(file, 'utf8')
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith('#'))
-    .map((l) => new RegExp(l, 'i'))
+  return found.flatMap((f) =>
+    readFileSync(f, 'utf8')
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#'))
+      .map((l) => new RegExp(l, 'i'))
+  )
 }
 
 function isExempt(path) {
