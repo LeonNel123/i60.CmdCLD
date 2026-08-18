@@ -411,23 +411,19 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
         </div>
         )}
 
-        {/* Only this session's own sends — the queue is outgoing mail waiting
-            for its target, and reads as incoming if shown unscoped. */}
-        {state.queue.filter((q) => q.from === fromName).length > 0 && (
+        {/* The mailbox rule: the main view shows only mail addressed to THIS
+            session. In-transit items addressed here are rare (they deliver
+            within a tick of the session being open) but shown when present.
+            Outgoing sends live under the history toggle. */}
+        {state.queue.filter((q) => q.to.replace(/@[^@]*$/, '').toLowerCase() === fromName.toLowerCase()).length > 0 && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={sectionHeading}>Outgoing — waiting for target ({state.queue.filter((q) => q.from === fromName).length})</div>
-            {state.queue.filter((q) => q.from === fromName).map((item) => (
+            <div style={sectionHeading}>Addressed to this session — arriving</div>
+            {state.queue.filter((q) => q.to.replace(/@[^@]*$/, '').toLowerCase() === fromName.toLowerCase()).map((item) => (
               <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', borderBottom: '1px solid #26263a', fontSize: '12px' }}>
                 <span style={{ color: '#fbbf24', flexShrink: 0 }}>{item.reason}</span>
                 <span style={{ color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={item.path}>
-                  {item.from} → {item.to}: {item.subject}
+                  {item.from}: {item.subject}
                 </span>
-                <button
-                  onClick={() => { window.api.relayCancel(item.id).catch(() => {}) }}
-                  style={{ background: 'none', border: '1px solid #444', borderRadius: '4px', color: '#888', cursor: 'pointer', fontSize: '11px', padding: '1px 6px', flexShrink: 0 }}
-                >
-                  Cancel
-                </button>
               </div>
             ))}
           </div>
@@ -444,6 +440,25 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
           </button>
           {showHistory && (
             <div style={{ marginTop: '8px' }}>
+              {state.queue.filter((q) => q.from === fromName).length > 0 && (
+                <div style={{ marginBottom: '12px' }}>
+                  <div style={sectionHeading}>Outgoing — waiting for target</div>
+                  {state.queue.filter((q) => q.from === fromName).map((item) => (
+                    <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', borderBottom: '1px solid #26263a', fontSize: '12px' }}>
+                      <span style={{ color: '#fbbf24', flexShrink: 0 }}>{item.reason}</span>
+                      <span style={{ color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={item.path}>
+                        → {item.to}: {item.subject}
+                      </span>
+                      <button
+                        onClick={() => { window.api.relayCancel(item.id).catch(() => {}) }}
+                        style={{ background: 'none', border: '1px solid #444', borderRadius: '4px', color: '#888', cursor: 'pointer', fontSize: '11px', padding: '1px 6px', flexShrink: 0 }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '6px' }}>
                 <span style={{ ...sectionHeading, marginBottom: 0, flex: 1 }}>Relay log</span>
                 {(['session', 'all'] as const).map((scope) => (
