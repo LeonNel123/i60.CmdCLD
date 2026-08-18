@@ -136,6 +136,7 @@ adopts; register it here so adopters inherit the list instead of inventing varia
 | `INVEST` | investigations |
 | `MOCHA` | Mocha |
 | `KIJANI` | Kijani |
+| `EMAILPROXY` | rustemailproxy |
 
 Codes are uppercase `A–Z0–9`, short enough to double in a filename. If a repo you
 need to address is missing, use the prefix it has been addressed by until now and
