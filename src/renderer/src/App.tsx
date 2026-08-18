@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Responsive, WidthProvider, Layout } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
@@ -114,11 +114,8 @@ export default function App() {
   const [autopilotRunning, setAutopilotRunning] = useState<Set<string>>(new Set())
   const [autopilotPanelFor, setAutopilotPanelFor] = useState<string | null>(null)
   const [relayDialogFor, setRelayDialogFor] = useState<string | null>(null)  // terminalId
-  // Unread relay-inbox nudges per session; drives the flashing envelope.
-  const [relayUnreadByTerminal, setRelayUnreadByTerminal] = useState<Map<string, number>>(new Map())
-  // Same, keyed by project path — badges sidebar favorites/recents rows whose
-  // session has closed since delivery.
-  const [relayUnreadByPath, setRelayUnreadByPath] = useState<Map<string, number>>(new Map())
+  // Relay snapshot (inbox + queue); the badge maps derive from it below.
+  const [relaySnap, setRelaySnap] = useState<{ inbox: RelayInboxItem[]; queue: RelayItem[] }>({ inbox: [], queue: [] })
   const [autopilotDefaults, setAutopilotDefaults] = useState({ costCap: 1.0, maxIterations: 40 })
   // Terminal font is a global setting applied to every xterm panel. Held here
   // so a change in Settings live-applies to all open terminals via props.
@@ -132,23 +129,40 @@ export default function App() {
   // and the .ui-scaled class. Terminals never carry that class, so unaffected.
   const [uiScalePct, setUiScalePct] = useState<number>(DEFAULT_UI_SCALE_PCT)
 
-  // Relay inbox subscription: count unread nudges per session so envelopes
-  // can flash without every panel polling the main process.
+  // Relay subscription: envelopes flash from these snapshots without every
+  // panel polling the main process.
   useEffect(() => {
-    const apply = (s: RelayState): void => {
-      const counts = new Map<string, number>()
-      const byPath = new Map<string, number>()
-      for (const n of s.inbox) {
-        if (n.read) continue
-        counts.set(n.terminalId, (counts.get(n.terminalId) ?? 0) + 1)
-        if (n.projectPath) byPath.set(n.projectPath, (byPath.get(n.projectPath) ?? 0) + 1)
-      }
-      setRelayUnreadByTerminal(counts)
-      setRelayUnreadByPath(byPath)
-    }
+    const apply = (s: RelayState): void => setRelaySnap({ inbox: s.inbox, queue: s.queue })
     window.api.relayState().then(apply).catch(() => {})
     return window.api.onRelayUpdate(apply)
   }, [])
+
+  // Unread inbox nudges per open session.
+  const relayUnreadByTerminal = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const n of relaySnap.inbox) {
+      if (!n.read) counts.set(n.terminalId, (counts.get(n.terminalId) ?? 0) + 1)
+    }
+    return counts
+  }, [relaySnap])
+
+  // Per project path, for sidebar favorites/recents rows: unread inbox items
+  // (session closed since delivery) plus QUEUED nudges whose target name
+  // matches a known folder — a nudge for a session that isn't open yet should
+  // mark the project so the human knows to open it.
+  const relayUnreadByPath = useMemo(() => {
+    const byPath = new Map<string, number>()
+    for (const n of relaySnap.inbox) {
+      if (n.read || !n.projectPath) continue
+      byPath.set(n.projectPath, (byPath.get(n.projectPath) ?? 0) + 1)
+    }
+    for (const q of relaySnap.queue) {
+      const name = q.to.replace(/@[^@]*$/, '').toLowerCase()
+      const folder = recentFolders.find((f) => f.name.toLowerCase() === name)
+      if (folder) byPath.set(folder.path, (byPath.get(folder.path) ?? 0) + 1)
+    }
+    return byPath
+  }, [relaySnap, recentFolders])
 
   // Push the interface font onto :root as --app-font-family; body and every
   // element using font-family: inherit picks it up. Runs on mount and whenever
