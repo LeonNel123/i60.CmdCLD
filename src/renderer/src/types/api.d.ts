@@ -256,6 +256,9 @@ export interface ElectronAPI {
   relaySelectDocument: (projectPath: string) => Promise<string | null>
   relayCheckAdoption: (projectPath: string) => Promise<boolean>
   relayStageInvite: (terminalId: string) => Promise<{ ok: boolean; error?: string }>
+  relayInboxMarkRead: (terminalId: string) => Promise<void>
+  relayInboxDismiss: (id: string) => Promise<boolean>
+  relayInboxStage: (id: string) => Promise<{ ok: boolean; error?: string }>
   onRelayUpdate: (callback: (state: RelayState) => void) => () => void
 }
 
@@ -281,9 +284,20 @@ interface RelayLogEntry {
   detail?: string
 }
 
+interface RelayInboxItem {
+  id: string
+  from: string
+  subject: string
+  path: string
+  ts: number
+  terminalId: string
+  read: boolean
+}
+
 interface RelayState {
   queue: RelayItem[]
   log: RelayLogEntry[]
+  inbox: RelayInboxItem[]
 }
 
 interface RelaySendResult {

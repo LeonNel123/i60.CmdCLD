@@ -2,6 +2,7 @@ import { EventEmitter } from 'events'
 import { statSync } from 'fs'
 import { join } from 'path'
 import type {
+  RelayInboxItem,
   RelayItem,
   RelayLogEntry,
   RelayQueueReason,
@@ -86,6 +87,7 @@ type TargetResolution =
 export class RelayManager extends EventEmitter {
   private queue: RelayItem[]
   private log: RelayLogEntry[]
+  private inbox: RelayInboxItem[]
   private isFile: (path: string) => boolean
   private isDir: (path: string) => boolean
   private now: () => number
@@ -97,13 +99,14 @@ export class RelayManager extends EventEmitter {
     const persisted = deps.store.load()
     this.queue = persisted.queue
     this.log = persisted.log
+    this.inbox = persisted.inbox ?? []
     this.isFile = deps.isFile ?? defaultIsFile
     this.isDir = deps.isDir ?? defaultIsDir
     this.now = deps.now ?? Date.now
   }
 
   getState(): RelayState {
-    return { queue: [...this.queue], log: [...this.log] }
+    return { queue: [...this.queue], log: [...this.log], inbox: [...this.inbox] }
   }
 
   async send(req: RelayRequest): Promise<RelaySendResult> {
@@ -125,10 +128,16 @@ export class RelayManager extends EventEmitter {
       const reason: RelayQueueReason = resolution.kind === 'unknown' ? 'unknown-target' : 'ambiguous-target'
       return this.enqueue({ id, from, to, subject, path, createdAt: this.now(), reason })
     }
-    if (!this.deps.isIdle(resolution.id)) {
-      return this.enqueue({ id, from, to, subject, path, createdAt: this.now(), reason: 'busy' })
+    const item: RelayItem = { id, from, to, subject, path, createdAt: this.now(), reason: 'busy' }
+    // Auto-submit targets (autopilot at a WAITING checkpoint) still get pty
+    // injection and therefore still respect idleness. Everyone else gets the
+    // inbox — which is always deliverable, busy or not: nothing touches the
+    // composer until the human stages it.
+    if (this.deps.canAutoSubmit?.(resolution.id)) {
+      if (!this.deps.isIdle(resolution.id)) return this.enqueue(item)
+      return this.deliver(item, resolution.id)
     }
-    return this.deliver({ id, from, to, subject, path, createdAt: this.now(), reason: 'busy' }, resolution.id)
+    return this.deliverToInbox(item, resolution.id)
   }
 
   cancel(id: string): boolean {
@@ -160,7 +169,12 @@ export class RelayManager extends EventEmitter {
       const deliveredTo = new Set<string>()
       for (const item of this.queue) {
         const resolution = this.resolveTarget(item.to)
-        if (resolution.kind === 'resolved' && deliveredTo.has(resolution.id)) {
+        if (resolution.kind === 'resolved' && !this.deps.canAutoSubmit?.(resolution.id)) {
+          // Inbox targets deliver regardless of idleness, several per tick —
+          // nothing is typed, so the pty-concatenation cap doesn't apply.
+          this.deliverToInbox(item, resolution.id)
+          changed = true
+        } else if (resolution.kind === 'resolved' && deliveredTo.has(resolution.id)) {
           if (item.reason !== 'busy') { item.reason = 'busy'; changed = true }
           remaining.push(item)
         } else if (resolution.kind === 'resolved' && this.deps.isIdle(resolution.id)) {
@@ -303,15 +317,63 @@ export class RelayManager extends EventEmitter {
     return true
   }
 
+  // Envelope delivery: the nudge sits in the target session's inbox until a
+  // human stages, opens, or dismisses it. This is what flashes the envelope.
+  private deliverToInbox(item: RelayItem, terminalId: string): RelaySendResult {
+    this.inbox.push({
+      id: item.id, from: item.from, subject: item.subject, path: item.path,
+      ts: this.now(), terminalId, read: false,
+    })
+    this.appendLog({
+      id: item.id, ts: this.now(), from: item.from, to: item.to,
+      subject: item.subject, path: item.path, status: 'delivered', terminalId, detail: 'inbox',
+    })
+    this.persistAndEmit()
+    return { ok: true, status: 'delivered', id: item.id }
+  }
+
+  // Stop the envelope flashing once the human has looked.
+  inboxMarkRead(terminalId: string): void {
+    let changed = false
+    for (const n of this.inbox) {
+      if (n.terminalId === terminalId && !n.read) { n.read = true; changed = true }
+    }
+    if (changed) this.persistAndEmit()
+  }
+
+  inboxDismiss(id: string): boolean {
+    const index = this.inbox.findIndex((n) => n.id === id)
+    if (index === -1) return false
+    this.inbox.splice(index, 1)
+    this.persistAndEmit()
+    return true
+  }
+
+  // Human-initiated: put the nudge text into the composer now (the old
+  // delivery behavior, on demand). The item leaves the inbox on success.
+  async inboxStage(id: string): Promise<{ ok: boolean; error?: string }> {
+    const item = this.inbox.find((n) => n.id === id)
+    if (!item) return { ok: false, error: 'nudge no longer in inbox' }
+    try {
+      await this.deps.writeStaged(item.terminalId, formatNudge(item.from, item.subject, item.path))
+    } catch {
+      return { ok: false, error: 'session is gone — reopen it or dismiss the nudge' }
+    }
+    this.inbox = this.inbox.filter((n) => n.id !== id)
+    this.persistAndEmit()
+    return { ok: true }
+  }
+
   private appendLog(entry: RelayLogEntry): void {
     this.log.push(entry)
   }
 
   private persistAndEmit(): void {
-    this.deps.store.save({ queue: this.queue, log: this.log })
-    // Re-read: save() may cap the log.
+    this.deps.store.save({ queue: this.queue, log: this.log, inbox: this.inbox })
+    // Re-read: save() may cap the log and inbox.
     const persisted = this.deps.store.load()
     this.log = persisted.log
+    this.inbox = persisted.inbox ?? []
     this.emit('update', this.getState())
   }
 

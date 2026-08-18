@@ -114,6 +114,8 @@ export default function App() {
   const [autopilotRunning, setAutopilotRunning] = useState<Set<string>>(new Set())
   const [autopilotPanelFor, setAutopilotPanelFor] = useState<string | null>(null)
   const [relayDialogFor, setRelayDialogFor] = useState<string | null>(null)  // terminalId
+  // Unread relay-inbox nudges per session; drives the flashing envelope.
+  const [relayUnreadByTerminal, setRelayUnreadByTerminal] = useState<Map<string, number>>(new Map())
   const [autopilotDefaults, setAutopilotDefaults] = useState({ costCap: 1.0, maxIterations: 40 })
   // Terminal font is a global setting applied to every xterm panel. Held here
   // so a change in Settings live-applies to all open terminals via props.
@@ -126,6 +128,20 @@ export default function App() {
   // Interface scale (%) applied to UI chrome via the --ui-scale CSS variable
   // and the .ui-scaled class. Terminals never carry that class, so unaffected.
   const [uiScalePct, setUiScalePct] = useState<number>(DEFAULT_UI_SCALE_PCT)
+
+  // Relay inbox subscription: count unread nudges per session so envelopes
+  // can flash without every panel polling the main process.
+  useEffect(() => {
+    const apply = (s: RelayState): void => {
+      const counts = new Map<string, number>()
+      for (const n of s.inbox) {
+        if (!n.read) counts.set(n.terminalId, (counts.get(n.terminalId) ?? 0) + 1)
+      }
+      setRelayUnreadByTerminal(counts)
+    }
+    window.api.relayState().then(apply).catch(() => {})
+    return window.api.onRelayUpdate(apply)
+  }, [])
 
   // Push the interface font onto :root as --app-font-family; body and every
   // element using font-family: inherit picks it up. Runs on mount and whenever
@@ -930,6 +946,7 @@ export default function App() {
                   isAutopilotRunning={autopilotRunning.has(t.id)}
                   onShowAutopilotPanel={() => setAutopilotPanelFor(t.id)}
                   onOpenRelay={() => setRelayDialogFor(t.id)}
+                  relayUnread={relayUnreadByTerminal.get(t.id) ?? 0}
                   onNotify={showToast}
                 />
               </div>
@@ -969,6 +986,7 @@ export default function App() {
               isAutopilotRunning={autopilotRunning.has(t.id)}
               onShowAutopilotPanel={() => setAutopilotPanelFor(t.id)}
               onOpenRelay={() => setRelayDialogFor(t.id)}
+              relayUnread={relayUnreadByTerminal.get(t.id) ?? 0}
               onNotify={showToast}
             />
           </div>

@@ -91,6 +91,8 @@ interface TerminalPanelProps {
   onOpenMarkdown?: (filePath: string) => void
   onStartAutopilot?: () => void
   onOpenRelay?: () => void
+  // Unread relay nudges for this session — flashes the envelope.
+  relayUnread?: number
   isAutopilotRunning?: boolean
   onShowAutopilotPanel?: () => void
   onNotify?: (message: string, kind?: 'info' | 'warn') => void
@@ -116,6 +118,7 @@ export function TerminalPanel({
   onOpenMarkdown,
   onStartAutopilot,
   onOpenRelay,
+  relayUnread = 0,
   isAutopilotRunning,
   onShowAutopilotPanel,
   onNotify,
@@ -805,8 +808,29 @@ export function TerminalPanel({
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 1h5l1 2H14.5l.5.5v10l-.5.5h-13l-.5-.5v-12l.5-.5zM2 13h12V4H7.06l-1-2H2v11z"/></svg>
           </button>
           {onOpenRelay && (
-            <button onClick={onOpenRelay} onMouseDown={(e) => e.stopPropagation()} title="Relay to another session" style={actionBtnStyle}>
+            <button
+              onClick={onOpenRelay}
+              onMouseDown={(e) => e.stopPropagation()}
+              title={relayUnread > 0 ? `${relayUnread} unread relay nudge${relayUnread === 1 ? '' : 's'}` : 'Relay to another session'}
+              style={{
+                ...actionBtnStyle,
+                position: 'relative',
+                ...(relayUnread > 0 ? { color: '#fbbf24', animation: 'relay-envelope-flash 1.1s ease-in-out infinite' } : {}),
+              }}
+            >
+              {relayUnread > 0 && (
+                <style>{'@keyframes relay-envelope-flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }'}</style>
+              )}
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3.5l.5-.5h13l.5.5v9l-.5.5h-13l-.5-.5v-9zM2 5.07V12h12V5.07L8.31 9.5h-.62L2 5.07zM13.03 4H2.97L8 8.36 13.03 4z"/></svg>
+              {relayUnread > 0 && (
+                <span style={{
+                  position: 'absolute', top: '-3px', right: '-3px', minWidth: '12px', height: '12px',
+                  borderRadius: '6px', background: '#ef4444', color: '#fff', fontSize: '8px',
+                  lineHeight: '12px', textAlign: 'center', padding: '0 2px', fontWeight: 700,
+                }}>
+                  {relayUnread}
+                </span>
+              )}
             </button>
           )}
         </div>

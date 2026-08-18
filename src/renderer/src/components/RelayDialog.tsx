@@ -40,7 +40,7 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
   const [subject, setSubject] = useState('')
   const [path, setPath] = useState('')
   const [sending, setSending] = useState(false)
-  const [state, setState] = useState<RelayState>({ queue: [], log: [] })
+  const [state, setState] = useState<RelayState>({ queue: [], log: [], inbox: [] })
   const [adopted, setAdopted] = useState(true)
   const [logScope, setLogScope] = useState<'session' | 'all'>('session')
 
@@ -50,8 +50,11 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
     window.api.relayState().then((s) => { if (alive) setState(s) }).catch(() => {})
     window.api.relayCheckAdoption(fromPath).then((a) => { if (alive) setAdopted(a) }).catch(() => {})
     const unsubscribe = window.api.onRelayUpdate((s) => setState(s))
+    // Opening the dialog is "looking at the mail" — the envelope stops
+    // flashing for this session.
+    window.api.relayInboxMarkRead(fromTerminalId).catch(() => {})
     return () => { alive = false; unsubscribe() }
-  }, [fromPath])
+  }, [fromPath, fromTerminalId])
 
 
   useEffect(() => {
@@ -196,6 +199,39 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
             </button>
           </div>
         </div>
+
+        {state.inbox.some((n) => n.terminalId === fromTerminalId) && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ color: '#888', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Inbox ({state.inbox.filter((n) => n.terminalId === fromTerminalId).length})
+            </div>
+            {state.inbox.filter((n) => n.terminalId === fromTerminalId).map((n) => (
+              <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', borderBottom: '1px solid #26263a', fontSize: '12px' }}>
+                <span style={{ color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={n.path}>
+                  <span style={{ color: '#a5b4fc' }}>{n.from}</span>: {n.subject}
+                </span>
+                <span style={{ color: '#666', flexShrink: 0, fontSize: '11px' }}>{new Date(n.ts).toLocaleTimeString()}</span>
+                <button
+                  onClick={() => {
+                    window.api.relayInboxStage(n.id).then((res) => {
+                      if (res.ok) { onNotify('Nudge staged in this session’s composer — press Enter there', 'info'); onClose() }
+                      else onNotify(res.error ?? 'Could not stage the nudge', 'warn')
+                    }).catch(() => onNotify('Could not stage the nudge', 'warn'))
+                  }}
+                  style={{ background: '#4f46e5', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '11px', padding: '2px 8px', flexShrink: 0 }}
+                >
+                  Stage
+                </button>
+                <button
+                  onClick={() => { window.api.relayInboxDismiss(n.id).catch(() => {}) }}
+                  style={{ background: 'none', border: '1px solid #444', borderRadius: '4px', color: '#888', cursor: 'pointer', fontSize: '11px', padding: '1px 6px', flexShrink: 0 }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {state.queue.length > 0 && (
           <div style={{ marginBottom: '16px' }}>
