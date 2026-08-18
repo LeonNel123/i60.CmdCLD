@@ -1,9 +1,9 @@
 // Sanitization and validation for relay nudges. The subject line is the only
 // free-text surface a relay injects into a target pty, so it is stripped hard:
 // no control characters (C0, DEL, C1 — includes \n, \r, \x1b), collapsed
-// whitespace, bounded length. The path must point inside a repo's
-// docs/integration/outbound/ — the exchange protocol's authoring location —
-// so a relay can never aim an agent at an arbitrary file.
+// whitespace, bounded length. The path must point inside an exchange authoring
+// location — a repo's docs/integration/outbound/ (pre-1.4.0) or a domain hub's
+// outbound/ (1.4.0) — so a relay can never aim an agent at an arbitrary file.
 
 export const SUBJECT_MAX_LENGTH = 120
 export const FROM_MAX_LENGTH = 60
@@ -40,6 +40,17 @@ export function isUnderIntegrationOutbound(p: string): boolean {
     }
   }
   return false
+}
+
+// Hub form (protocol 1.4.0): thread documents live in a domain exchange hub as
+// <hubRoot>/outbound/<file>. This returns the candidate hub root for such a
+// path (the prefix before the LAST /outbound/ segment), or null if the path has
+// no outbound segment with a file after it. Whether the root really is a hub —
+// sibling inbound/ and REPOS.md — is a filesystem question the manager answers;
+// this stays pure so it can be tested without a disk.
+export function hubRootOfOutboundPath(p: string): string | null {
+  const m = /^(.*)[\\/]outbound[\\/].+$/i.exec(p.trim())
+  return m && m[1] ? m[1] : null
 }
 
 // The standardized fixed-format nudge (CMDCLD-REQ-001-response.md §2).

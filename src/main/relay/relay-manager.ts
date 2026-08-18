@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events'
 import { statSync } from 'fs'
+import { join } from 'path'
 import type {
   RelayItem,
   RelayLogEntry,
@@ -10,6 +11,7 @@ import type {
 } from './types'
 import {
   formatNudge,
+  hubRootOfOutboundPath,
   isUnderIntegrationOutbound,
   sanitizeFromName,
   sanitizeSubject,
@@ -38,6 +40,7 @@ export interface RelayManagerDeps {
   canAutoSubmit?: (terminalId: string) => boolean
   // Injectable for tests.
   isFile?: (path: string) => boolean
+  isDir?: (path: string) => boolean
   now?: () => number
 }
 
@@ -67,6 +70,14 @@ function defaultIsFile(path: string): boolean {
   }
 }
 
+function defaultIsDir(path: string): boolean {
+  try {
+    return statSync(path).isDirectory()
+  } catch {
+    return false
+  }
+}
+
 type TargetResolution =
   | { kind: 'resolved'; id: string }
   | { kind: 'unknown' }
@@ -76,6 +87,7 @@ export class RelayManager extends EventEmitter {
   private queue: RelayItem[]
   private log: RelayLogEntry[]
   private isFile: (path: string) => boolean
+  private isDir: (path: string) => boolean
   private now: () => number
   private idCounter = 0
   private draining = false
@@ -86,6 +98,7 @@ export class RelayManager extends EventEmitter {
     this.queue = persisted.queue
     this.log = persisted.log
     this.isFile = deps.isFile ?? defaultIsFile
+    this.isDir = deps.isDir ?? defaultIsDir
     this.now = deps.now ?? Date.now
   }
 
@@ -139,11 +152,20 @@ export class RelayManager extends EventEmitter {
     try {
       const remaining: RelayItem[] = []
       let changed = false
+      // At most one nudge per target per tick. Nudges carry no trailing
+      // newline, so two delivered back-to-back concatenate into a single
+      // unreadable composer line — and the idle check can't catch it, since
+      // the echo of the first write hasn't reached us yet when the second is
+      // evaluated. The next tick delivers the next one.
+      const deliveredTo = new Set<string>()
       for (const item of this.queue) {
         const resolution = this.resolveTarget(item.to)
-        if (resolution.kind === 'resolved' && this.deps.isIdle(resolution.id)) {
+        if (resolution.kind === 'resolved' && deliveredTo.has(resolution.id)) {
+          if (item.reason !== 'busy') { item.reason = 'busy'; changed = true }
+          remaining.push(item)
+        } else if (resolution.kind === 'resolved' && this.deps.isIdle(resolution.id)) {
           const delivered = await this.deliverQueued(item, resolution.id)
-          if (delivered) changed = true
+          if (delivered) { deliveredTo.add(resolution.id); changed = true }
           else remaining.push(item)
         } else {
           const reason: RelayQueueReason =
@@ -165,11 +187,20 @@ export class RelayManager extends EventEmitter {
     if (!to) return 'no target session given'
     if (!subject) return 'subject is empty after sanitization'
     if (!path) return 'no document path given'
-    if (!isUnderIntegrationOutbound(path)) {
-      return 'path must be inside a repo\'s docs/integration/outbound/'
+    if (!isUnderIntegrationOutbound(path) && !this.isHubOutboundPath(path)) {
+      return 'path must be inside a repo\'s docs/integration/outbound/ or an exchange hub\'s outbound/'
     }
     if (!this.isFile(path)) return 'document does not exist (or is not a file)'
     return null
+  }
+
+  // 1.4.0 hub form: <hubRoot>/outbound/<file> where the root carries the hub
+  // signature — a sibling inbound/ and a REPOS.md. Checked on disk so a stray
+  // folder that merely happens to be named outbound/ doesn't qualify.
+  private isHubOutboundPath(path: string): boolean {
+    const root = hubRootOfOutboundPath(path)
+    if (!root) return false
+    return this.isDir(join(root, 'inbound')) && this.isFile(join(root, 'REPOS.md'))
   }
 
   // One accepted relay = one token, however many log entries it produced. A

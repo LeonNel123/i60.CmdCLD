@@ -25,13 +25,13 @@ const TOOLS = [
   {
     name: 'relay_notify',
     description:
-      'Notify another CmdCLD session that a document awaits it. Delivers a fixed-format, pointer-only nudge into that session (staged in its composer; a human submits it). The sender name is stamped by the host from your session identity. The path must be a file inside your repo\'s docs/integration/outbound/.',
+      'Notify another CmdCLD session that a document awaits it. Delivers a fixed-format, pointer-only nudge into that session (staged in its composer; a human submits it). The sender name is stamped by the host from your session identity. The path must be a file inside an exchange authoring location: a repo\'s docs/integration/outbound/, or a domain exchange hub\'s outbound/ (a hub root has inbound/ and REPOS.md beside it).',
     inputSchema: {
       type: 'object',
       properties: {
         to: { type: 'string', description: 'Target session name or id (see list_sessions)' },
         subject: { type: 'string', description: 'One line, max 120 chars after sanitization' },
-        path: { type: 'string', description: 'Absolute path to the document, inside docs/integration/outbound/' },
+        path: { type: 'string', description: 'Absolute path to the document, inside docs/integration/outbound/ or a domain hub\'s outbound/' },
       },
       required: ['to', 'subject', 'path'],
     },

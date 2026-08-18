@@ -3,6 +3,7 @@ import {
   sanitizeSubject,
   sanitizeFromName,
   isUnderIntegrationOutbound,
+  hubRootOfOutboundPath,
   formatNudge,
   SUBJECT_MAX_LENGTH,
 } from '../src/main/relay/validation'
@@ -86,6 +87,44 @@ describe('SessionIdleWatcher', () => {
     w.noteData('t1')
     w.noteExit('t1')
     expect(w.isIdle('t1')).toBe(true)
+  })
+
+  // A just-opened session is silent while the shell starts and while the host
+  // waits to type `claude …\r`. Calling it idle staged relay text onto the
+  // shell command line, which then ran as part of the launch command.
+  it('holds a freshly spawned session out of the pool through the warm-up', () => {
+    let t = 10_000
+    const w = new SessionIdleWatcher({ idleMs: 1500, warmupMs: 6000, now: () => t })
+    w.noteStart('t1')
+    expect(w.isIdle('t1')).toBe(false) // silent, but only because it just spawned
+    t += 200
+    w.noteData('t1') // shell prompt
+    t += 1500
+    expect(w.isIdle('t1')).toBe(false) // output-quiet, still warming up
+    t += 4300 // warm-up elapsed (t = start + 6000)
+    expect(w.isIdle('t1')).toBe(true)
+  })
+
+  it('never calls a warmed-up but wholly silent session idle', () => {
+    let t = 10_000
+    const w = new SessionIdleWatcher({ idleMs: 1500, warmupMs: 6000, now: () => t })
+    w.noteStart('t1')
+    t += 60_000
+    expect(w.isIdle('t1')).toBe(false)
+  })
+
+  // Reopening a closed session reuses the name but gets a new terminal id —
+  // the exact case that broke: the queue resolved the new id instantly.
+  it('warms up again when a session is closed and reopened', () => {
+    let t = 10_000
+    const w = new SessionIdleWatcher({ idleMs: 1500, warmupMs: 6000, now: () => t })
+    w.noteStart('t1')
+    w.noteData('t1')
+    t += 60_000
+    expect(w.isIdle('t1')).toBe(true)
+    w.noteExit('t1')
+    w.noteStart('t2')
+    expect(w.isIdle('t2')).toBe(false)
   })
 })
 
@@ -183,6 +222,37 @@ describe('RelayManager', () => {
     await h.manager.tick()
     expect(h.writes).toHaveLength(1)
     expect(h.writes[0].terminalId).toBe('t9')
+  })
+
+  // Nudges carry no trailing newline: two in one tick concatenate into one
+  // unreadable composer line (observed in the live log — two ids delivered to
+  // the same terminal on the same millisecond).
+  it('delivers at most one queued relay per target per tick', async () => {
+    const h = makeHarness({ sessions: [] })
+    await h.manager.send({ from: 'a', to: 'nobody', subject: 'first', path: OUTBOUND_DOC })
+    await h.manager.send({ from: 'a', to: 'nobody', subject: 'second', path: OUTBOUND_DOC })
+    h.setSessions([{ id: 't9', name: 'nobody' }])
+
+    await h.manager.tick()
+    expect(h.writes).toHaveLength(1)
+    expect(h.writes[0].data).toContain('first')
+    expect(h.manager.getState().queue).toHaveLength(1)
+
+    await h.manager.tick()
+    expect(h.writes).toHaveLength(2)
+    expect(h.writes[1].data).toContain('second')
+    expect(h.manager.getState().queue).toHaveLength(0)
+  })
+
+  it('still drains several targets in the same tick', async () => {
+    const h = makeHarness({ sessions: [] })
+    await h.manager.send({ from: 'a', to: 'one', subject: 's1', path: OUTBOUND_DOC })
+    await h.manager.send({ from: 'a', to: 'two', subject: 's2', path: OUTBOUND_DOC })
+    h.setSessions([{ id: 't1', name: 'one' }, { id: 't2', name: 'two' }])
+
+    await h.manager.tick()
+    expect(h.writes.map((w) => w.terminalId)).toEqual(['t1', 't2'])
+    expect(h.manager.getState().queue).toHaveLength(0)
   })
 
   it('queues ambiguous names', async () => {
@@ -286,7 +356,8 @@ describe('RelayManager', () => {
       expect(res.status).toBe('queued')
     }
     h.setIdle('t1', true)
-    await h.manager.tick()
+    // One per tick — the target is a single terminal (see the per-tick cap).
+    for (let i = 0; i < 5; i += 1) await h.manager.tick()
     expect(h.writes).toHaveLength(5)
     expect(h.manager.getState().log).toHaveLength(10)  // 5 queued + 5 delivered rows
 
@@ -333,5 +404,65 @@ describe('RelayManager', () => {
     const staged = makeHarness({ canAutoSubmit: () => false })
     await staged.manager.send({ from: 'a', to: 'toms-security', subject: 's', path: OUTBOUND_DOC })
     expect(staged.writes[0].data.endsWith('\r')).toBe(false)
+  })
+})
+
+describe('hub outbound paths (protocol 1.4.0)', () => {
+  const HUB = 'C:\\Hubs\\example.exchange'
+  const HUB_DOC = `${HUB}\\outbound\\CMDCLD-to-TOMSSEC-REQ-20260818-threads-move-to-domain-hubs.md`
+
+  it('extracts the hub root before the last outbound segment', () => {
+    expect(hubRootOfOutboundPath(HUB_DOC)).toBe(HUB)
+    expect(hubRootOfOutboundPath('/home/u/hubs/toms.exchange/outbound/x.md')).toBe('/home/u/hubs/toms.exchange')
+    expect(hubRootOfOutboundPath('D:/a/OUTBOUND/b/outbound/x.md')).toBe('D:/a/OUTBOUND/b')
+  })
+
+  it('returns null when no outbound segment has a file after it', () => {
+    expect(hubRootOfOutboundPath('D:\\hub\\outbound')).toBe(null)
+    expect(hubRootOfOutboundPath('D:\\hub\\inbound\\x.md')).toBe(null)
+    expect(hubRootOfOutboundPath('outbound/x.md')).toBe(null)
+    expect(hubRootOfOutboundPath('')).toBe(null)
+  })
+
+  function hubManager(fs: { files: string[]; dirs: string[] }): {
+    manager: RelayManager
+    writes: Array<{ terminalId: string; data: string }>
+  } {
+    const stored: RelayState = { queue: [], log: [] }
+    const writes: Array<{ terminalId: string; data: string }> = []
+    let now = 9_000_000
+    const manager = new RelayManager({
+      listSessions: () => [{ id: 't1', name: 'Security' }],
+      isIdle: () => true,
+      writeStaged: async (terminalId, data) => { writes.push({ terminalId, data }) },
+      store: { load: () => stored, save: (s) => { stored.queue = [...s.queue]; stored.log = [...s.log] } },
+      isFile: (p) => fs.files.includes(p),
+      isDir: (p) => fs.dirs.includes(p),
+      now: () => (now += 1),
+    })
+    return { manager, writes }
+  }
+
+  it('accepts a hub outbound path when the root has inbound/ and REPOS.md', async () => {
+    const { manager, writes } = hubManager({
+      files: [HUB_DOC, `${HUB}\\REPOS.md`],
+      dirs: [`${HUB}\\inbound`],
+    })
+    const res = await manager.send({ from: 'i60.CmdCLD', to: 'Security', subject: 'hub pilot', path: HUB_DOC })
+    expect(res).toMatchObject({ ok: true, status: 'delivered' })
+    expect(writes[0].data).toContain(HUB_DOC)
+  })
+
+  it('refuses an outbound-shaped path whose root lacks the hub signature', async () => {
+    const { manager } = hubManager({ files: [HUB_DOC], dirs: [] })
+    const res = await manager.send({ from: 'i60.CmdCLD', to: 'Security', subject: 'hub pilot', path: HUB_DOC })
+    expect(res).toMatchObject({ ok: false, status: 'refused' })
+    expect((res as { error?: string }).error).toMatch(/outbound/)
+  })
+
+  it('still accepts docs/integration/outbound without any hub signature on disk', async () => {
+    const { manager } = hubManager({ files: [OUTBOUND_DOC], dirs: [] })
+    const res = await manager.send({ from: 'a', to: 'Security', subject: 's', path: OUTBOUND_DOC })
+    expect(res).toMatchObject({ ok: true, status: 'delivered' })
   })
 })
