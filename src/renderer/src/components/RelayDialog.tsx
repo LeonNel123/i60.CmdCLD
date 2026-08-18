@@ -411,10 +411,12 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
         </div>
         )}
 
-        {state.queue.length > 0 && (
+        {/* Only this session's own sends — the queue is outgoing mail waiting
+            for its target, and reads as incoming if shown unscoped. */}
+        {state.queue.filter((q) => q.from === fromName).length > 0 && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={sectionHeading}>Queued ({state.queue.length})</div>
-            {state.queue.map((item) => (
+            <div style={sectionHeading}>Outgoing — waiting for target ({state.queue.filter((q) => q.from === fromName).length})</div>
+            {state.queue.filter((q) => q.from === fromName).map((item) => (
               <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', borderBottom: '1px solid #26263a', fontSize: '12px' }}>
                 <span style={{ color: '#fbbf24', flexShrink: 0 }}>{item.reason}</span>
                 <span style={{ color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={item.path}>
