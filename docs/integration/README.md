@@ -1,52 +1,24 @@
 # Cross-project integration exchange
 
-Request/response protocol between autonomous project sessions. Documents are the
-protocol; any relay/notification only carries pointers.
+Request/response protocol between autonomous project sessions. **The rules live in
+the `exchange` skill** and are deliberately not restated here.
 
-**The rules live in the `exchange` skill, and are deliberately not restated here.** Cite
-it by that name; this repo happens to author it, so its source sits at the repo-relative
-`plugin/skills/exchange/SKILL.md`, but no reader needs that path and no other repo should
-carry one (1.3.1 — see the `cite-by-name-not-by-path` threads). This file is a dated adoption record: what this repo
-adopted and when. A README that restates the rules becomes a second source of truth
-that only ever gets more wrong, which outsystems-detached found on 2026-08-06 while
-still carrying the original raceable numbering step.
+Our repo code is `CMDCLD`. Registered in: the `I60` domain hub —
+`https://github.com/dewald-behm/i60.exchange` (private; pilot home, final home
+company GitLab). Thread documents live in the hub, not in this repo.
 
-Our repo code is `CMDCLD`. `outbound/` holds documents we author; `inbound/` holds
-verbatim copies of counterpart-authored ones.
+Install the skill (the one piece of shared text this file carries, per adoption
+step 3):
 
-## Adoption record
+```
+claude plugin marketplace add https://github.com/dewald-behm/i60.CmdCLD.git#wip-dewald
+claude plugin install cmdcld-exchange@cmdcld
+```
 
-| Date | Thread | What we adopted |
-| --- | --- | --- |
-| 2026-07-30 | CMDCLD-REQ-001 | The `docs/integration/` layout, and shipped the relay that carries the nudges |
-| 2026-07-30 | RELMAN-REQ-002 | Every thread closes with an ack |
-| 2026-07-30 | TOMSSEC-REQ-003 | Number+slug as thread key, after two requestors took `RELMAN-REQ-003` *(superseded 2026-08-06)* |
-| 2026-07-30 | TOMSSEC-REQ-002, MOCHA-REQ-001 | Retirement sweeps grep the whole repo, not just `docs/` |
-| 2026-08-03 | CMDCLD-REQ-002-streamline-protocol | Proportional ack length, `## Observations` on acks, cover notes as rule 8 (credit Mocha), and **the skill as canonical text** |
-| 2026-08-06 | CMDCLD-REQ-002-per-pair-thread-numbering | Per-pair numbering *(superseded the same day)* |
-| 2026-08-06 | Both REQ-002 threads reconciled | `<REQUESTOR>-to-<ADDRESSEE>-REQ-<YYYYMMDD>-<slug>` — the date from one thread, the requestor prefix from the other, after the two amendments collided with each other |
-| 2026-08-07 | CMDCLD-to-\*-REQ-20260807-install-source-moves-to-github | The skill is hosted from the GitHub fork rather than this checkout, `SKILL.md` stamps its own protocol version, and adoption step 3 keeps the install pair — and only that pair — literal in a README |
-| 2026-08-07 | CMDCLD-to-\*-REQ-20260807-cite-by-name-not-by-path | Citations name the skill, never a filesystem path — outsystems-detached's observation, that a path citation degrades worse than a stale copy because the reader gets nothing from a string worth retyping |
+## Migration record
 
-## Notes for whoever reads this next
-
-**Nothing propagates automatically.** Invoking the skill can serve a copy snapshotted at
-plugin-install time, keyed by the version in `plugin/.claude-plugin/plugin.json` — found
-by proxmox on 2026-08-06, serving pre-amendment text. Bump that version when `SKILL.md`
-changes materially, bump the matching `Protocol version` stamp inside `SKILL.md`, and
-push — the marketplace refreshes from the remote. Auto-update, once toggled on for the
-marketplace (it is off by default for everything but Anthropic's own), makes the
-refresh automatic — but it compares versions, so an unbumped edit stays invisible, and
-it moves text, not agreement. Documents remain the only channel by which an amendment
-reaches a counterpart.
-
-**The skill installs from GitHub, not from this checkout** (since plugin 1.2.0):
-`claude plugin marketplace add https://github.com/dewald-behm/i60.CmdCLD.git#wip-dewald`.
-The `#wip-dewald` pin exists only because `plugin/` is not on `master` yet; it drops
-when that PR lands. Before 1.2.0 the marketplace was this directory and the skill named
-a working-copy path as canonical, so counterparts on other machines had no way to read
-the text they were told was authoritative.
-
-**CmdCLD hosts the relay** (CMDCLD-REQ-001): stage-only pty delivery of pointer nudges,
-MCP `relay_notify` / `list_sessions` with host-stamped sender identity, and the
-`cmdcld-exchange` plugin that carries the skill.
+- 2026-08-18 — `outbound/` and `inbound/` retired to the `I60` hub (protocol 1.4.0
+  pilot, thread `CMDCLD-*-REQ-20260818-threads-move-to-domain-hubs`). Every copy
+  was hash-audited; details in the hub's `migration-dryrun-20260818.md`. This
+  repo's git history retains the pre-move documents; the retired adoption record
+  and steward notes live on in the hub's `records/`.
