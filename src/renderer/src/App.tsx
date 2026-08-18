@@ -17,7 +17,6 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { CommandPalette } from './components/CommandPalette'
 import { AutopilotPanel } from './components/AutopilotPanel'
 import { AutopilotKickoff } from './components/AutopilotKickoff'
-import { RelayDialog } from './components/RelayDialog'
 import { TaskBar } from './components/TaskBar'
 import { AppWindow, Star, FolderSearch, Code, Copy, Trash2, Sparkles, TerminalSquare, Shield } from './components/icons'
 import { assignColor } from './utils/colors'
@@ -119,9 +118,6 @@ export default function App() {
   const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [autopilotRunning, setAutopilotRunning] = useState<Set<string>>(new Set())
   const [autopilotPanelFor, setAutopilotPanelFor] = useState<string | null>(null)
-  const [relayDialogFor, setRelayDialogFor] = useState<string | null>(null)  // terminalId
-  // Relay snapshot (inbox + queue); the badge maps derive from it below.
-  const [relaySnap, setRelaySnap] = useState<{ inbox: RelayInboxItem[]; queue: RelayItem[] }>({ inbox: [], queue: [] })
   const [autopilotDefaults, setAutopilotDefaults] = useState({ costCap: 1.0, maxIterations: 40 })
   // Terminal font is a global setting applied to every xterm panel. Held here
   // so a change in Settings live-applies to all open terminals via props.
@@ -135,40 +131,6 @@ export default function App() {
   // and the .ui-scaled class. Terminals never carry that class, so unaffected.
   const [uiScalePct, setUiScalePct] = useState<number>(DEFAULT_UI_SCALE_PCT)
 
-  // Relay subscription: envelopes flash from these snapshots without every
-  // panel polling the main process.
-  useEffect(() => {
-    const apply = (s: RelayState): void => setRelaySnap({ inbox: s.inbox, queue: s.queue })
-    window.api.relayState().then(apply).catch(() => {})
-    return window.api.onRelayUpdate(apply)
-  }, [])
-
-  // Unread inbox nudges per open session.
-  const relayUnreadByTerminal = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const n of relaySnap.inbox) {
-      if (!n.read) counts.set(n.terminalId, (counts.get(n.terminalId) ?? 0) + 1)
-    }
-    return counts
-  }, [relaySnap])
-
-  // Per project path, for sidebar favorites/recents rows: unread inbox items
-  // (session closed since delivery) plus QUEUED nudges whose target name
-  // matches a known folder — a nudge for a session that isn't open yet should
-  // mark the project so the human knows to open it.
-  const relayUnreadByPath = useMemo(() => {
-    const byPath = new Map<string, number>()
-    for (const n of relaySnap.inbox) {
-      if (n.read || !n.projectPath) continue
-      byPath.set(n.projectPath, (byPath.get(n.projectPath) ?? 0) + 1)
-    }
-    for (const q of relaySnap.queue) {
-      const name = q.to.replace(/@[^@]*$/, '').toLowerCase()
-      const folder = recentFolders.find((f) => f.name.toLowerCase() === name)
-      if (folder) byPath.set(folder.path, (byPath.get(folder.path) ?? 0) + 1)
-    }
-    return byPath
-  }, [relaySnap, recentFolders])
 
   // Push the interface font onto :root as --app-font-family; body and every
   // element using font-family: inherit picks it up. Runs on mount and whenever
@@ -196,36 +158,6 @@ export default function App() {
     toastTimerRef.current = setTimeout(() => setToast(null), 3000)
   }, [])
 
-  // Cross-session relay visibility: sessions must never whisper to each other
-  // invisibly, so every delivery that happens outside a send (queued relays
-  // draining on the 1 Hz tick) surfaces as a toast here too.
-  const relayLogSeenRef = useRef<Set<string> | null>(null)
-  useEffect(() => {
-    const unsubscribe = window.api.onRelayUpdate((state) => {
-      const seen = relayLogSeenRef.current
-      if (seen === null) {
-        // First update after mount: absorb history without toasting it.
-        relayLogSeenRef.current = new Set(state.log.map((l) => `${l.id}:${l.status}`))
-        return
-      }
-      for (const entry of state.log) {
-        const key = `${entry.id}:${entry.status}`
-        if (seen.has(key)) continue
-        seen.add(key)
-        if (entry.status === 'delivered') {
-          showToast(`Relay from ${entry.from} staged in "${entry.to}" — review and press Enter there`, 'info')
-        } else if (entry.status === 'refused') {
-          showToast(`Relay refused: ${entry.detail ?? 'validation failed'}`, 'warn')
-        }
-      }
-    })
-    window.api.relayState().then((state) => {
-      if (relayLogSeenRef.current === null) {
-        relayLogSeenRef.current = new Set(state.log.map((l) => `${l.id}:${l.status}`))
-      }
-    }).catch(() => { relayLogSeenRef.current = relayLogSeenRef.current ?? new Set() })
-    return () => unsubscribe()
-  }, [showToast])
 
   useEffect(() => {
     const audio = new Audio(notificationSound)
@@ -451,18 +383,6 @@ export default function App() {
       setRecentFolders(list)
     }).catch(() => {})
 
-    // Welcome affordance (CMDCLD-REQ-001-response §4): surface non-adoption
-    // at launch in our own chrome — never injected. Staging the actual invite
-    // stays behind the user's click in the relay dialog. Home-dir quick
-    // terminals are exempt: they aren't project workspaces.
-    window.api.getHomeDir().then((home) => {
-      if (folderPath === home) return
-      return window.api.relayCheckAdoption(folderPath).then((isAdopted) => {
-        if (!isAdopted) {
-          showToast(`"${newEntry.name}" hasn't adopted the exchange protocol — the envelope button offers an invite`, 'info')
-        }
-      })
-    }).catch(() => {})
   }, [defaultAgentCli, defaultViewMode, terminals, showToast])
 
   // Start the folder-open flow (may show dialog or launch directly).
@@ -908,8 +828,6 @@ export default function App() {
         terminals={terminals}
         viewMode={viewMode}
         busyTerminals={busyTerminals}
-        relayUnreadByTerminal={relayUnreadByTerminal}
-        relayUnreadByPath={relayUnreadByPath}
         onSelectTerminal={handleSelectTerminal}
         onShowAll={handleShowAll}
         recentFolders={recentFolders}
@@ -994,8 +912,6 @@ export default function App() {
                   onStartAutopilot={() => setAutopilotKickoffFor(t.id)}
                   isAutopilotRunning={autopilotRunning.has(t.id)}
                   onShowAutopilotPanel={() => setAutopilotPanelFor(t.id)}
-                  onOpenRelay={() => setRelayDialogFor(t.id)}
-                  relayUnread={relayUnreadByTerminal.get(t.id) ?? 0}
                   onNotify={showToast}
                 />
               </div>
@@ -1035,8 +951,6 @@ export default function App() {
               onStartAutopilot={() => setAutopilotKickoffFor(t.id)}
               isAutopilotRunning={autopilotRunning.has(t.id)}
               onShowAutopilotPanel={() => setAutopilotPanelFor(t.id)}
-              onOpenRelay={() => setRelayDialogFor(t.id)}
-              relayUnread={relayUnreadByTerminal.get(t.id) ?? 0}
               onNotify={showToast}
             />
           </div>
@@ -1068,15 +982,6 @@ export default function App() {
         />
       )}
 
-      {relayDialogFor && (
-        <RelayDialog
-          fromName={terminals.find((t) => t.id === relayDialogFor)?.name ?? 'unknown'}
-          fromTerminalId={relayDialogFor}
-          fromPath={terminals.find((t) => t.id === relayDialogFor)?.path ?? ''}
-          onClose={() => setRelayDialogFor(null)}
-          onNotify={showToast}
-        />
-      )}
 
       {closingId && (
         <ConfirmDialog

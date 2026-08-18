@@ -294,33 +294,4 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('autopilot:update', listener)
     return () => { ipcRenderer.removeListener('autopilot:update', listener) }
   },
-  relaySend: (req: { fromTerminalId: string; to: string; subject: string; path: string }): Promise<{ ok: boolean; status: string; id: string; error?: string }> =>
-    ipcRenderer.invoke('relay:send', req),
-  relayState: (): Promise<unknown> =>
-    ipcRenderer.invoke('relay:state'),
-  relaySessions: (): Promise<Array<{ id: string; name: string }>> =>
-    ipcRenderer.invoke('relay:sessions'),
-  relayCancel: (id: string): Promise<boolean> =>
-    ipcRenderer.invoke('relay:cancel', id),
-  relayCompose: (req: { fromTerminalId: string; to: string; subject: string; body: string; hubClone: string }): Promise<{ ok: boolean; fileName?: string; path?: string; sendStatus?: string; error?: string }> =>
-    ipcRenderer.invoke('relay:compose', req),
-  relayTargetSuggestions: (): Promise<{ machines: string[]; pastTargets: string[] }> =>
-    ipcRenderer.invoke('relay:targetSuggestions'),
-  relayInboxMarkRead: (terminalId: string): Promise<void> =>
-    ipcRenderer.invoke('relay:inboxMarkRead', terminalId),
-  relayInboxDismiss: (id: string): Promise<boolean> =>
-    ipcRenderer.invoke('relay:inboxDismiss', id),
-  relayInboxStage: (id: string): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke('relay:inboxStage', id),
-  relaySelectDocument: (projectPath: string): Promise<string | null> =>
-    ipcRenderer.invoke('relay:selectDocument', projectPath),
-  relayCheckAdoption: (projectPath: string): Promise<boolean> =>
-    ipcRenderer.invoke('relay:checkAdoption', projectPath),
-  relayStageInvite: (terminalId: string): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke('relay:stageInvite', terminalId),
-  onRelayUpdate: (callback: (state: unknown) => void): (() => void) => {
-    const listener = (_e: Electron.IpcRendererEvent, state: unknown) => callback(state)
-    ipcRenderer.on('relay:update', listener)
-    return () => { ipcRenderer.removeListener('relay:update', listener) }
-  },
 })

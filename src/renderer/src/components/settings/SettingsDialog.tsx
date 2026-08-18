@@ -11,7 +11,6 @@ import { AppearancePane } from './AppearancePane'
 import { RemotePane } from './RemotePane'
 import { ClaudeConfigPane } from './ClaudeConfigPane'
 import { AutopilotPane } from './AutopilotPane'
-import { ExchangePane } from './ExchangePane'
 import { AboutPane } from './AboutPane'
 import { MONO_FONT } from './controls'
 
@@ -20,14 +19,13 @@ interface SettingsDialogProps {
   activeProjectPath?: string
 }
 
-type Category = 'general' | 'agents' | 'appearance' | 'remote' | 'exchange' | 'claude' | 'autopilot' | 'about'
+type Category = 'general' | 'agents' | 'appearance' | 'remote' | 'claude' | 'autopilot' | 'about'
 
 const CATEGORIES: Array<{ id: Category; label: string }> = [
   { id: 'general', label: 'General' },
   { id: 'agents', label: 'Agents' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'remote', label: 'Remote Access' },
-  { id: 'exchange', label: 'Exchange' },
   { id: 'claude', label: 'Claude Config' },
   { id: 'autopilot', label: 'Autopilot' },
   { id: 'about', label: 'About' },
@@ -56,9 +54,6 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   const [favoriteFolders, setFavoriteFolders] = useState<string[]>([])
   const [loaded, setLoaded] = useState(false)
 
-  // Exchange settings (persisted by save())
-  const [relayHubClones, setRelayHubClones] = useState<string[]>([])
-  const [relayHubPollSec, setRelayHubPollSec] = useState(120)
 
   // Autopilot settings (persisted by save())
   const [apProvider, setApProvider] = useState<'anthropic' | 'openrouter'>('anthropic')
@@ -121,8 +116,6 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
       setApModel(s.autopilotPlannerModel ?? 'claude-sonnet-5')
       setApCostCap(s.autopilotDefaultCostCap ?? 1.0)
       setApMaxIter(s.autopilotDefaultMaxIterations ?? 40)
-      setRelayHubClones(s.relayHubClones ?? [])
-      setRelayHubPollSec(s.relayHubPollSec ?? 120)
       setLoaded(true)
     })
     window.api.claudeConfigRead().then((cfg) => {
@@ -225,8 +218,6 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
     window.api.settingsSet('autopilotPlannerModel', apModel)
     window.api.settingsSet('autopilotDefaultCostCap', apCostCap)
     window.api.settingsSet('autopilotDefaultMaxIterations', apMaxIter)
-    window.api.settingsSet('relayHubClones', relayHubClones)
-    window.api.settingsSet('relayHubPollSec', relayHubPollSec)
     onClose()
   }
 
@@ -302,15 +293,6 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
             tsStatus={tsStatus} tsBusy={tsBusy} tsError={tsError}
             onTailscaleServeToggle={(v) => { void handleTailscaleServeToggle(v) }}
             favoriteFolders={favoriteFolders} onFavoriteFoldersChange={setFavoriteFolders}
-          />
-        )
-      case 'exchange':
-        return (
-          <ExchangePane
-            hubClones={relayHubClones}
-            onHubClonesChange={setRelayHubClones}
-            pollSec={relayHubPollSec}
-            onPollSecChange={setRelayHubPollSec}
           />
         )
       case 'claude':

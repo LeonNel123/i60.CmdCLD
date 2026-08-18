@@ -30,14 +30,6 @@ import { AnthropicClient, OpenRouterClient } from './autopilot/api-client'
 import { createDeterministicAttachDraft, createLlmAttachDraft } from './autopilot/attach-session'
 import type { AttachSessionStatus } from './autopilot/attach-types'
 import { loadBudget, getSnapshot as getBudgetSnapshot, setProjectCap, setGlobalCap, resetTodaySpend } from './autopilot/budget-tracker'
-import { RelayManager } from './relay/relay-manager'
-import { RelayStore } from './relay/relay-store'
-import { SessionIdleWatcher } from './relay/idle-watcher'
-import { SessionTokens } from './relay/session-tokens'
-import { startMcpServer } from './relay/mcp-server'
-import { HubNudgeWatcher, splitTarget } from './relay/hub-nudges'
-import { composeInHub } from './relay/compose'
-import type { RelayRequest, RelaySendResult, RelayState } from './relay/types'
 import { detectAgentCliAvailability } from './agent-cli-detect'
 import {
   buildAgentLaunchCommand,
@@ -133,38 +125,6 @@ log('Single instance lock acquired')
 
 let ptyManager: PtyManager
 let autopilotPtyWriter: QueuedPtyWriter
-let relayManager: RelayManager
-let relayIdleWatcher: SessionIdleWatcher
-let hubNudgeWatcher: HubNudgeWatcher
-
-// One send entry for both the UI and the MCP tool: targets naming another
-// machine ("session@WORKBOX") go out via the hub; everything else is local.
-async function routeRelaySend(req: RelayRequest): Promise<RelaySendResult> {
-  const target = splitTarget(req.to)
-  // Explicit foreign machine pin: hub, always.
-  if (target.machine && target.machine.toLowerCase() !== os.hostname().toLowerCase()) {
-    const res = await hubNudgeWatcher.sendViaHub(req)
-    return { ok: res.ok, status: res.ok ? 'queued' : 'refused', id: '', error: res.error }
-  }
-  // Bare name: the project is the key. A local session wins; otherwise the
-  // nudge rides the hub addressed by name alone and whichever machine hosts
-  // that project delivers it. If the document isn't hub-resident the hub
-  // can't carry it, so it falls back to the local queue.
-  if (!target.machine) {
-    const needle = req.to.trim().toLowerCase()
-    const local = ptyManager.listAll().some((m) => m.id === req.to || m.name.toLowerCase() === needle)
-    if (!local) {
-      const res = await hubNudgeWatcher.sendViaHub(req)
-      if (res.ok) return { ok: true, status: 'queued', id: '' }
-    }
-  }
-  return relayManager.send(req)
-}
-const relayTokens = new SessionTokens()
-// Set once the relay MCP server binds — awaited in whenReady before the
-// first window is created, so every pty spawn sees it. Stays '' only if the
-// server failed to start, in which case sessions omit the url var.
-let relayMcpUrl = ''
 let store: Store
 let recentDB: RecentDB
 let settings: Settings
@@ -267,12 +227,8 @@ function broadcastAutopilotCouncilUpdate(terminalId: string, state: CouncilState
 }
 
 try {
-  ptyManager = new PtyManager((id) => ({
-    CMDCLD_SESSION_ID: relayTokens.issue(id),
-    ...(relayMcpUrl ? { CMDCLD_RELAY_URL: relayMcpUrl } : {}),
-  }))
+  ptyManager = new PtyManager()
   ptyManager.on('exit', ({ id }: { id: string }) => clearAttachSession(id))
-  ptyManager.on('exit', ({ id }: { id: string }) => relayTokens.revoke(id))
   autopilotPtyWriter = new QueuedPtyWriter((terminalId, data) => {
     ptyManager.write(terminalId, data)
   }, {
@@ -293,52 +249,6 @@ try {
     },
   })
 
-  // Cross-session relay (CMDCLD-REQ-001 phase 1): idle tracking for every
-  // session, persisted queue, stage-only delivery through the shared pty
-  // writer so relay and autopilot writes stay serialized per terminal.
-  relayIdleWatcher = new SessionIdleWatcher()
-  // 'created' matters as much as 'data': a just-spawned pty is silent, and
-  // without the spawn record the watcher would call it idle and let a queued
-  // relay land on the shell prompt before `claude` is even typed.
-  ptyManager.on('created', ({ id }: { id: string }) => relayIdleWatcher.noteStart(id))
-  ptyManager.on('data', ({ id }: { id: string }) => relayIdleWatcher.noteData(id))
-  ptyManager.on('exit', ({ id }: { id: string }) => relayIdleWatcher.noteExit(id))
-  relayManager = new RelayManager({
-    listSessions: () => ptyManager.listAll().map((m) => ({ id: m.id, name: m.name, projectPath: m.path })),
-    isIdle: (terminalId) => relayIdleWatcher.isIdle(terminalId),
-    writeStaged: (terminalId, data) => autopilotPtyWriter.write(terminalId, data),
-    store: new RelayStore(join(app.getPath('userData'), 'relay.json')),
-    // Auto-submit only where the orchestrator genuinely knows the session is
-    // at a prompt: a classic autopilot at a WAITING checkpoint. Everything
-    // else — including PRO/Council and all plain sessions — stays stage-only.
-    canAutoSubmit: (terminalId) => {
-      const state = autopilots.get(terminalId)?.state
-      return state?.phase === 'executing' && state.lastMarker?.kind === 'WAITING'
-    },
-  })
-  relayManager.on('update', (state: RelayState) => {
-    for (const wcId of registry.list().map((w) => w.id)) {
-      const wc = registry.getWebContents(wcId)
-      if (wc) wc.send('relay:update', state)
-    }
-  })
-  setInterval(() => { void relayManager.tick() }, 1000)
-
-  // Cross-machine nudges ride the exchange hubs (git as transport). Polls the
-  // configured hub clones and lands foreign nudges in the local inbox.
-  hubNudgeWatcher = new HubNudgeWatcher({
-    hubClones: () => settings.get('relayHubClones'),
-    listLocalSessionNames: () => ptyManager.listAll().map((m) => m.name),
-    deliver: async (n) => {
-      const res = relayManager.send(n)
-      return (await res).ok
-    },
-    log: (msg) => log(msg),
-  })
-  // Always running: an empty clone list makes each poll a no-op, and a
-  // settings change takes effect without an app restart.
-  hubNudgeWatcher.start(Math.max(30, settings.get('relayHubPollSec')) * 1000)
-  setTimeout(() => { void hubNudgeWatcher.pollOnce() }, 10_000)
 
   // Auto-detect editors and set default if not configured
   const availableEditors = detectEditors()
@@ -885,11 +795,6 @@ ipcMain.handle('settings:getAll', () => {
 
 ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
   settings.set(key as any, value as any)
-  // Hub polling picks up interval changes immediately; the clone list is read
-  // live on every poll, so only the timer needs restarting.
-  if (key === 'relayHubPollSec') {
-    hubNudgeWatcher.start(Math.max(30, settings.get('relayHubPollSec')) * 1000)
-  }
 })
 
 ipcMain.handle('agent-cli:availability', () => detectAgentCliAvailability())
@@ -1030,103 +935,6 @@ ipcMain.handle('autopilot:getStatus', (_event, terminalId: string) => {
   const pro = autopilotPros.get(terminalId)
   if (pro) return pro.getState()
   return autopilots.get(terminalId)?.state ?? null
-})
-// `from` is host-stamped from the sender terminal on this path too (same
-// rule as the MCP tool): the renderer names the sending session, never the
-// sender label that lands in the nudge.
-ipcMain.handle('relay:send', (_event, req: { fromTerminalId: string; to: string; subject: string; path: string }) => {
-  const from = ptyManager.getMeta(req.fromTerminalId)?.name
-  if (!from) {
-    return { ok: false, status: 'refused', id: '', error: 'sender session no longer exists' }
-  }
-  const request: RelayRequest = { from, to: req.to, subject: req.subject, path: req.path }
-  return routeRelaySend(request)
-})
-// Compose-and-send: author the document into a hub, push, then nudge. The
-// sender identity is host-stamped from the terminal, like every send path.
-ipcMain.handle('relay:compose', async (_event, req: { fromTerminalId: string; to: string; subject: string; body: string; hubClone: string }) => {
-  const meta = ptyManager.getMeta(req.fromTerminalId)
-  if (!meta) return { ok: false, error: 'sender session no longer exists' }
-  const composed = await composeInHub({
-    hubClone: req.hubClone, fromName: meta.name, fromProjectPath: meta.path,
-    to: req.to, subject: req.subject, body: req.body,
-  })
-  if (!composed.ok || !composed.path) return composed
-  const sent = await routeRelaySend({ from: meta.name, to: req.to, subject: req.subject, path: composed.path })
-  return { ok: sent.ok, fileName: composed.fileName, path: composed.path, sendStatus: sent.status, error: sent.error }
-})
-// Target autocomplete: machine names from the hubs' MACHINES.md headings
-// ("## WORKBOX — …"), plus every target the relay has successfully used.
-ipcMain.handle('relay:targetSuggestions', () => {
-  const machines = new Set<string>()
-  for (const clone of settings.get('relayHubClones')) {
-    try {
-      const md = readFileSync(join(clone, 'MACHINES.md'), 'utf8')
-      for (const m of md.matchAll(/^##\s+([A-Za-z0-9_.-]+)/gm)) machines.add(m[1])
-    } catch { /* no MACHINES.md — nothing to suggest */ }
-  }
-  machines.delete(os.hostname())
-  const pastTargets = new Set<string>()
-  for (const entry of relayManager.getState().log) {
-    if ((entry.status === 'delivered' || entry.status === 'queued') && entry.to) pastTargets.add(entry.to)
-  }
-  return { machines: [...machines], pastTargets: [...pastTargets] }
-})
-ipcMain.handle('relay:inboxMarkRead', (_event, terminalId: string) => {
-  relayManager.inboxMarkRead(terminalId)
-})
-ipcMain.handle('relay:inboxDismiss', (_event, id: string) => {
-  return relayManager.inboxDismiss(id)
-})
-ipcMain.handle('relay:inboxStage', (_event, id: string) => {
-  return relayManager.inboxStage(id)
-})
-ipcMain.handle('relay:state', () => {
-  return relayManager.getState()
-})
-ipcMain.handle('relay:sessions', () => {
-  return ptyManager.listAll().map((m) => ({ id: m.id, name: m.name }))
-})
-ipcMain.handle('relay:cancel', (_event, id: string) => {
-  return relayManager.cancel(id)
-})
-// File picker for the relay document. Opens in the sender's outbound/ (the
-// only valid location) so the common case is a click, not a typed path.
-ipcMain.handle('relay:selectDocument', async (event, projectPath: string) => {
-  const windowId = getWindowIdFromEvent(event)
-  const win = windowId ? registry.get(windowId) : undefined
-  if (!win) return null
-  const outbound = join(projectPath, 'docs', 'integration', 'outbound')
-  const result = await dialog.showOpenDialog(win, {
-    title: 'Select the document to point at',
-    defaultPath: existsSync(outbound) ? outbound : projectPath,
-    properties: ['openFile'],
-    filters: [
-      { name: 'Markdown', extensions: ['md'] },
-      { name: 'All files', extensions: ['*'] },
-    ],
-  })
-  return result.canceled ? null : result.filePaths[0]
-})
-ipcMain.handle('relay:checkAdoption', (_event, projectPath: string) => {
-  try {
-    return existsSync(join(projectPath, 'docs', 'integration'))
-  } catch {
-    return false
-  }
-})
-// Welcome affordance (CMDCLD-REQ-001-response §4): the adoption invite is
-// UI-triggered, never automatic — and the staged text is a fixed constant, so
-// this path can't be repurposed to inject arbitrary content.
-const ADOPTION_INVITE_TEXT =
-  "[cmdcld invite] This workspace has no docs/integration/ exchange folders. " +
-  "To adopt the cross-project exchange protocol (outbound/inbound request docs, ack-closed threads), " +
-  "load the 'exchange' skill from the cmdcld-exchange plugin and follow its Adopting section. " +
-  "Adoption is this repo's own act — create the folders and README here if you agree."
-ipcMain.handle('relay:stageInvite', async (_event, terminalId: string) => {
-  if (!ptyManager.has(terminalId)) return { ok: false, error: 'Terminal session not found.' }
-  await autopilotPtyWriter.write(terminalId, ADOPTION_INVITE_TEXT)
-  return { ok: true }
 })
 ipcMain.handle('autopilot:inspectOutput', (_event, terminalId: string) => {
   return inspectAutopilotOutput(ptyManager.getScrollback(terminalId))
@@ -1634,29 +1442,6 @@ ipcMain.handle('store:save', (_event, state) => {
 app.whenReady().then(async () => {
   log('App ready — creating first window')
 
-  // Relay MCP endpoint (CMDCLD-REQ-001 phase 2) — 127.0.0.1 only, always on.
-  // Sessions find it via CMDCLD_RELAY_URL + authenticate via CMDCLD_SESSION_ID
-  // (both injected into every pty's env at spawn). Awaited before the first
-  // window exists: ptys only spawn on renderer request, so binding first
-  // guarantees every session — including ones restored at startup — gets the
-  // relay env.
-  try {
-    const handle = await startMcpServer({
-      resolveToken: (token) => relayTokens.resolve(token),
-      sessionName: (terminalId) => ptyManager.getMeta(terminalId)?.name ?? null,
-      listSessions: () => ptyManager.listAll().map((m) => ({
-        id: m.id,
-        name: m.name,
-        projectPath: m.path,
-        idle: relayIdleWatcher.isIdle(m.id),
-      })),
-      sendRelay: (args) => routeRelaySend(args),
-    })
-    relayMcpUrl = handle.url
-    log(`Relay MCP server listening at ${handle.url}`)
-  } catch (e) {
-    log(`Relay MCP server failed to start: ${e}`)
-  }
 
   // macOS application menu with standard shortcuts (Cmd+Q, Cmd+W, Edit menu)
   if (process.platform === 'darwin') {
