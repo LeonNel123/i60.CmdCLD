@@ -52,6 +52,9 @@ export interface RelayInboxItem {
   ts: number
   // Session the nudge was delivered to.
   terminalId: string
+  // Project of that session at delivery time — lets the sidebar badge a
+  // project whose session has since closed.
+  projectPath?: string
   read: boolean
 }
 

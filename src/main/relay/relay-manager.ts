@@ -27,6 +27,7 @@ import {
 export interface RelaySessionInfo {
   id: string
   name: string
+  projectPath?: string
 }
 
 export interface RelayManagerDeps {
@@ -320,9 +321,10 @@ export class RelayManager extends EventEmitter {
   // Envelope delivery: the nudge sits in the target session's inbox until a
   // human stages, opens, or dismisses it. This is what flashes the envelope.
   private deliverToInbox(item: RelayItem, terminalId: string): RelaySendResult {
+    const projectPath = this.deps.listSessions().find((s) => s.id === terminalId)?.projectPath
     this.inbox.push({
       id: item.id, from: item.from, subject: item.subject, path: item.path,
-      ts: this.now(), terminalId, read: false,
+      ts: this.now(), terminalId, projectPath, read: false,
     })
     this.appendLog({
       id: item.id, ts: this.now(), from: item.from, to: item.to,

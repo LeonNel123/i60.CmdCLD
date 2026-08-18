@@ -289,7 +289,7 @@ try {
   ptyManager.on('data', ({ id }: { id: string }) => relayIdleWatcher.noteData(id))
   ptyManager.on('exit', ({ id }: { id: string }) => relayIdleWatcher.noteExit(id))
   relayManager = new RelayManager({
-    listSessions: () => ptyManager.listAll().map((m) => ({ id: m.id, name: m.name })),
+    listSessions: () => ptyManager.listAll().map((m) => ({ id: m.id, name: m.name, projectPath: m.path })),
     isIdle: (terminalId) => relayIdleWatcher.isIdle(terminalId),
     writeStaged: (terminalId, data) => autopilotPtyWriter.write(terminalId, data),
     store: new RelayStore(join(app.getPath('userData'), 'relay.json')),
@@ -320,11 +320,10 @@ try {
     },
     log: (msg) => log(msg),
   })
-  if (settings.get('relayHubClones').length > 0) {
-    hubNudgeWatcher.start(Math.max(30, settings.get('relayHubPollSec')) * 1000)
-    // First pass shortly after startup rather than a full interval away.
-    setTimeout(() => { void hubNudgeWatcher.pollOnce() }, 10_000)
-  }
+  // Always running: an empty clone list makes each poll a no-op, and a
+  // settings change takes effect without an app restart.
+  hubNudgeWatcher.start(Math.max(30, settings.get('relayHubPollSec')) * 1000)
+  setTimeout(() => { void hubNudgeWatcher.pollOnce() }, 10_000)
 
   // Auto-detect editors and set default if not configured
   const availableEditors = detectEditors()
@@ -870,6 +869,11 @@ ipcMain.handle('settings:getAll', () => {
 
 ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
   settings.set(key as any, value as any)
+  // Hub polling picks up interval changes immediately; the clone list is read
+  // live on every poll, so only the timer needs restarting.
+  if (key === 'relayHubPollSec') {
+    hubNudgeWatcher.start(Math.max(30, settings.get('relayHubPollSec')) * 1000)
+  }
 })
 
 ipcMain.handle('agent-cli:availability', () => detectAgentCliAvailability())

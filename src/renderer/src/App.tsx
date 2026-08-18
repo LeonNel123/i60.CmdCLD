@@ -116,6 +116,9 @@ export default function App() {
   const [relayDialogFor, setRelayDialogFor] = useState<string | null>(null)  // terminalId
   // Unread relay-inbox nudges per session; drives the flashing envelope.
   const [relayUnreadByTerminal, setRelayUnreadByTerminal] = useState<Map<string, number>>(new Map())
+  // Same, keyed by project path — badges sidebar favorites/recents rows whose
+  // session has closed since delivery.
+  const [relayUnreadByPath, setRelayUnreadByPath] = useState<Map<string, number>>(new Map())
   const [autopilotDefaults, setAutopilotDefaults] = useState({ costCap: 1.0, maxIterations: 40 })
   // Terminal font is a global setting applied to every xterm panel. Held here
   // so a change in Settings live-applies to all open terminals via props.
@@ -134,10 +137,14 @@ export default function App() {
   useEffect(() => {
     const apply = (s: RelayState): void => {
       const counts = new Map<string, number>()
+      const byPath = new Map<string, number>()
       for (const n of s.inbox) {
-        if (!n.read) counts.set(n.terminalId, (counts.get(n.terminalId) ?? 0) + 1)
+        if (n.read) continue
+        counts.set(n.terminalId, (counts.get(n.terminalId) ?? 0) + 1)
+        if (n.projectPath) byPath.set(n.projectPath, (byPath.get(n.projectPath) ?? 0) + 1)
       }
       setRelayUnreadByTerminal(counts)
+      setRelayUnreadByPath(byPath)
     }
     window.api.relayState().then(apply).catch(() => {})
     return window.api.onRelayUpdate(apply)
@@ -866,6 +873,8 @@ export default function App() {
         terminals={terminals}
         viewMode={viewMode}
         busyTerminals={busyTerminals}
+        relayUnreadByTerminal={relayUnreadByTerminal}
+        relayUnreadByPath={relayUnreadByPath}
         onSelectTerminal={handleSelectTerminal}
         onShowAll={handleShowAll}
         recentFolders={recentFolders}
