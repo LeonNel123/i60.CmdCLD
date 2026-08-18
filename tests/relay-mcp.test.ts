@@ -111,7 +111,7 @@ describe('handleMcpMessage', () => {
     expect((deps.sendCalls[0] as { from: string }).from).toBe('release-manager')
     const out = resultOf(res)
     expect(out.isError).toBeFalsy()
-    expect(out.content[0].text).toContain('staged')
+    expect(out.content[0].text).toContain('inbox')
   })
 
   it('surfaces relay refusals as tool errors', async () => {
