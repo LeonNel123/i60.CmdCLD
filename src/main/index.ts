@@ -35,7 +35,8 @@ import { RelayStore } from './relay/relay-store'
 import { SessionIdleWatcher } from './relay/idle-watcher'
 import { SessionTokens } from './relay/session-tokens'
 import { startMcpServer } from './relay/mcp-server'
-import type { RelayRequest, RelayState } from './relay/types'
+import { HubNudgeWatcher, splitTarget } from './relay/hub-nudges'
+import type { RelayRequest, RelaySendResult, RelayState } from './relay/types'
 import { detectAgentCliAvailability } from './agent-cli-detect'
 import {
   buildAgentLaunchCommand,
@@ -132,6 +133,18 @@ let ptyManager: PtyManager
 let autopilotPtyWriter: QueuedPtyWriter
 let relayManager: RelayManager
 let relayIdleWatcher: SessionIdleWatcher
+let hubNudgeWatcher: HubNudgeWatcher
+
+// One send entry for both the UI and the MCP tool: targets naming another
+// machine ("session@WORKBOX") go out via the hub; everything else is local.
+async function routeRelaySend(req: RelayRequest): Promise<RelaySendResult> {
+  const target = splitTarget(req.to)
+  if (target.machine && target.machine.toLowerCase() !== os.hostname().toLowerCase()) {
+    const res = await hubNudgeWatcher.sendViaHub(req)
+    return { ok: res.ok, status: res.ok ? 'queued' : 'refused', id: '', error: res.error }
+  }
+  return relayManager.send(req)
+}
 const relayTokens = new SessionTokens()
 // Set once the relay MCP server binds — awaited in whenReady before the
 // first window is created, so every pty spawn sees it. Stays '' only if the
@@ -295,6 +308,23 @@ try {
     }
   })
   setInterval(() => { void relayManager.tick() }, 1000)
+
+  // Cross-machine nudges ride the exchange hubs (git as transport). Polls the
+  // configured hub clones and lands foreign nudges in the local inbox.
+  hubNudgeWatcher = new HubNudgeWatcher({
+    hubClones: () => settings.get('relayHubClones'),
+    listLocalSessionNames: () => ptyManager.listAll().map((m) => m.name),
+    deliver: async (n) => {
+      const res = relayManager.send(n)
+      return (await res).ok
+    },
+    log: (msg) => log(msg),
+  })
+  if (settings.get('relayHubClones').length > 0) {
+    hubNudgeWatcher.start(Math.max(30, settings.get('relayHubPollSec')) * 1000)
+    // First pass shortly after startup rather than a full interval away.
+    setTimeout(() => { void hubNudgeWatcher.pollOnce() }, 10_000)
+  }
 
   // Auto-detect editors and set default if not configured
   const availableEditors = detectEditors()
@@ -989,7 +1019,16 @@ ipcMain.handle('relay:send', (_event, req: { fromTerminalId: string; to: string;
     return { ok: false, status: 'refused', id: '', error: 'sender session no longer exists' }
   }
   const request: RelayRequest = { from, to: req.to, subject: req.subject, path: req.path }
-  return relayManager.send(request)
+  return routeRelaySend(request)
+})
+ipcMain.handle('relay:inboxMarkRead', (_event, terminalId: string) => {
+  relayManager.inboxMarkRead(terminalId)
+})
+ipcMain.handle('relay:inboxDismiss', (_event, id: string) => {
+  return relayManager.inboxDismiss(id)
+})
+ipcMain.handle('relay:inboxStage', (_event, id: string) => {
+  return relayManager.inboxStage(id)
 })
 ipcMain.handle('relay:state', () => {
   return relayManager.getState()
@@ -1516,7 +1555,7 @@ app.whenReady().then(async () => {
         projectPath: m.path,
         idle: relayIdleWatcher.isIdle(m.id),
       })),
-      sendRelay: (args) => relayManager.send(args),
+      sendRelay: (args) => routeRelaySend(args),
     })
     relayMcpUrl = handle.url
     log(`Relay MCP server listening at ${handle.url}`)

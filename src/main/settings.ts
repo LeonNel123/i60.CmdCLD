@@ -30,6 +30,10 @@ export interface AppSettings {
   autopilotPlannerModel: string
   autopilotDefaultCostCap: number
   autopilotDefaultMaxIterations: number
+  /** Local clone paths of exchange hubs polled for cross-machine relay nudges. */
+  relayHubClones: string[]
+  /** Hub nudge poll interval in seconds. */
+  relayHubPollSec: number
 }
 
 const DEFAULTS: AppSettings = {
@@ -55,6 +59,8 @@ const DEFAULTS: AppSettings = {
   autopilotPlannerModel: 'claude-sonnet-5',
   autopilotDefaultCostCap: 1.0,
   autopilotDefaultMaxIterations: 40,
+  relayHubClones: [],
+  relayHubPollSec: 120,
 }
 
 export class Settings {
