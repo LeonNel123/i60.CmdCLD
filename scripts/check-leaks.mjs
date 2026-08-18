@@ -91,7 +91,9 @@ let hits
 if (mode === '--staged') {
   hits = scanDiff(git('diff', '--cached', '-U0'), patterns, 'staged')
 } else if (mode === '--push') {
-  const range = ZEROS.test(b) ? [a, '-n', '100'] : [`${b}..${a}`]
+  // New-branch push (remote sha is all zeros): scan only commits no remote has
+  // yet — history already pushed elsewhere was gated (or grandfathered) then.
+  const range = ZEROS.test(b) ? [a, '--not', '--remotes'] : [`${b}..${a}`]
   hits = scanDiff(git('log', '-p', '-U0', '--format=%h %s%n%b', ...range), patterns, 'push')
 } else {
   hits = scanTrackedFiles(patterns)
