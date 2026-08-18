@@ -137,8 +137,7 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
       const res = await window.api.relayCompose({ fromTerminalId, to, subject, body, hubClone })
       if (res.ok) {
         onNotify(`Committed ${res.fileName} to the hub — nudge ${res.sendStatus === 'queued' ? 'queued' : 'delivered'}`, 'info')
-        setSubject('')
-        setBody('')
+        onClose()
       } else {
         onNotify(`Compose failed: ${res.error ?? 'unknown reason'}`, 'warn')
       }
@@ -147,7 +146,7 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
     } finally {
       setSending(false)
     }
-  }, [composeReady, fromTerminalId, to, subject, body, hubClone, onNotify])
+  }, [composeReady, fromTerminalId, to, subject, body, hubClone, onNotify, onClose])
 
   const handleSendExisting = useCallback(async () => {
     if (!to || !subject.trim() || !path.trim() || sending) return
@@ -156,10 +155,10 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
       const res = await window.api.relaySend({ fromTerminalId, to, subject, path })
       if (res.status === 'delivered') {
         onNotify('Nudge delivered to the target inbox', 'info')
-        setSubject(''); setPath('')
+        onClose()
       } else if (res.status === 'queued') {
         onNotify('Nudge queued — delivers when the target resolves', 'info')
-        setSubject(''); setPath('')
+        onClose()
       } else {
         onNotify(`Relay refused: ${res.error ?? 'unknown reason'}`, 'warn')
       }
@@ -168,7 +167,7 @@ export function RelayDialog({ fromName, fromTerminalId, fromPath, onClose, onNot
     } finally {
       setSending(false)
     }
-  }, [to, subject, path, sending, fromTerminalId, onNotify])
+  }, [to, subject, path, sending, fromTerminalId, onNotify, onClose])
 
   // Per-session view: this session's log is what it sent (from-name match)
   // plus what was delivered into it (terminalId).
