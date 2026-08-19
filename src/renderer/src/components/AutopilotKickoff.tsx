@@ -187,7 +187,7 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
             <select
               value={reviewerCli}
               onChange={(e) => setReviewerCli(e.target.value as AgentCli)}
-              style={{ background: '#0d1117', color: '#ccc', border: '1px solid #2d2d2d', borderRadius: 4, padding: '2px 6px', fontSize: 11 }}
+              style={{ background: '#0d1117', color: '#ccc', border: '1px solid #2d2d2d', borderRadius: 4, padding: '2px 6px', fontSize: 11, fontFamily: 'inherit' }}
             >
               {AGENT_CLIS.filter((cli) => cli !== agentCli).map((cli) => (
                 <option key={cli} value={cli}>{AGENT_CLI_LABELS[cli]}</option>
@@ -199,7 +199,7 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
             <select
               value={intensity}
               onChange={(e) => setIntensity(e.target.value as CouncilIntensity)}
-              style={{ width: 140, background: '#0d1117', color: '#ccc', border: '1px solid #2d2d2d', borderRadius: 4, padding: '4px 8px', fontSize: 12 }}
+              style={{ width: 140, background: '#0d1117', color: '#ccc', border: '1px solid #2d2d2d', borderRadius: 4, padding: '4px 8px', fontSize: 12, fontFamily: 'inherit' }}
             >
               <option value="light">Light</option>
               <option value="balanced">Balanced</option>
@@ -239,11 +239,11 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
       {error && <div style={{ color: '#f87171', fontSize: 11 }}>{error}</div>}
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
         <button onClick={onCancel} disabled={busy}
-          style={{ background: '#333', border: 'none', color: '#ccc', cursor: 'pointer', borderRadius: 4, padding: '6px 12px', fontSize: 11 }}>
+          style={{ background: '#333', border: 'none', color: '#ccc', cursor: 'pointer', borderRadius: 4, padding: '6px 12px', fontSize: 11, fontFamily: 'inherit' }}>
           Cancel
         </button>
         <button onClick={start} disabled={busy || !idea.trim() || !guardrail.canStart}
-          style={{ background: '#a78bfa', border: 'none', color: '#000', cursor: 'pointer', borderRadius: 4, padding: '6px 12px', fontSize: 11, fontWeight: 600, opacity: busy || !idea.trim() || !guardrail.canStart ? 0.5 : 1 }}>
+          style={{ background: '#a78bfa', border: 'none', color: '#000', cursor: 'pointer', borderRadius: 4, padding: '6px 12px', fontSize: 11, fontWeight: 600, fontFamily: 'inherit', opacity: busy || !idea.trim() || !guardrail.canStart ? 0.5 : 1 }}>
           {busy ? 'Starting…' : 'Start'}
         </button>
       </div>

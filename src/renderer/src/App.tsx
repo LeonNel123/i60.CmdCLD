@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Responsive, WidthProvider, Layout } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
@@ -17,6 +17,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { CommandPalette } from './components/CommandPalette'
 import { AutopilotPanel } from './components/AutopilotPanel'
 import { AutopilotKickoff } from './components/AutopilotKickoff'
+import { TaskBar } from './components/TaskBar'
 import { AppWindow, Star, FolderSearch, Code, Copy, Trash2, Sparkles, TerminalSquare, Shield } from './components/icons'
 import { assignColor } from './utils/colors'
 import { calculateLayout, getRowCount } from './utils/grid-layout'
@@ -39,7 +40,7 @@ import {
   resolveTerminalFontFamily,
 } from '../../shared/terminal-font'
 import { DEFAULT_APP_FONT_FAMILY, resolveAppFontFamily } from '../../shared/app-font'
-import { DEFAULT_UI_SCALE_PCT, clampUiScalePct, chromeScale } from '../../shared/ui-scale'
+import { DEFAULT_UI_SCALE_PCT, clampUiScalePct, chromeScale, uiScaleFactor } from '../../shared/ui-scale'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
@@ -60,13 +61,33 @@ interface TerminalEntry {
 
 type ViewMode = { type: 'grid' } | { type: 'focused'; terminalId: string }
 
+// The grid lays out only the visible terminals — minimized ones live in the
+// TaskBar and must not occupy (or count toward) grid cells.
+function layoutsForVisible(list: TerminalEntry[], minimized: Set<string>): Layout[] {
+  const visible = list.filter((t) => !minimized.has(t.id))
+  return calculateLayout(visible.length).map((pos, i) => ({ ...pos, i: visible[i].id }))
+}
+
 export default function App() {
   const [terminals, setTerminals] = useState<TerminalEntry[]>([])
   const [layouts, setLayouts] = useState<Layout[]>([])
+  // Window-style minimize: minimized terminals leave the grid (the rest
+  // reflow) and live as chips in the bottom TaskBar. Their ptys stay alive in
+  // the main process; the panel simply unmounts and replays scrollback on
+  // restore — the same mechanics as switching grid <-> focused view.
+  const [minimizedIds, setMinimizedIds] = useState<Set<string>>(new Set())
+  // Minimized terminals that went busy -> idle while tucked away (finished
+  // something); their taskbar chip asks for attention until restored.
+  const [attentionIds, setAttentionIds] = useState<Set<string>>(new Set())
+  // Ref mirror so setTerminals updaters and the activity listener see the
+  // current set without joining every dependency array.
+  const minimizedRef = useRef(minimizedIds)
+  minimizedRef.current = minimizedIds
   const [closingId, setClosingId] = useState<string | null>(null)
   const [closeWarning, setCloseWarning] = useState<string | null>(null)
   const [showCloseAll, setShowCloseAll] = useState(false)
   const [closeAllWarning, setCloseAllWarning] = useState<string | null>(null)
+  const [showCloseWindow, setShowCloseWindow] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>({ type: 'grid' })
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
@@ -88,7 +109,7 @@ export default function App() {
   const [favoriteFolders, setFavoriteFolders] = useState<string[]>([])
   const [restoreSessionEnabled, setRestoreSessionEnabled] = useState(false)
   const [restoreSessionResume, setRestoreSessionResume] = useState(false)
-  const [savedSessionProjects, setSavedSessionProjects] = useState<Array<{ path: string; agentCli?: AgentCli; claudeArgs: string; codexArgs?: string; grokArgs?: string; isPlainShell: boolean }>>([])
+  const [savedSessionProjects, setSavedSessionProjects] = useState<Array<{ path: string; agentCli?: AgentCli; claudeArgs: string; codexArgs?: string; grokArgs?: string; isPlainShell: boolean; minimized?: boolean }>>([])
   const [welcomeDismissed, setWelcomeDismissed] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ path: string; x: number; y: number } | null>(null)
   const [quickShellMenu, setQuickShellMenu] = useState<{ x: number; y: number } | null>(null)
@@ -110,6 +131,7 @@ export default function App() {
   // and the .ui-scaled class. Terminals never carry that class, so unaffected.
   const [uiScalePct, setUiScalePct] = useState<number>(DEFAULT_UI_SCALE_PCT)
 
+
   // Push the interface font onto :root as --app-font-family; body and every
   // element using font-family: inherit picks it up. Runs on mount and whenever
   // the setting changes (after Settings is saved/closed).
@@ -117,10 +139,12 @@ export default function App() {
     document.documentElement.style.setProperty('--app-font-family', appFontFamily)
   }, [appFontFamily])
 
-  // Push the interface scale onto :root as --ui-scale (a zoom factor). 100% is
-  // rebased to match the terminal, so this is chromeScale, not the raw percent.
+  // Push the interface scale onto :root as zoom factors. --ui-scale (sidebar &
+  // 12px-base chrome) is rebased so 100% matches the terminal; --ui-scale-plain
+  // (menus/dialogs authored at final size) is the raw percentage only.
   useEffect(() => {
     document.documentElement.style.setProperty('--ui-scale', String(chromeScale(uiScalePct)))
+    document.documentElement.style.setProperty('--ui-scale-plain', String(uiScaleFactor(uiScalePct)))
   }, [uiScalePct])
 
   // Track terminal busy/idle state + notification sound
@@ -134,6 +158,7 @@ export default function App() {
     toastTimerRef.current = setTimeout(() => setToast(null), 3000)
   }, [])
 
+
   useEffect(() => {
     const audio = new Audio(notificationSound)
     audio.volume = 0.3
@@ -144,6 +169,11 @@ export default function App() {
         else next.delete(id)
         return next
       })
+      // A minimized terminal going idle just finished something the user
+      // can't see — flag its taskbar chip until it's restored.
+      if (!busy && minimizedRef.current.has(id)) {
+        setAttentionIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)))
+      }
       // Play notification when terminal goes idle (was busy, now idle)
       if (!busy && notifyRef.current) {
         audio.currentTime = 0
@@ -222,11 +252,12 @@ export default function App() {
         codexArgs: t.codexArgs ?? '',
         grokArgs: t.grokArgs ?? '',
         isPlainShell: t.isPlainShell ?? false,
+        minimized: minimizedIds.has(t.id),
       }))
       window.api.sessionSaveLast({ savedAt: Date.now(), projects }).catch(() => {})
     }, 1000)
     return () => clearTimeout(timer)
-  }, [terminals, restoreSessionEnabled])
+  }, [terminals, restoreSessionEnabled, minimizedIds])
 
   // Flush save on window close so the most recent terminals state is captured
   // even if the 1s autosave debounce hasn't fired yet.
@@ -240,12 +271,13 @@ export default function App() {
         codexArgs: t.codexArgs ?? '',
         grokArgs: t.grokArgs ?? '',
         isPlainShell: t.isPlainShell ?? false,
+        minimized: minimizedIds.has(t.id),
       }))
       void window.api.sessionSaveLast({ savedAt: Date.now(), projects })
     }
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
-  }, [terminals, restoreSessionEnabled])
+  }, [terminals, restoreSessionEnabled, minimizedIds])
 
   // While the close-terminal dialog is up, warn about work that would not be
   // reachable from another machine: uncommitted changes and unpushed commits.
@@ -265,10 +297,18 @@ export default function App() {
     return () => { cancelled = true }
   }, [closingId, terminals])
 
-  // Same warning for the close-all dialog, across every open project.
+  // Main asks us to confirm closing the whole window (in-app dialog instead
+  // of the old native message box). Reply comes via windowConfirmClose().
+  useEffect(() => {
+    const unsub = window.api.onWindowCloseRequest(() => setShowCloseWindow(true))
+    return unsub
+  }, [])
+
+  // Same warning for the close-all and close-window dialogs, across every
+  // open project.
   useEffect(() => {
     setCloseAllWarning(null)
-    if (!showCloseAll) return
+    if (!showCloseAll && !showCloseWindow) return
     let cancelled = false
     const paths = [...new Set(terminals.map((t) => t.path))]
     Promise.all(paths.map(async (p) => {
@@ -284,7 +324,7 @@ export default function App() {
       if (lines.length > 0) setCloseAllWarning(lines.join('\n'))
     })
     return () => { cancelled = true }
-  }, [showCloseAll, terminals])
+  }, [showCloseAll, showCloseWindow, terminals])
 
   // Listen for sessions created remotely
   useEffect(() => {
@@ -306,10 +346,7 @@ export default function App() {
         if (prev.length === 0 && defaultViewMode === 'focused') {
           setViewMode({ type: 'focused', terminalId: session.id })
         }
-        setLayouts(calculateLayout(next.length).map((pos, i) => ({
-          ...pos,
-          i: next[i].id,
-        })))
+        setLayouts(layoutsForVisible(next, minimizedRef.current))
         return next
       })
     })
@@ -337,10 +374,7 @@ export default function App() {
       setViewMode({ type: 'focused', terminalId: newEntry.id })
     }
 
-    const newLayouts = calculateLayout(newTerminals.length).map((pos, i) => ({
-      ...pos,
-      i: newTerminals[i].id,
-    }))
+    const newLayouts = layoutsForVisible(newTerminals, minimizedRef.current)
     setLayouts(newLayouts)
 
     window.api.recentAdd(folderPath).then(() => {
@@ -348,7 +382,8 @@ export default function App() {
     }).then((list) => {
       setRecentFolders(list)
     }).catch(() => {})
-  }, [defaultAgentCli, defaultViewMode, terminals])
+
+  }, [defaultAgentCli, defaultViewMode, terminals, showToast])
 
   // Start the folder-open flow (may show dialog or launch directly).
   // Pass agentOverride to force a specific CLI — used by the right-click
@@ -383,10 +418,7 @@ export default function App() {
       setViewMode({ type: 'focused', terminalId: newEntry.id })
     }
 
-    const newLayouts = calculateLayout(newTerminals.length).map((pos, i) => ({
-      ...pos,
-      i: newTerminals[i].id,
-    }))
+    const newLayouts = layoutsForVisible(newTerminals, minimizedRef.current)
     setLayouts(newLayouts)
   }, [defaultViewMode, terminals])
 
@@ -400,6 +432,8 @@ export default function App() {
     }
     setTerminals([])
     setLayouts([])
+    setMinimizedIds(new Set())
+    setAttentionIds(new Set())
     setViewMode({ type: 'grid' })
     setShowCloseAll(false)
   }, [terminals])
@@ -448,10 +482,7 @@ export default function App() {
     if (terminals.length === 0 && defaultViewMode === 'focused') {
       setViewMode({ type: 'focused', terminalId: newEntry.id })
     }
-    const newLayouts = calculateLayout(newTerminals.length).map((pos, i) => ({
-      ...pos,
-      i: newTerminals[i].id,
-    }))
+    const newLayouts = layoutsForVisible(newTerminals, minimizedRef.current)
     setLayouts(newLayouts)
     window.api.recentAdd(homeDir).then(() => {
       return window.api.recentList()
@@ -483,10 +514,7 @@ export default function App() {
         if (terminals.length === 0 && defaultViewMode === 'focused') {
           setViewMode({ type: 'focused', terminalId: newEntry.id })
         }
-        const newLayouts = calculateLayout(newTerminals.length).map((pos, i) => ({
-          ...pos,
-          i: newTerminals[i].id,
-        }))
+        const newLayouts = layoutsForVisible(newTerminals, minimizedRef.current)
         setLayouts(newLayouts)
         return
       }
@@ -548,10 +576,17 @@ export default function App() {
             }
       })
       const next = [...prev, ...newEntries]
-      if (prev.length === 0 && defaultViewMode === 'focused' && newEntries.length > 0) {
-        setViewMode({ type: 'focused', terminalId: newEntries[0].id })
+      // newEntries maps 1:1 onto savedSessionProjects — carry minimized over.
+      const restoredMinimized = newEntries
+        .filter((_, i) => savedSessionProjects[i]?.minimized)
+        .map((e) => e.id)
+      const nextMinimized = new Set([...minimizedRef.current, ...restoredMinimized])
+      if (restoredMinimized.length > 0) setMinimizedIds(nextMinimized)
+      const visibleNew = newEntries.filter((e) => !nextMinimized.has(e.id))
+      if (prev.length === 0 && defaultViewMode === 'focused' && visibleNew.length > 0) {
+        setViewMode({ type: 'focused', terminalId: visibleNew[0].id })
       }
-      setLayouts(calculateLayout(next.length).map((pos, i) => ({ ...pos, i: next[i].id })))
+      setLayouts(layoutsForVisible(next, nextMinimized))
       return next
     })
     for (const p of savedSessionProjects) {
@@ -594,12 +629,21 @@ export default function App() {
     const newTerminals = terminals.filter((t) => t.id !== closingId)
     setTerminals(newTerminals)
 
-    const newLayouts = calculateLayout(newTerminals.length).map((pos, i) => ({
-      ...pos,
-      i: newTerminals[i].id,
-    }))
+    const newLayouts = layoutsForVisible(newTerminals, minimizedRef.current)
     setLayouts(newLayouts)
     setClosingId(null)
+    setMinimizedIds((prev) => {
+      if (!prev.has(closingId)) return prev
+      const next = new Set(prev)
+      next.delete(closingId)
+      return next
+    })
+    setAttentionIds((prev) => {
+      if (!prev.has(closingId)) return prev
+      const next = new Set(prev)
+      next.delete(closingId)
+      return next
+    })
     setViewMode((prev) =>
       prev.type === 'focused' && prev.terminalId === closingId
         ? { type: 'grid' }
@@ -611,17 +655,49 @@ export default function App() {
     setLayouts(layout)
   }, [])
 
+  const handleMinimize = useCallback((id: string) => {
+    if (minimizedIds.has(id)) return
+    const next = new Set(minimizedIds).add(id)
+    setMinimizedIds(next)
+    setLayouts(layoutsForVisible(terminals, next))
+    // Minimizing the focused terminal drops back to the grid.
+    setViewMode((prev) =>
+      prev.type === 'focused' && prev.terminalId === id ? { type: 'grid' } : prev
+    )
+  }, [terminals, minimizedIds])
+
+  const handleRestore = useCallback((id: string) => {
+    if (!minimizedIds.has(id)) return
+    const next = new Set(minimizedIds)
+    next.delete(id)
+    setMinimizedIds(next)
+    setAttentionIds((prev) => {
+      if (!prev.has(id)) return prev
+      const pruned = new Set(prev)
+      pruned.delete(id)
+      return pruned
+    })
+    setLayouts(layoutsForVisible(terminals, next))
+  }, [terminals, minimizedIds])
+
   const handleNewWindow = useCallback(() => {
     window.api.windowCreate()
   }, [])
 
   const handleSelectTerminal = useCallback((id: string) => {
+    // Selecting a minimized terminal restores it first (taskbar semantics),
+    // then the usual toggle: focus it, or back to grid if already focused.
+    if (minimizedIds.has(id)) {
+      handleRestore(id)
+      setViewMode({ type: 'focused', terminalId: id })
+      return
+    }
     setViewMode((prev) =>
       prev.type === 'focused' && prev.terminalId === id
         ? { type: 'grid' }
         : { type: 'focused', terminalId: id }
     )
-  }, [])
+  }, [minimizedIds, handleRestore])
 
   const handleShowAll = useCallback(() => {
     setViewMode({ type: 'grid' })
@@ -690,11 +766,13 @@ export default function App() {
     const isMac = window.api.platform === 'darwin'
     const handler = (e: KeyboardEvent) => {
       const mod = isMac ? e.metaKey : e.ctrlKey
-      // Mod+1-9: switch to terminal by index
+      // Mod+1-9: switch to terminal by index (restoring it if minimized)
       if (mod && e.key >= '1' && e.key <= '9') {
         const idx = parseInt(e.key) - 1
         if (idx < terminals.length) {
-          setViewMode({ type: 'focused', terminalId: terminals[idx].id })
+          const target = terminals[idx]
+          if (minimizedRef.current.has(target.id)) handleRestore(target.id)
+          setViewMode({ type: 'focused', terminalId: target.id })
           e.preventDefault()
         }
         return
@@ -720,9 +798,10 @@ export default function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [terminals, handleAddFolder])
+  }, [terminals, handleAddFolder, handleRestore])
 
-  const gridRows = getRowCount(terminals.length)
+  const visibleTerminals = terminals.filter((t) => !minimizedIds.has(t.id))
+  const gridRows = getRowCount(visibleTerminals.length)
   const rowHeight = Math.max(150, Math.floor(window.innerHeight / gridRows) - 4)
   const isFocused = viewMode.type === 'focused'
 
@@ -786,8 +865,19 @@ export default function App() {
           <EmptyWorkspace />
         )}
 
+        {/* All terminals minimized — the grid is empty but sessions live on
+            in the taskbar below */}
+        {terminals.length > 0 && visibleTerminals.length === 0 && !isFocused && (
+          <div style={{
+            height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#666', fontSize: '13px', fontFamily: 'monospace',
+          }}>
+            All terminals minimized — restore from the taskbar below
+          </div>
+        )}
+
         {/* Grid mode */}
-        {terminals.length > 0 && !isFocused && (
+        {visibleTerminals.length > 0 && !isFocused && (
           <ResponsiveGridLayout
             layouts={{ lg: layouts }}
             breakpoints={{ lg: 0 }}
@@ -798,7 +888,7 @@ export default function App() {
             compactType="vertical"
             margin={[2, 2]}
           >
-            {terminals.map((t) => (
+            {visibleTerminals.map((t) => (
               <div key={t.id}>
                 <TerminalPanel
                   id={t.id}
@@ -814,19 +904,23 @@ export default function App() {
                   fontFamily={terminalFontFamily}
                   fontSize={terminalFontSize}
                   onClose={() => handleRequestClose(t.id)}
+                  onMinimize={() => handleMinimize(t.id)}
+                  onToggleMaximize={() => handleSelectTerminal(t.id)}
+                  isMaximized={false}
                   onSpawnShell={() => handleSpawnShell(t.path, t.color)}
                   onOpenMarkdown={setMarkdownFile}
                   onStartAutopilot={() => setAutopilotKickoffFor(t.id)}
                   isAutopilotRunning={autopilotRunning.has(t.id)}
                   onShowAutopilotPanel={() => setAutopilotPanelFor(t.id)}
+                  onNotify={showToast}
                 />
               </div>
             ))}
           </ResponsiveGridLayout>
         )}
 
-        {/* Focused mode — all terminals rendered, only focused one visible */}
-        {isFocused && terminals.map((t) => (
+        {/* Focused mode — visible terminals rendered, only focused one shown */}
+        {isFocused && visibleTerminals.map((t) => (
           <div
             key={t.id}
             style={{
@@ -849,16 +943,33 @@ export default function App() {
               fontFamily={terminalFontFamily}
               fontSize={terminalFontSize}
               onClose={() => handleRequestClose(t.id)}
+              onMinimize={() => handleMinimize(t.id)}
+              onToggleMaximize={() => handleSelectTerminal(t.id)}
+              isMaximized={viewMode.terminalId === t.id}
               onSpawnShell={() => handleSpawnShell(t.path, t.color)}
               onOpenMarkdown={setMarkdownFile}
               onStartAutopilot={() => setAutopilotKickoffFor(t.id)}
               isAutopilotRunning={autopilotRunning.has(t.id)}
               onShowAutopilotPanel={() => setAutopilotPanelFor(t.id)}
+              onNotify={showToast}
             />
           </div>
         ))}
         </ErrorBoundary>
       </div>
+      <TaskBar
+        items={terminals
+          .filter((t) => minimizedIds.has(t.id))
+          .map((t) => ({
+            id: t.id,
+            name: t.name,
+            color: t.color,
+            busy: busyTerminals.has(t.id),
+            attention: attentionIds.has(t.id),
+          }))}
+        onRestore={handleRestore}
+        onClose={handleRequestClose}
+      />
       {broadcastOpen && (
         <BroadcastBar terminals={terminals} onClose={() => setBroadcastOpen(false)} />
       )}
@@ -870,6 +981,7 @@ export default function App() {
           onClose={() => setAutopilotPanelFor(null)}
         />
       )}
+
 
       {closingId && (
         <ConfirmDialog
@@ -884,8 +996,22 @@ export default function App() {
         <ConfirmDialog
           message={`Close all ${terminals.length} terminal${terminals.length !== 1 ? 's' : ''}?`}
           detail={closeAllWarning ?? undefined}
+          confirmLabel="Close All"
           onConfirm={handleConfirmCloseAll}
           onCancel={() => setShowCloseAll(false)}
+        />
+      )}
+
+      {showCloseWindow && (
+        <ConfirmDialog
+          message="Close this window?"
+          detail={[
+            `${terminals.length} terminal session${terminals.length !== 1 ? 's' : ''} will be terminated.`,
+            ...(closeAllWarning ? ['', closeAllWarning] : []),
+          ].join('\n')}
+          confirmLabel="Close Window"
+          onConfirm={() => { setShowCloseWindow(false); window.api.windowConfirmClose() }}
+          onCancel={() => setShowCloseWindow(false)}
         />
       )}
 
@@ -966,7 +1092,7 @@ export default function App() {
               { label: '', divider: true, onClick: () => {} },
               { label: isFav ? 'Remove from favorites' : 'Add to favorites', icon: Star, onClick: () => handleToggleFavorite(path) },
               { label: 'Open in Explorer', icon: FolderSearch, onClick: () => { window.api.openInExplorer(path).catch(() => {}) } },
-              { label: 'Open in Editor', icon: Code, onClick: () => { window.api.openInEditor(path).catch(() => {}) } },
+              { label: 'Open in Editor', icon: Code, onClick: () => { window.api.openInEditor(path).then((res) => { if (!res.ok) showToast(res.error || 'Could not open in editor', 'warn') }).catch(() => showToast('Could not open in editor', 'warn')) } },
               { label: 'Copy path', icon: Copy, onClick: () => { navigator.clipboard.writeText(path).catch(() => {}) } },
               { label: '', divider: true, onClick: () => {} },
               { label: 'Remove from recents', icon: Trash2, onClick: () => handleRemoveRecent(path), destructive: true },
@@ -988,7 +1114,7 @@ export default function App() {
         const t = terminals.find((tt) => tt.id === autopilotKickoffFor)
         if (!t) return null
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          <div className="ui-scaled" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                onClick={() => setAutopilotKickoffFor(null)}>
             <div onClick={(e) => e.stopPropagation()} style={{ width: 480, maxWidth: '90%' }}>
               <AutopilotKickoff
@@ -1010,7 +1136,7 @@ export default function App() {
       })()}
 
       {showNewProject && (
-        <div style={{
+        <div className="ui-scaled" style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000,
         }} onClick={() => setShowNewProject(false)}>

@@ -35,10 +35,18 @@
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
-    /* Interface scale — applied to UI chrome surfaces (sidebar, dialog panels,
-       welcome/empty). Driven by the --ui-scale variable set from settings.
-       The terminal grid never carries this class, so terminals are unaffected. */
+    /* Interface scale — applied to UI chrome surfaces. Driven by variables set
+       from settings. The terminal grid never carries these classes, so
+       terminals are unaffected. Two flavours:
+       - .ui-scaled (surfaces authored with small ~11-14px text: sidebar,
+         menus, toasts, welcome/empty, autopilot, settings/launch/new-project
+         dialogs): includes the 16/12 base zoom that makes 100% match terminal
+         text size.
+       - .ui-scaled-plain (surfaces already authored at full reading size:
+         confirm dialogs, command palette, markdown viewer): the user's
+         percentage only, no base zoom — at 100% they render as authored. */
     .ui-scaled { zoom: var(--ui-scale, 1); }
+    .ui-scaled-plain { zoom: var(--ui-scale-plain, 1); }
     /* Interface font is driven by the --app-font-family CSS variable (set from
        settings by the renderer). The fallback is the default app stack so the
        first paint looks right before JS applies the persisted value. */

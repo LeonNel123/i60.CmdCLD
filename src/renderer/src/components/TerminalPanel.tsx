@@ -6,6 +6,7 @@ import { SearchAddon } from '@xterm/addon-search'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { onTerminalDataReceived, removeTerminalActivity } from '../utils/terminal-activity'
+import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatPaths } from '../utils/format-paths'
 import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
 import { findTerminalPaths, resolveTerminalPath } from '../../../shared/terminal-link'
@@ -82,11 +83,17 @@ interface TerminalPanelProps {
   fontFamily?: string
   fontSize?: number
   onClose: () => void
+  // Window-style controls: minimize tucks the tile into the bottom taskbar;
+  // maximize toggles the existing focused view.
+  onMinimize?: () => void
+  onToggleMaximize?: () => void
+  isMaximized?: boolean
   onSpawnShell?: () => void
   onOpenMarkdown?: (filePath: string) => void
   onStartAutopilot?: () => void
   isAutopilotRunning?: boolean
   onShowAutopilotPanel?: () => void
+  onNotify?: (message: string, kind?: 'info' | 'warn') => void
 }
 
 export function TerminalPanel({
@@ -103,11 +110,15 @@ export function TerminalPanel({
   fontFamily,
   fontSize,
   onClose,
+  onMinimize,
+  onToggleMaximize,
+  isMaximized,
   onSpawnShell,
   onOpenMarkdown,
   onStartAutopilot,
   isAutopilotRunning,
   onShowAutopilotPanel,
+  onNotify,
 }: TerminalPanelProps) {
   const termRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -142,9 +153,16 @@ export function TerminalPanel({
   // session, breaking pasted multi-line content.
   const sniffTailRef = useRef('')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
-  const [editorName, setEditorName] = useState('Editor')
   const [availableEditors, setAvailableEditors] = useState<Array<{ id: string; name: string; cmd: string }>>([])
-  const [showEditorPicker, setShowEditorPicker] = useState(false)
+  // A Visual Studio solution/project at the folder root, if any — the button
+  // opens it (via the OS association) instead of the folder-in-editor default.
+  const [projectAnchor, setProjectAnchor] = useState<{ path: string; name: string; kind: 'solution' | 'project' } | null>(null)
+  // The chosen default editor for this folder: per-project override, else global.
+  // resolvedId is null until the user picks one — then the button opens it
+  // directly instead of showing the picker.
+  const [editorDefaults, setEditorDefaults] = useState<{ global: string; project: string; resolvedId: string | null }>({ global: '', project: '', resolvedId: null })
+  const onNotifyRef = useRef(onNotify)
+  onNotifyRef.current = onNotify
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -156,8 +174,8 @@ export function TerminalPanel({
     // Route a clicked terminal link/path: http(s) -> system browser; .md ->
     // in-app viewer; source/config files -> editor; everything else (incl.
     // file:// links) -> the OS default program (like double-clicking it).
-    const openTarget = (raw: string): void => {
-      if (/^https?:/i.test(raw)) { window.api.openExternal(raw); return }
+    const openTarget = (raw: string, source: string): void => {
+      if (/^https?:/i.test(raw)) { window.api.openExternal(raw, source); return }
       const isFileUrl = /^file:/i.test(raw)
       // Resolve relative paths (bare or with separators) against the
       // terminal's folder — main resolves against the app cwd, not ours.
@@ -170,7 +188,9 @@ export function TerminalPanel({
       if (!isFileUrl && ext === 'md' && onOpenMarkdown) {
         onOpenMarkdown(filePart)
       } else if (!isFileUrl && EDITOR_EXTS.has(ext)) {
-        window.api.openInEditor(filePart)
+        window.api.openInEditor(filePart, { projectPath: folderPath }).then((res) => {
+          if (!res.ok) onNotifyRef.current?.(res.error || 'Could not open in editor', 'warn')
+        }).catch(() => onNotifyRef.current?.('Could not open in editor', 'warn'))
       } else {
         window.api.openPath(isFileUrl ? raw : filePart)
       }
@@ -180,8 +200,21 @@ export function TerminalPanel({
     // stray plain click never launches a file, app, or browser — same gesture
     // as VS Code's integrated terminal. (On macOS, Ctrl+click is a right-click,
     // so we require Cmd there instead.)
-    const isLinkActivation = (event?: MouseEvent | null): boolean =>
-      !event || (window.api.platform === 'darwin' ? event.metaKey : event.ctrlKey)
+    //
+    // While the pty application has mouse reporting enabled (Claude Code's
+    // fullscreen renderer, vim with mouse=a, …), xterm forwards clicks into
+    // the pty and the app owns the gesture. Claude Code opens ctrl+clicked
+    // links itself in that state — it only defers to terminals it recognizes
+    // (e.g. TERM_PROGRAM=vscode), and we are not one — so opening here too
+    // double-opened every link (two browser tabs per click, diagnosed via
+    // the openExternal [source] log). Stand down whenever the app tracks
+    // the mouse; at a plain shell prompt nothing tracks it and we handle
+    // the click as before.
+    const isLinkActivation = (event?: MouseEvent | null): boolean => {
+      const t = terminalRef.current
+      if (t && t.modes.mouseTrackingMode !== 'none') return false
+      return !event || (window.api.platform === 'darwin' ? event.metaKey : event.ctrlKey)
+    }
 
     const term = new Terminal({
       cursorBlink: true,
@@ -214,11 +247,11 @@ export function TerminalPanel({
       // fontSize is CSS px, so convert at this boundary.
       fontSize: pointsToPixels(fontRef.current.size),
       // Handle OSC 8 hyperlinks (ESC]8;;<uri>) that terminal programs emit.
-      linkHandler: { activate: (event, uri) => { if (isLinkActivation(event)) openTarget(uri) } },
+      linkHandler: { activate: (event, uri) => { if (isLinkActivation(event)) openTarget(uri, 'osc8') } },
     })
     const fitAddon = new FitAddon()
     const webLinksAddon = new WebLinksAddon((event, uri) => {
-      if (isLinkActivation(event)) openTarget(uri)
+      if (isLinkActivation(event)) openTarget(uri, 'weblinks')
     })
     const searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
@@ -252,6 +285,11 @@ export function TerminalPanel({
         while (firstRow > 0 && buffer.getLine(firstRow)?.isWrapped) firstRow--
         let lastRow = bufferLineNumber - 1
         while (buffer.getLine(lastRow + 1)?.isWrapped) lastRow++
+        // A logical line spanning this many rows is a dump (minified JSON, a
+        // token blob), not something with a clickable path a human wants —
+        // and reassembling + regex-scanning it on every hover is what froze
+        // the renderer. Bail before building the string.
+        if (lastRow - firstRow + 1 > 64) { callback(undefined); return }
         let text = ''
         for (let i = firstRow; i <= lastRow; i++) {
           const line = buffer.getLine(i)
@@ -270,7 +308,7 @@ export function TerminalPanel({
             },
             text: l.text,
             activate(event) {
-              if (isLinkActivation(event)) openTarget(l.text)
+              if (isLinkActivation(event)) openTarget(l.text, 'path-provider')
             },
           }
         }))
@@ -559,37 +597,80 @@ export function TerminalPanel({
     try { fitAddonRef.current?.fit() } catch {}
   }, [fontFamilyResolved, fontSizeResolved])
 
-  // Load editor info once
+  // Load editors + the chosen default for this folder, and probe for a solution.
   useEffect(() => {
+    let cancelled = false
     Promise.all([
       window.api.editorGetAvailable(),
-      window.api.editorGetCurrent(),
-    ]).then(([editors, current]) => {
+      window.api.editorGetDefaults(folderPath),
+    ]).then(([editors, defs]) => {
+      if (cancelled) return
       setAvailableEditors(editors)
-      const found = editors.find((e) => e.cmd === current)
-      setEditorName(found?.name || 'Editor')
+      setEditorDefaults(defs)
     }).catch(() => {})
-  }, [])
+    window.api.editorProbeProject(folderPath)
+      .then((a) => { if (!cancelled) setProjectAnchor(a) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [folderPath])
 
-  // Close context menu on outside click / Escape
-  useEffect(() => {
-    if (!contextMenu) return
-    const handler = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent && e.key === 'Escape') { setContextMenu(null); return }
-      if (e instanceof MouseEvent) setContextMenu(null)
-    }
-    document.addEventListener('mousedown', handler)
-    document.addEventListener('keydown', handler)
-    return () => {
-      document.removeEventListener('mousedown', handler)
-      document.removeEventListener('keydown', handler)
-    }
-  }, [contextMenu])
+  // Open a file/folder in an editor and surface any failure as a toast. For a
+  // folder the main process applies the solution-aware default unless forceFolder.
+  const openInEditor = (target: string, opts?: { forceFolder?: boolean; editorId?: string }) => {
+    window.api.openInEditor(target, { ...opts, projectPath: folderPath }).then((res) => {
+      if (!res.ok) onNotifyRef.current?.(res.error || 'Could not open in editor', 'warn')
+    }).catch(() => onNotifyRef.current?.('Could not open in editor', 'warn'))
+  }
+
+  // Left-click when a default is set: open it. VS (devenv) stays solution-aware
+  // (opens the .sln if present); any other editor opens the folder itself.
+  const openResolvedEditor = () => {
+    const id = editorDefaults.resolvedId
+    if (!id) return
+    if (id === 'devenv') openInEditor(folderPath, { editorId: 'devenv' })
+    else openInEditor(folderPath, { editorId: id, forceFolder: true })
+  }
+
+  const applyDefault = (scope: 'global' | 'project', editorId: string | null) => {
+    window.api.editorSetDefault({ scope, editorId, projectPath: folderPath })
+      .then(() => window.api.editorGetDefaults(folderPath).then(setEditorDefaults))
+      .catch(() => {})
+  }
+
+  const editorMenuItems = (): ContextMenuItem[] => {
+    const editorRows = availableEditors.map((e) => ({
+      label: `Open folder in ${e.name}`,
+      checked: editorDefaults.resolvedId === e.id,
+      onClick: () => openInEditor(folderPath, { editorId: e.id, forceFolder: true }),
+    }))
+    const scopeSub = (scope: 'global' | 'project', current: string): ContextMenuItem[] => [
+      ...availableEditors.map((e) => ({
+        label: e.name,
+        checked: current === e.id,
+        onClick: () => applyDefault(scope, e.id),
+      })),
+      ...(current ? [
+        { label: '', divider: true, onClick: () => {} },
+        { label: 'Clear', onClick: () => applyDefault(scope, null) },
+      ] : []),
+    ]
+    return [
+      ...(projectAnchor ? [
+        { label: `Open ${projectAnchor.name}`, onClick: () => openInEditor(folderPath) },
+        { label: '', divider: true, onClick: () => {} },
+      ] : []),
+      ...editorRows,
+      ...(availableEditors.length ? [{ label: '', divider: true, onClick: () => {} }] : []),
+      { label: 'Default for this project', onClick: () => {}, submenu: scopeSub('project', editorDefaults.project) },
+      { label: 'Default for all projects', onClick: () => {}, submenu: scopeSub('global', editorDefaults.global) },
+    ]
+  }
+
+  const resolvedEditorName = availableEditors.find((e) => e.id === editorDefaults.resolvedId)?.name
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
     setContextMenu({ x: e.clientX, y: e.clientY })
-    setShowEditorPicker(false)
   }
 
   const handleSearch = (query: string, direction: 'next' | 'prev' = 'next') => {
@@ -620,13 +701,12 @@ export function TerminalPanel({
     borderRadius: '3px',
   }
 
-  const menuItemStyle: React.CSSProperties = {
-    display: 'block', width: '100%', padding: '6px 12px',
-    background: 'none', border: 'none', color: '#ccc',
-    fontSize: '12px', fontFamily: 'monospace', cursor: 'pointer', textAlign: 'left',
+  // Minimize / maximize / close share the muted look of the old close button.
+  const windowBtnStyle: React.CSSProperties = {
+    background: 'none', border: 'none', color: '#666',
+    cursor: 'pointer', fontSize: '13px', padding: '0 7px',
+    lineHeight: 1, height: '100%',
   }
-  const menuHoverIn = (e: React.MouseEvent) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)' }
-  const menuHoverOut = (e: React.MouseEvent) => { (e.target as HTMLElement).style.background = 'none' }
 
   return (
     <div style={{
@@ -647,9 +727,11 @@ export function TerminalPanel({
         flexShrink: 0,
         height: '28px',
       }}>
-        {/* Col 1: Folder name — drag handle */}
+        {/* Col 1: Folder name — drag handle; double-click toggles maximize,
+            mirroring OS title-bar behavior */}
         <div
           className="drag-handle"
+          onDoubleClick={onToggleMaximize}
           style={{
             flex: 1,
             padding: '0 10px',
@@ -698,7 +780,25 @@ export function TerminalPanel({
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3l5 4-5 4V3zm6 8h6v1H8v-1z"/></svg>
             </button>
           )}
-          <button onClick={() => window.api.openInEditor(folderPath)} onMouseDown={(e) => e.stopPropagation()} title={`Open in ${editorName}`} style={actionBtnStyle}>
+          <button
+            onClick={(e) => {
+              if (editorDefaults.resolvedId) { openResolvedEditor(); return }
+              if (projectAnchor || availableEditors.length > 0) {
+                // No default yet — show the picker anchored under the button.
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                setContextMenu({ x: r.left, y: r.bottom + 2 })
+              } else {
+                openInEditor(folderPath) // nothing installed → surfaces a toast
+              }
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            title={
+              projectAnchor ? `Open ${projectAnchor.name}`
+                : resolvedEditorName ? `Open folder in ${resolvedEditorName}`
+                : 'Open in editor…'
+            }
+            style={actionBtnStyle}
+          >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/></svg>
             </button>
           <button onClick={() => window.api.openInExplorer(folderPath)} onMouseDown={(e) => e.stopPropagation()} title={window.api.platform === 'darwin' ? 'Open in Finder' : 'Open in Explorer'} style={actionBtnStyle}>
@@ -726,16 +826,32 @@ export function TerminalPanel({
           </button>
         )}
 
-        {/* Col 4: Close */}
+        {/* Col 4: Window controls — minimize, maximize/restore, close */}
+        {onMinimize && (
+          <button
+            onClick={onMinimize}
+            onMouseDown={(e) => e.stopPropagation()}
+            title="Minimize to taskbar"
+            style={windowBtnStyle}
+          >
+            &#8722;
+          </button>
+        )}
+        {onToggleMaximize && (
+          <button
+            onClick={onToggleMaximize}
+            onMouseDown={(e) => e.stopPropagation()}
+            title={isMaximized ? 'Restore grid' : 'Maximize'}
+            style={{ ...windowBtnStyle, fontSize: '11px' }}
+          >
+            {isMaximized ? <>&#10064;</> : <>&#9633;</>}
+          </button>
+        )}
         <button
           onClick={onClose}
           onMouseDown={(e) => e.stopPropagation()}
           title="Close terminal"
-          style={{
-            background: 'none', border: 'none', color: '#666',
-            cursor: 'pointer', fontSize: '13px', padding: '0 8px',
-            lineHeight: 1, height: '100%',
-          }}
+          style={windowBtnStyle}
         >
           &#10005;
         </button>
@@ -779,27 +895,14 @@ export function TerminalPanel({
         }}
       />
 
-      {contextMenu && availableEditors.length > 1 && (
-        <div
-          onMouseDown={(e) => e.stopPropagation()}
-          style={{
-            position: 'fixed', left: contextMenu.x, top: contextMenu.y,
-            background: '#1a1a2e', border: '1px solid #333', borderRadius: '6px',
-            padding: '4px 0', minWidth: '150px', zIndex: 2000,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-          }}
-        >
-          {availableEditors.map((e) => (
-            <button
-              key={e.id}
-              onClick={() => { window.api.editorSetCurrent(e.cmd); setEditorName(e.name); setContextMenu(null) }}
-              style={menuItemStyle}
-              onMouseEnter={menuHoverIn}
-              onMouseLeave={menuHoverOut}
-            >
-              {e.name}
-            </button>
-          ))}
+      {contextMenu && (projectAnchor || availableEditors.length > 0) && (
+        <div onMouseDown={(e) => e.stopPropagation()}>
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={editorMenuItems()}
+          onClose={() => setContextMenu(null)}
+        />
         </div>
       )}
     </div>

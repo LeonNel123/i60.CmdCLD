@@ -16,7 +16,7 @@ export function WelcomeBackCard({ count, resumeDefault, onReopen, onDismiss }: W
   if (count <= 0) return null
 
   return (
-    <div style={{
+    <div className="ui-scaled" style={{
       position: 'absolute',
       top: '50%',
       left: '50%',

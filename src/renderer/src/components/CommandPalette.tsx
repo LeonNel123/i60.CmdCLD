@@ -100,6 +100,7 @@ export function CommandPalette({ recentFolders, favoriteFolders, onOpen, onClose
   return (
     <div
       onClick={onClose}
+      className="ui-scaled-plain"
       style={{
         position: 'fixed',
         inset: 0,
@@ -108,7 +109,9 @@ export function CommandPalette({ recentFolders, favoriteFolders, onOpen, onClose
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'center',
-        paddingTop: '15vh',
+        // vh scales with the .ui-scaled zoom; divide it back out so the
+        // palette sits/fits the same at any interface scale.
+        paddingTop: 'calc(15vh / var(--ui-scale-plain, 1))',
       }}
     >
       <div
@@ -119,7 +122,7 @@ export function CommandPalette({ recentFolders, favoriteFolders, onOpen, onClose
           borderRadius: 8,
           width: 520,
           maxWidth: '90%',
-          maxHeight: '60vh',
+          maxHeight: 'calc(60vh / var(--ui-scale-plain, 1))',
           display: 'flex',
           flexDirection: 'column',
           boxShadow: '0 8px 32px rgba(0,0,0,0.5)',

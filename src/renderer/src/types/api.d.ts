@@ -32,6 +32,8 @@ export interface SavedProject {
   codexArgs?: string
   grokArgs?: string
   isPlainShell: boolean
+  // Tucked into the taskbar when the session was saved; restored the same way.
+  minimized?: boolean
 }
 
 export interface SavedSession {
@@ -173,13 +175,19 @@ export interface ElectronAPI {
   sessionLoadLast: () => Promise<SavedSession | null>
   sessionClearLast: () => Promise<void>
   gitStatus: (path: string, fresh?: boolean) => Promise<GitStatus>
-  openExternal: (url: string) => Promise<void>
+  openExternal: (url: string, source?: string) => Promise<void>
   openInExplorer: (folderPath: string) => Promise<void>
-  openInEditor: (targetPath: string) => Promise<void>
+  openInEditor: (
+    targetPath: string,
+    opts?: { forceFolder?: boolean; editorId?: string; projectPath?: string },
+  ) => Promise<{ ok: boolean; error?: string; opened?: 'solution' | 'editor'; name?: string }>
+  editorProbeProject: (folderPath: string) => Promise<{ path: string; name: string; kind: 'solution' | 'project' } | null>
   editorGetAvailable: () => Promise<Array<{ id: string; name: string; cmd: string }>>
-  editorGetCurrent: () => Promise<string>
-  editorSetCurrent: (cmd: string) => Promise<void>
+  editorGetDefaults: (projectPath?: string) => Promise<{ global: string; project: string; resolvedId: string | null }>
+  editorSetDefault: (arg: { scope: 'global' | 'project'; editorId: string | null; projectPath?: string }) => Promise<{ ok: boolean }>
   onWindowListUpdated: (callback: (windows: WindowInfo[]) => void) => () => void
+  onWindowCloseRequest: (callback: () => void) => () => void
+  windowConfirmClose: () => Promise<void>
   claudeConfigRead: () => Promise<{ global: Record<string, unknown>; local: Record<string, unknown> }>
   claudeConfigWrite: (scope: 'global' | 'local', data: Record<string, unknown>) => Promise<void>
   remoteToggle: (enabled: boolean) => Promise<{ ok: boolean; urls?: string[]; port?: number; error?: string }>
@@ -245,6 +253,7 @@ export interface ElectronAPI {
   broadcastSend: (args: { terminalIds: string[]; text: string }) => Promise<{ ok: boolean; results: Array<{ id: string; ok: boolean; error?: string }> }>
   onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void) => () => void
 }
+
 
 declare global {
   interface Window {

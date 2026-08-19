@@ -129,26 +129,45 @@ contextBridge.exposeInMainWorld('api', {
   windowList: (): Promise<Array<{ id: string; label: string }>> =>
     ipcRenderer.invoke('window:list'),
 
-  // Open URL in system browser
-  openExternal: (url: string): Promise<void> =>
-    ipcRenderer.invoke('shell:openExternal', url),
+  // Window-close confirmation: main asks, renderer shows the in-app dialog
+  // and confirms back if the user accepts.
+  onWindowCloseRequest: (callback: () => void): (() => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('window:close-request', listener)
+    return () => { ipcRenderer.removeListener('window:close-request', listener) }
+  },
+
+  windowConfirmClose: (): Promise<void> =>
+    ipcRenderer.invoke('window:confirmClose'),
+
+  // Open URL in system browser. `source` names the renderer path that asked
+  // (osc8 | weblinks | path-provider | ui) — logged main-side to diagnose
+  // duplicate opens.
+  openExternal: (url: string, source?: string): Promise<void> =>
+    ipcRenderer.invoke('shell:openExternal', url, source),
 
   // Explorer
   openInExplorer: (folderPath: string): Promise<void> =>
     ipcRenderer.invoke('explorer:open', folderPath),
 
   // Editor (accepts files or directories)
-  openInEditor: (targetPath: string): Promise<void> =>
-    ipcRenderer.invoke('editor:open', targetPath),
+  openInEditor: (
+    targetPath: string,
+    opts?: { forceFolder?: boolean; editorId?: string; projectPath?: string },
+  ): Promise<{ ok: boolean; error?: string; opened?: 'solution' | 'editor'; name?: string }> =>
+    ipcRenderer.invoke('editor:open', targetPath, opts),
+
+  editorProbeProject: (folderPath: string): Promise<{ path: string; name: string; kind: 'solution' | 'project' } | null> =>
+    ipcRenderer.invoke('editor:probeProject', folderPath),
 
   editorGetAvailable: (): Promise<Array<{ id: string; name: string; cmd: string }>> =>
     ipcRenderer.invoke('editor:getAvailable'),
 
-  editorGetCurrent: (): Promise<string> =>
-    ipcRenderer.invoke('editor:getCurrent'),
+  editorGetDefaults: (projectPath?: string): Promise<{ global: string; project: string; resolvedId: string | null }> =>
+    ipcRenderer.invoke('editor:getDefaults', projectPath),
 
-  editorSetCurrent: (cmd: string): Promise<void> =>
-    ipcRenderer.invoke('editor:setCurrent', cmd),
+  editorSetDefault: (arg: { scope: 'global' | 'project'; editorId: string | null; projectPath?: string }): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('editor:setDefault', arg),
 
   onWindowListUpdated: (callback: (windows: Array<{ id: string; label: string }>) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, windows: any): void => callback(windows)

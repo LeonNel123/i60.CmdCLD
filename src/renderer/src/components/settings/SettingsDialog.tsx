@@ -54,6 +54,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   const [favoriteFolders, setFavoriteFolders] = useState<string[]>([])
   const [loaded, setLoaded] = useState(false)
 
+
   // Autopilot settings (persisted by save())
   const [apProvider, setApProvider] = useState<'anthropic' | 'openrouter'>('anthropic')
   const [apModel, setApModel] = useState('claude-sonnet-5')
@@ -341,6 +342,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
 
   return (
     <div
+      className="ui-scaled"
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000,
@@ -356,7 +358,10 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
         onClick={(e) => e.stopPropagation()}
         style={{
           background: '#1a1a2e', borderRadius: '8px', border: '1px solid #333',
-          width: 'min(92vw, 740px)', height: 'min(85vh, 640px)',
+          // vw/vh scale with the .ui-scaled zoom; divide them back out so the
+          // dialog fits the real viewport at any interface scale.
+          width: 'min(calc(92vw / var(--ui-scale, 1)), 740px)',
+          height: 'min(calc(85vh / var(--ui-scale, 1)), 640px)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}
       >

@@ -48,7 +48,6 @@ const MAX_EXPANDED_WIDTH = 420
 
 interface RecentRowProps {
   folder: RecentFolder
-  isOpen: boolean
   isFav: boolean
   isFavoriteSection: boolean
   onOpen: (path: string) => void
@@ -58,7 +57,6 @@ interface RecentRowProps {
 
 const RecentRow = memo(function RecentRow({
   folder,
-  isOpen,
   isFav,
   isFavoriteSection,
   onOpen,
@@ -68,7 +66,7 @@ const RecentRow = memo(function RecentRow({
   return (
     <div
       className="recent-row"
-      onClick={() => { if (!isOpen) onOpen(folder.path) }}
+      onClick={() => onOpen(folder.path)}
       onContextMenu={(e) => {
         e.preventDefault()
         onContextMenu(folder.path, e.clientX, e.clientY)
@@ -81,14 +79,13 @@ const RecentRow = memo(function RecentRow({
         padding: '5px 12px',
         margin: '0 4px',
         background: 'none',
-        cursor: isOpen ? 'default' : 'pointer',
-        opacity: isOpen ? 0.55 : 1,
+        cursor: 'pointer',
         fontFamily: 'inherit',
         fontSize: '13px',
         borderRadius: '6px',
         transition: 'background 80ms ease',
       }}
-      title={isOpen ? `${folder.path} (already open — right-click to add another CLI)` : folder.path}
+      title={folder.path}
     >
       <span
         onClick={(e) => { e.stopPropagation(); onToggleFavorite(folder.path) }}
@@ -174,6 +171,18 @@ export function Sidebar({
     } catch { return true }
   })
 
+  const [actionsExpanded, setActionsExpanded] = useState(() => {
+    try {
+      return localStorage.getItem('sidebar-actions-expanded') !== 'false'
+    } catch { return true }
+  })
+
+  const [activeExpanded, setActiveExpanded] = useState(() => {
+    try {
+      return localStorage.getItem('sidebar-active-expanded') !== 'false'
+    } catch { return true }
+  })
+
   const toggleCollapsed = () => {
     const next = !collapsed
     setCollapsed(next)
@@ -190,6 +199,18 @@ export function Sidebar({
     const next = !favoritesExpanded
     setFavoritesExpanded(next)
     try { localStorage.setItem('sidebar-favorites-expanded', String(next)) } catch {}
+  }
+
+  const toggleActions = () => {
+    const next = !actionsExpanded
+    setActionsExpanded(next)
+    try { localStorage.setItem('sidebar-actions-expanded', String(next)) } catch {}
+  }
+
+  const toggleActive = () => {
+    const next = !activeExpanded
+    setActiveExpanded(next)
+    try { localStorage.setItem('sidebar-active-expanded', String(next)) } catch {}
   }
 
   // Drag the right edge to resize the expanded panel. Width is clamped and
@@ -298,8 +319,22 @@ export function Sidebar({
         }
       `}</style>
 
+      {/* Everything except the bottom actions lives in one scroll container:
+          overflow-y auto means the scrollbar pops in only when the sections
+          (given their expanded/collapsed state) don't fit the window. The 5px
+          right margin keeps that scrollbar clear of the resize handle strip so
+          the thumb stays clickable. */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', marginRight: '5px' }}>
+
       {/* Primary actions (formerly the icon rail) */}
-      <div style={{ padding: '4px', borderBottom: '1px solid #2d2d2d', flexShrink: 0 }}>
+      <div style={{ padding: '4px', borderBottom: '1px solid #2d2d2d' }}>
+        {!collapsed && (
+          <button onClick={toggleActions} style={sectionHeadingStyle} className="sidebar-btn">
+            <span>ACTIONS</span>
+            {actionsExpanded ? <ChevronDown width={12} height={12} /> : <ChevronRight width={12} height={12} />}
+          </button>
+        )}
+        {(collapsed || actionsExpanded) && (<>
         <button onClick={onAddFolder} style={btnStyle()} className="sidebar-btn" title="Open Project — pick a folder to launch the default agent in">
           <span style={{ color: '#22c55e', display: 'flex', flexShrink: 0 }}><FolderOpen width={14} height={14} /></span>
           {!collapsed && <span>Open Project</span>}
@@ -343,12 +378,21 @@ export function Sidebar({
             {!collapsed && <span>New Project</span>}
           </button>
         )}
+        </>)}
       </div>
 
-      {/* Active terminals. The 5px right margin keeps the scrollbar clear of
-          the resize handle strip so the thumb stays clickable. */}
-      <div style={{ overflowY: 'auto', padding: '4px', flexShrink: 0, marginRight: '5px' }}>
-        {[...terminals].sort((a, b) => a.name.localeCompare(b.name)).map((t) => {
+      {/* Active terminals. This section doesn't scroll on its own — the outer
+          container above owns the single scrollbar (and its right margin keeps
+          that scrollbar clear of the resize handle). */}
+      {terminals.length > 0 && (
+      <div style={{ padding: '4px' }}>
+        {!collapsed && (
+          <button onClick={toggleActive} style={sectionHeadingStyle} className="sidebar-btn">
+            <span>ACTIVE</span>
+            {activeExpanded ? <ChevronDown width={12} height={12} /> : <ChevronRight width={12} height={12} />}
+          </button>
+        )}
+        {(collapsed || activeExpanded) && [...terminals].sort((a, b) => a.name.localeCompare(b.name)).map((t) => {
           const isActive = viewMode.type === 'focused' && viewMode.terminalId === t.id
           const busy = busyTerminals.has(t.id)
           return (
@@ -401,15 +445,18 @@ export function Sidebar({
           )
         })}
       </div>
+      )}
 
-      {/* Favorites and Recent subsections */}
+      {/* Favorites and Recent subsections. Open projects live in the ACTIVE
+          section above, so they're filtered out here and "move back" when
+          their terminals close. */}
       {!collapsed && recentFolders.length > 0 && (() => {
         const favSet = new Set(favoriteFolders)
-        const favorites = recentFolders.filter((f) => favSet.has(f.path)).sort((a, b) => a.name.localeCompare(b.name))
-        const recents = recentFolders.filter((f) => !favSet.has(f.path)).sort((a, b) => b.lastOpened - a.lastOpened)
+        const closedFolders = recentFolders.filter((f) => !activePaths.has(f.path))
+        const favorites = closedFolders.filter((f) => favSet.has(f.path)).sort((a, b) => a.name.localeCompare(b.name))
+        const recents = closedFolders.filter((f) => !favSet.has(f.path)).sort((a, b) => b.lastOpened - a.lastOpened)
         return (
-          // 5px right margin: keep the scrollbar clear of the resize handle
-          <div style={{ flex: 1, overflowY: 'auto', marginRight: '5px' }}>
+          <div>
             {favorites.length > 0 && (
               <div>
                 <button
@@ -424,7 +471,6 @@ export function Sidebar({
                   <RecentRow
                     key={f.path}
                     folder={f}
-                    isOpen={activePaths.has(f.path)}
                     isFav={true}
                     isFavoriteSection={true}
                     onOpen={onOpenRecent}
@@ -448,7 +494,6 @@ export function Sidebar({
                   <RecentRow
                     key={f.path}
                     folder={f}
-                    isOpen={activePaths.has(f.path)}
                     isFav={false}
                     isFavoriteSection={false}
                     onOpen={onOpenRecent}
@@ -462,11 +507,7 @@ export function Sidebar({
         )
       })()}
 
-      {/* Keep a flexible spacer whenever the Favorites/Recent section (which
-          normally provides the flex:1 growth) isn't rendered — e.g. when
-          collapsed or with no recents — so the bottom actions stay pinned to
-          the bottom instead of riding up under the terminals. */}
-      {(collapsed || recentFolders.length === 0) && <div style={{ flex: 1 }} />}
+      </div>
 
       {/* Bottom actions — elevated card group when expanded; the card's 8px
           margins don't fit the 36px collapsed rail, so collapsed keeps the
