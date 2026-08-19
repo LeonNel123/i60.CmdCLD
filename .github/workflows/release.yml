@@ -27,12 +27,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Pass only the platform flag. Naming a target on the CLI (--mac dmg)
+          # REPLACES the mac.target block in package.json, taking its arch array with
+          # it, and electron-builder then falls back to the runner's native arch — the
+          # macOS runner is Apple Silicon, so the x64 DMG silently never got built.
           - name: Windows installer
             os: windows-latest
-            target: --win nsis
+            target: --win
           - name: macOS disk images
             os: macos-latest
-            target: --mac dmg
+            target: --mac
 
     steps:
       - uses: actions/checkout@v4
