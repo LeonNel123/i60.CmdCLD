@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "postinstall": "node -e \"if(process.platform==='darwin')require('child_process').execSync('electron-builder install-app-deps',{stdio:'inherit'})\"",
+    "postinstall": "node -e \"if(process.platform!=='win32')require('child_process').execSync('electron-builder install-app-deps',{stdio:'inherit'})\"",
     "test": "vitest run",
     "test:watch": "vitest",
     "version:check": "node scripts/verify-release-version.mjs",

@@ -37,6 +37,9 @@ jobs:
           - name: macOS disk images
             os: macos-latest
             target: --mac
+          - name: Linux AppImage
+            os: ubuntu-latest
+            target: --linux
 
     steps:
       - uses: actions/checkout@v4
@@ -90,4 +93,5 @@ jobs:
           path: |
             dist/*.exe
             dist/*.dmg
+            dist/*.AppImage
             dist/*.yml
