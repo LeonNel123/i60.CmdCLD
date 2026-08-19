@@ -63,7 +63,8 @@
       {
         "provider": "github",
         "owner": "LeonNel123",
-        "repo": "i60.CmdCLD"
+        "repo": "i60.CmdCLD",
+        "releaseType": "release"
       }
     ],
     "npmRebuild": false,
