@@ -30,6 +30,12 @@ export interface AppSettings {
   uiScalePct: number
   autopilotApiProvider: 'anthropic' | 'openrouter'
   autopilotPlannerModel: string
+  /**
+   * Model for the broadcast "Refine with AI" rewrite. Empty means inherit the
+   * Autopilot planner model. The provider is derived from the id: anything with a
+   * slash is an OpenRouter id, otherwise Anthropic.
+   */
+  broadcastRefineModel: string
   autopilotDefaultCostCap: number
   autopilotDefaultMaxIterations: number
 }
@@ -57,6 +63,7 @@ const DEFAULTS: AppSettings = {
   uiScalePct: DEFAULT_UI_SCALE_PCT,
   autopilotApiProvider: 'anthropic',
   autopilotPlannerModel: 'claude-sonnet-5',
+  broadcastRefineModel: 'nvidia/nemotron-3.5-lightning',
   autopilotDefaultCostCap: 1.0,
   autopilotDefaultMaxIterations: 40,
 }

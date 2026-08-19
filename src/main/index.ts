@@ -1063,8 +1063,14 @@ ipcMain.handle('autopilot:attachConfirm', async (_event, args: { terminalId: str
 ipcMain.handle('broadcast:refine', async (_event, args: { text: string; targetLabels?: string[] }) => {
   const raw = typeof args?.text === 'string' ? args.text.trim() : ''
   if (!raw) return { ok: false, error: 'Nothing to refine.' }
-  const provider = settings.get('autopilotApiProvider')
-  const model = settings.get('autopilotPlannerModel')
+  // Refine has its own model, defaulting to a fast one — it is a one-shot rewrite, not
+  // orchestration, so it should not be tied to the planner model. An empty setting
+  // inherits the planner. The provider follows the id: a slash means OpenRouter.
+  const configured = (settings.get('broadcastRefineModel') || '').trim()
+  const model = configured || settings.get('autopilotPlannerModel')
+  const provider: 'anthropic' | 'openrouter' = configured
+    ? (configured.includes('/') ? 'openrouter' : 'anthropic')
+    : settings.get('autopilotApiProvider')
   const apiKey = readAutopilotKey(provider)
   if (!apiKey) return { ok: false, error: `No API key for ${provider}. Add one in Settings → Autopilot.` }
   try {
@@ -1073,6 +1079,7 @@ ipcMain.handle('broadcast:refine', async (_event, args: { text: string; targetLa
       system: BROADCAST_REFINE_SYSTEM_PROMPT,
       user: buildRefineUserMessage(raw, Array.isArray(args.targetLabels) ? args.targetLabels : []),
       maxTokens: 4096,  // adaptive-thinking models spend part of this budget before emitting text
+      noReasoning: true,  // measured: reasoning adds seconds and can consume the whole budget
     })
     const refined = text.trim()
     return refined ? { ok: true, text: refined } : { ok: false, error: 'The model returned an empty rewrite.' }

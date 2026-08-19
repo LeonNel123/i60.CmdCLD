@@ -12,29 +12,40 @@ const RATES: Record<string, { input: number; cachedInput: number; cacheCreation:
   // ---- Anthropic (direct) ----
   'claude-haiku-4-5':              { input: 1.0,  cachedInput: 0.10,  cacheCreation: 1.25,  output: 5.0  },
   'claude-sonnet-5':               { input: 3.0,  cachedInput: 0.30,  cacheCreation: 3.75,  output: 15.0 },
+  'claude-opus-5':                 { input: 5.0,  cachedInput: 0.50,  cacheCreation: 6.25,  output: 25.0 },
   'claude-opus-4-8':               { input: 5.0,  cachedInput: 0.50,  cacheCreation: 6.25,  output: 25.0 },
   'claude-fable-5':                { input: 10.0, cachedInput: 1.0,   cacheCreation: 12.5,  output: 50.0 },
   // Prior-gen (kept so existing saved configs still track accurately)
   'claude-sonnet-4-6':             { input: 3.0,  cachedInput: 0.30,  cacheCreation: 3.75,  output: 15.0 },
-  'claude-opus-4-7':               { input: 15.0, cachedInput: 1.50,  cacheCreation: 18.75, output: 75.0 },
+  'claude-opus-4-7':               { input: 5.0,  cachedInput: 0.50,  cacheCreation: 6.25,  output: 25.0 },
 
-  // ---- OpenRouter — Google ----
-  'google/gemini-2.5-flash':       { input: 0.30, cachedInput: 0.075, cacheCreation: 0.30,  output: 2.50 },
-  'google/gemini-2.5-pro':         { input: 1.25, cachedInput: 0.31,  cacheCreation: 1.25,  output: 10.0 },
-
-  // ---- OpenRouter — OpenAI ----
-  'openai/gpt-5-mini':             { input: 0.25, cachedInput: 0.025, cacheCreation: 0.25,  output: 2.0  },
+  // ---- OpenRouter ----
+  // Verified against the OpenRouter catalogue on 2026-08-19. cachedInput uses each
+  // model's published input_cache_read; cacheCreation tracks input where the provider
+  // publishes no separate write price.
+  //
+  // Fast/cheap tier — benchmarked for the broadcast refine path.
+  'qwen/qwen3.7-flash':            { input: 0.03, cachedInput: 0.006, cacheCreation: 0.03,  output: 0.13 },
+  'deepseek/deepseek-v4-flash':    { input: 0.08, cachedInput: 0.016, cacheCreation: 0.08,  output: 0.16 },
+  'nvidia/nemotron-3.5-lightning': { input: 0.08, cachedInput: 0.040, cacheCreation: 0.08,  output: 0.20 },
+  'openai/gpt-5.6-luna':           { input: 0.20, cachedInput: 0.020, cacheCreation: 0.20,  output: 1.20 },
+  'google/gemini-3.1-flash-lite':  { input: 0.25, cachedInput: 0.025, cacheCreation: 0.25,  output: 1.50 },
+  'minimax/minimax-m3':            { input: 0.30, cachedInput: 0.060, cacheCreation: 0.30,  output: 1.20 },
+  // Mid / high tier.
+  'qwen/qwen3.7-plus':             { input: 0.32, cachedInput: 0.064, cacheCreation: 0.32,  output: 1.28 },
+  'google/gemini-3.7-flash':       { input: 0.38, cachedInput: 0.037, cacheCreation: 0.38,  output: 1.88 },
+  'moonshotai/kimi-k2.6':          { input: 0.54, cachedInput: 0.091, cacheCreation: 0.54,  output: 2.28 },
+  'deepseek/deepseek-v4-pro':      { input: 1.44, cachedInput: 0.121, cacheCreation: 1.44,  output: 2.88 },
+  'z-ai/glm-5.3':                  { input: 1.40, cachedInput: 0.260, cacheCreation: 1.40,  output: 4.40 },
+  'x-ai/grok-4.6':                 { input: 2.00, cachedInput: 0.500, cacheCreation: 2.00,  output: 6.00 },
+  // Prior-gen, repriced to current published rates (several had drifted).
+  'moonshotai/kimi-k2-0905':       { input: 0.60, cachedInput: 0.15,  cacheCreation: 0.60,  output: 2.50 },
+  'google/gemini-2.5-flash':       { input: 0.30, cachedInput: 0.030, cacheCreation: 0.30,  output: 2.50 },
+  'google/gemini-2.5-pro':         { input: 1.25, cachedInput: 0.125, cacheCreation: 1.25,  output: 10.0 },
+  'openai/gpt-5-mini':             { input: 0.25, cachedInput: 0.025, cacheCreation: 0.25,  output: 2.00 },
   'openai/gpt-5':                  { input: 1.25, cachedInput: 0.125, cacheCreation: 1.25,  output: 10.0 },
-
-  // ---- OpenRouter — Moonshot (Kimi K2 family) ----
-  'moonshotai/kimi-k2-0905':       { input: 0.40, cachedInput: 0.10,  cacheCreation: 0.40,  output: 2.0  },
-  'moonshotai/kimi-k2.6':          { input: 0.75, cachedInput: 0.19,  cacheCreation: 0.75,  output: 3.50 },
-  'moonshotai/kimi-k2-thinking':   { input: 0.60, cachedInput: 0.15,  cacheCreation: 0.60,  output: 2.50 },
-
-  // ---- OpenRouter — DeepSeek / Qwen / xAI ----
-  'deepseek/deepseek-v3.2-exp':    { input: 0.27, cachedInput: 0.07,  cacheCreation: 0.27,  output: 1.10 },
-  'qwen/qwen3-coder':              { input: 0.20, cachedInput: 0.05,  cacheCreation: 0.20,  output: 0.80 },
-  'x-ai/grok-4':                   { input: 3.0,  cachedInput: 0.75,  cacheCreation: 3.0,   output: 15.0 },
+  'deepseek/deepseek-v3.2-exp':    { input: 0.27, cachedInput: 0.07,  cacheCreation: 0.27,  output: 0.41 },
+  'qwen/qwen3-coder':              { input: 0.30, cachedInput: 0.100, cacheCreation: 0.30,  output: 1.00 },
 
   // ---- Conservative fallback for any unknown OpenRouter model ----
   // Kept high so the cost cap errs on pausing too early rather than too late.
@@ -175,7 +186,7 @@ export class AnthropicClient implements ApiClient {
     return { result, usage }
   }
 
-  async chat(args: { system: string; user: string; maxTokens?: number }): Promise<{ text: string; usage: ApiUsage }> {
+  async chat(args: { system: string; user: string; maxTokens?: number; noReasoning?: boolean }): Promise<{ text: string; usage: ApiUsage }> {
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: args.maxTokens ?? MAX_TOKENS_CHAT,
@@ -353,17 +364,38 @@ export class OpenRouterClient implements ApiClient {
     return { result, usage }
   }
 
-  async chat(args: { system: string; user: string; maxTokens?: number }): Promise<{ text: string; usage: ApiUsage }> {
+  async chat(args: { system: string; user: string; maxTokens?: number; noReasoning?: boolean }): Promise<{ text: string; usage: ApiUsage }> {
     const messages = [
       { role: 'system', content: args.system },
       { role: 'user', content: args.user },
     ]
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const post = (withReasoningOff: boolean) => fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.model, messages, max_tokens: args.maxTokens ?? MAX_TOKENS_CHAT }),
+      body: JSON.stringify({
+        model: this.model,
+        messages,
+        max_tokens: args.maxTokens ?? MAX_TOKENS_CHAT,
+        ...(withReasoningOff ? { reasoning: { enabled: false } } : {}),
+      }),
     })
+
+    // Reasoning tokens count against max_tokens, so for a one-shot rewrite they are
+    // pure cost: measured on the refine prompt, deepseek-v4-flash and qwen3.7-flash
+    // spent the entire budget reasoning and returned NO content at all (10.1s and 7.3s
+    // for nothing); disabling it gave 1.6s and 1.4s with a full answer.
+    //
+    // But some endpoints — gemini-3.7-flash, glm-5.3 — reject the flag outright with
+    // 400 "Reasoning is mandatory for this endpoint". Rather than maintain a list of
+    // which models allow it, ask once and retry without on that specific refusal.
+    let res = await post(!!args.noReasoning)
+    if (!res.ok && args.noReasoning && res.status === 400) {
+      const detail = await res.text()
+      if (/reasoning/i.test(detail)) res = await post(false)
+      else throw new Error(`OpenRouter error: 400 ${detail}`)
+    }
     if (!res.ok) throw new Error(`OpenRouter error: ${res.status} ${await res.text()}`)
+
     const data = await res.json() as any
     const text = assertUsableText(data.choices?.[0]?.message?.content ?? '', data.choices?.[0]?.finish_reason, 'chat')
     const u = data.usage ?? {}

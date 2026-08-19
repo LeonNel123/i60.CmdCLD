@@ -10,6 +10,8 @@ export interface AutopilotPaneProps {
   onCostCapChange: (v: number) => void
   maxIter: number
   onMaxIterChange: (v: number) => void
+  refineModel: string
+  onRefineModelChange: (v: string) => void
   activeProjectPath?: string
 }
 
@@ -19,6 +21,18 @@ interface BudgetState {
   global: { spentUsd: number; capUsd: number }
 }
 
+// Measured 2026-08-19 against the real refine system prompt with reasoning disabled:
+// median of 3 runs, end-to-end including network. Cost is per refine call at the
+// observed token counts (~840 in / ~65 out).
+const REFINE_PICKS = [
+  { id: 'nvidia/nemotron-3.5-lightning', label: 'Nemotron 3.5 Lightning', speed: '1.08s · $0.08/1k', star: true,  hint: 'fastest overall, faithful rewrites' },
+  { id: 'qwen/qwen3.7-flash',            label: 'Qwen3.7 Flash',          speed: '1.29s · $0.03/1k', star: false, hint: 'cheapest; fastest first token (0.50s)' },
+  { id: 'openai/gpt-5.6-luna',           label: 'GPT-5.6 Luna',           speed: '1.38s · $0.24/1k', star: false, hint: 'best quality - preserves hedging and nuance' },
+  { id: 'google/gemini-3.1-flash-lite',  label: 'Gemini 3.1 Flash Lite',  speed: '1.56s · $0.34/1k', star: false, hint: 'fast, but blurred a detail in testing' },
+  { id: 'deepseek/deepseek-v4-flash',    label: 'DeepSeek V4 Flash',      speed: '1.71s · $0.08/1k', star: false, hint: 'faithful and tight, 1M ctx' },
+  { id: 'claude-haiku-4-5',              label: 'Haiku 4.5 (Anthropic)',  speed: 'n/a · $1/$5 per M', star: false, hint: 'stay on Anthropic - uses that key' },
+] as const
+
 const MODEL_PICKS = {
   anthropic: [
     { id: 'claude-haiku-4-5',           label: 'Haiku 4.5',        cost: '$1 / $5',        star: true,  hint: 'fast & cheap, premium JSON' },
@@ -27,15 +41,17 @@ const MODEL_PICKS = {
     { id: 'claude-fable-5',             label: 'Fable 5',          cost: '$10 / $50',      star: false, hint: 'top capability, pricey for orchestration' },
   ],
   openrouter: [
-    { id: 'moonshotai/kimi-k2-0905',    label: 'Kimi K2 0905',     cost: '$0.40 / $2.00',  star: true,  hint: 'best value, agentic, 262K ctx' },
-    { id: 'moonshotai/kimi-k2.6',       label: 'Kimi K2.6',        cost: '$0.75 / $3.50',  star: false, hint: 'newer flagship, multimodal' },
-    { id: 'google/gemini-2.5-flash',    label: 'Gemini 2.5 Flash', cost: '$0.30 / $2.50',  star: false, hint: 'cheap & very fast' },
-    { id: 'google/gemini-2.5-pro',      label: 'Gemini 2.5 Pro',   cost: '$1.25 / $10',    star: false, hint: 'premium reasoning' },
-    { id: 'openai/gpt-5-mini',          label: 'GPT-5 mini',       cost: '$0.25 / $2.00',  star: false, hint: 'cheap OpenAI value pick' },
-    { id: 'openai/gpt-5',               label: 'GPT-5',            cost: '$1.25 / $10',    star: false, hint: 'premium OpenAI' },
-    { id: 'deepseek/deepseek-v3.2-exp', label: 'DeepSeek V3.2',    cost: '$0.27 / $1.10',  star: false, hint: 'very cheap, strong reasoning' },
-    { id: 'qwen/qwen3-coder',           label: 'Qwen3 Coder',      cost: '$0.20 / $0.80',  star: false, hint: 'cheapest, agentic-tuned' },
-    { id: 'x-ai/grok-4',                label: 'Grok 4',           cost: '$3 / $15',       star: false, hint: 'xAI premium' },
+    { id: 'nvidia/nemotron-3.5-lightning', label: 'Nemotron 3.5 Lightning', cost: '$0.08 / $0.20', star: true,  hint: 'fastest measured, excellent value' },
+    { id: 'qwen/qwen3.7-flash',          label: 'Qwen3.7 Flash',      cost: '$0.03 / $0.13',  star: false, hint: 'cheapest credible, 1M ctx' },
+    { id: 'deepseek/deepseek-v4-flash',  label: 'DeepSeek V4 Flash',  cost: '$0.08 / $0.16',  star: false, hint: 'fast, faithful, 1M ctx' },
+    { id: 'openai/gpt-5.6-luna',         label: 'GPT-5.6 Luna',       cost: '$0.20 / $1.20',  star: false, hint: 'best rewrite quality of the fast tier' },
+    { id: 'google/gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', cost: '$0.25 / $1.50', star: false, hint: 'fast, slightly lossy on nuance' },
+    { id: 'qwen/qwen3.7-plus',           label: 'Qwen3.7 Plus',       cost: '$0.32 / $1.28',  star: false, hint: 'stronger reasoning, still cheap' },
+    { id: 'google/gemini-3.7-flash',     label: 'Gemini 3.7 Flash',   cost: '$0.38 / $1.88',  star: false, hint: 'capable, but reasoning cannot be disabled' },
+    { id: 'moonshotai/kimi-k2.6',        label: 'Kimi K2.6',          cost: '$0.54 / $2.28',  star: false, hint: 'agentic flagship' },
+    { id: 'deepseek/deepseek-v4-pro',    label: 'DeepSeek V4 Pro',    cost: '$1.44 / $2.88',  star: false, hint: 'premium reasoning, 1M ctx' },
+    { id: 'z-ai/glm-5.3',                label: 'GLM 5.3',            cost: '$1.40 / $4.40',  star: false, hint: 'newest GLM flagship' },
+    { id: 'x-ai/grok-4.6',               label: 'Grok 4.6',           cost: '$2.00 / $6.00',  star: false, hint: 'xAI premium' },
   ],
 } as const
 
@@ -147,6 +163,34 @@ export function AutopilotPane(p: AutopilotPaneProps) {
               <>
                 {m.star && <span style={{ color: '#fbbf24', marginRight: 3 }}>★</span>}
                 {m.label} <span style={{ color: '#555' }}>{m.cost}</span>
+              </>
+            ),
+          }))}
+        />
+      </Field>
+
+      <Field label="Broadcast refine model">
+        <TextInput
+          value={p.refineModel}
+          onChange={(e) => p.onRefineModelChange(e.target.value)}
+          placeholder="blank = use the planner model above"
+        />
+        <div style={{ color: '#666', fontSize: 10, marginTop: 6, marginBottom: 4 }}>
+          Used only by Broadcast → Refine. A one-shot rewrite, so a small fast model is
+          the right tool — the planner model is for orchestration. Times below are median
+          end-to-end on the real refine prompt, reasoning off.
+        </div>
+        <PillGroup
+          small
+          value={p.refineModel}
+          onChange={p.onRefineModelChange}
+          options={REFINE_PICKS.map((m) => ({
+            value: m.id,
+            title: m.hint,
+            label: (
+              <>
+                {m.star && <span style={{ color: '#fbbf24', marginRight: 3 }}>★</span>}
+                {m.label} <span style={{ color: '#555' }}>{m.speed}</span>
               </>
             ),
           }))}

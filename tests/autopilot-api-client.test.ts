@@ -11,8 +11,9 @@ const usage: ApiUsage = {
 
 describe('estimateCostFor', () => {
   it('uses Kimi K2 0905 rates when given that model id', () => {
-    // 1M input @ $0.40 + 1M output @ $2.00 = $2.40
-    expect(estimateCostFor('moonshotai/kimi-k2-0905', usage)).toBeCloseTo(2.40, 5)
+    // 1M input @ $0.60 + 1M output @ $2.50 = $3.10. Repriced 2026-08-19 against the
+    // live OpenRouter catalogue — the old $0.40/$2.00 had drifted.
+    expect(estimateCostFor('moonshotai/kimi-k2-0905', usage)).toBeCloseTo(3.10, 5)
   })
 
   it('uses Gemini 2.5 Flash rates', () => {
@@ -38,9 +39,9 @@ describe('estimateCostFor', () => {
 describe('OpenRouterClient.estimateCost', () => {
   it('honours the constructor model id rather than openrouter-default', () => {
     const client = new OpenRouterClient('fake-key', 'moonshotai/kimi-k2-0905')
-    // Same usage shape: 1M input + 1M output. Kimi 0905 => $2.40, NOT the
-    // old openrouter-default $25.
-    expect(client.estimateCost(usage)).toBeCloseTo(2.40, 5)
+    // Same usage shape: 1M input + 1M output. Kimi 0905 => $3.10, NOT the
+    // openrouter-default $25.
+    expect(client.estimateCost(usage)).toBeCloseTo(3.10, 5)
   })
 
   it('falls back to openrouter-default when the model is unknown', () => {

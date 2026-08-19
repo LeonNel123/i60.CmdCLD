@@ -157,7 +157,7 @@ export interface ApiClient {
    * decide() pipeline. Optional so legacy test mocks don't need updating;
    * production AnthropicClient + OpenRouterClient both implement it.
    */
-  chat?(args: { system: string; user: string; maxTokens?: number }): Promise<{ text: string; usage: ApiUsage }>
+  chat?(args: { system: string; user: string; maxTokens?: number; noReasoning?: boolean }): Promise<{ text: string; usage: ApiUsage }>
   /** Cost in USD for a usage record at the client's current model rates. */
   estimateCost(usage: ApiUsage): number
 }
