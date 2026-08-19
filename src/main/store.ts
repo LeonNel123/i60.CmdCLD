@@ -1,5 +1,5 @@
 // src/main/store.ts
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'fs'
 import { dirname } from 'path'
 
 export interface WindowState {
@@ -77,7 +77,13 @@ export class Store {
     this.state = state
     try {
       mkdirSync(dirname(this.filePath), { recursive: true })
-      writeFileSync(this.filePath, JSON.stringify(state, null, 2))
+      // Write-then-rename: load() silently falls back to an empty state on
+      // unparseable JSON, so a half-written file would quietly lose every
+      // window layout. The rename is atomic — the real file only ever holds
+      // a complete write.
+      const tmp = this.filePath + '.tmp'
+      writeFileSync(tmp, JSON.stringify(state, null, 2))
+      renameSync(tmp, this.filePath)
     } catch {}
   }
 

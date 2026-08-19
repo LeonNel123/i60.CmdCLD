@@ -48,6 +48,34 @@ describe('CostTracker', () => {
     t.add(0.6); expect(t.isOverCap()).toBe(true)
   })
 
+  it('uses the configured cap, not a stale persisted one, on restart', () => {
+    // Regression: a run that paused at its $1 cap could not be restarted with a
+    // raised cap — load() overwrote the constructor's cap with the persisted
+    // one, so the new run re-paused immediately at the old ceiling.
+    const first = new CostTracker(TMP, 1.0)
+    first.add(1.10)
+    expect(first.isOverCap()).toBe(true)
+
+    const restarted = new CostTracker(TMP, 5.0)
+    expect(restarted.capUsd).toBe(5.0)
+    expect(restarted.totalUsd).toBeCloseTo(1.10, 5) // real spend still survives
+    expect(restarted.isOverCap()).toBe(false)
+  })
+
+  it('re-arms thresholds against the configured cap on restart', () => {
+    // The persisted thresholdsHit were crossed relative to the OLD cap. After
+    // restarting with a bigger cap they must be recomputed, or warnings for the
+    // new ceiling never fire.
+    const first = new CostTracker(TMP, 1.0)
+    first.add(1.10) // 50/80/100 all crossed at the $1 cap
+
+    const calls: number[] = []
+    const restarted = new CostTracker(TMP, 5.0, (pct) => calls.push(pct))
+    expect(calls).toEqual([]) // silent on load — no retroactive callbacks
+    restarted.add(1.50) // $2.60 of $5 → crosses 50%
+    expect(calls).toEqual([50])
+  })
+
   it('extendCap raises ceiling and resets crossed thresholds', () => {
     const calls: number[] = []
     const t = new CostTracker(TMP, 1.0, (pct) => calls.push(pct))

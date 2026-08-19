@@ -32,8 +32,12 @@ export class CostTracker {
       if (!existsSync(this.file())) return
       const data = JSON.parse(readFileSync(this.file(), 'utf-8')) as PersistedShape
       if (typeof data.totalUsd === 'number') this.totalUsd = data.totalUsd
-      if (typeof data.capUsd === 'number') this.capUsd = data.capUsd
-      if (Array.isArray(data.thresholdsHit)) this.thresholdsHit = new Set(data.thresholdsHit)
+      // NOTE: the persisted capUsd is deliberately NOT restored. The cap is a
+      // live setting owned by the kickoff form; restoring it stopped a run that
+      // paused at its cap from being restarted with a raised one. The persisted
+      // thresholdsHit is likewise ignored — it was crossed against the old cap,
+      // so it is re-derived from the live one instead.
+      this.markCrossedThresholdsSilently()
     } catch {
       // ignore corrupt; start clean
     }
@@ -81,12 +85,17 @@ export class CostTracker {
 
   extendCap(newCapUsd: number): void {
     this.capUsd = newCapUsd
+    this.markCrossedThresholdsSilently()
+    this.persist()
+  }
+
+  /** Reset thresholdsHit to exactly those already crossed at the current cap,
+   *  without firing callbacks. Used on load and whenever the cap moves. */
+  private markCrossedThresholdsSilently(): void {
     this.thresholdsHit.clear()
-    // Pre-mark already-crossed thresholds silently (no callbacks)
     const pct = this.percent()
     for (const t of [50, 80, 100] as const) {
       if (pct >= t) this.thresholdsHit.add(t)
     }
-    this.persist()
   }
 }

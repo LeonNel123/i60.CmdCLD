@@ -1,8 +1,19 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 contextBridge.exposeInMainWorld('api', {
   // Platform info (synchronous — available immediately)
   platform: process.platform as 'win32' | 'darwin' | 'linux',
+
+  // Absolute path of a dropped File. Electron removed the non-standard
+  // File.path in v32; webUtils is the supported replacement and is only
+  // reachable from the preload, so the renderer has to come through here.
+  getPathForFile: (file: File): string => {
+    try {
+      return webUtils.getPathForFile(file)
+    } catch {
+      return ''
+    }
+  },
 
   // Existing PTY methods. `elevated` spawns the shell through an elevation
   // bridge (gsudo / sudo inline) so the tile hosts an admin shell.

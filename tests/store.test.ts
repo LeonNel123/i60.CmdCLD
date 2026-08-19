@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { Store } from '../src/main/store'
-import { writeFileSync, mkdirSync, rmSync } from 'fs'
+import { writeFileSync, readFileSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 
 const TEST_DIR = join(__dirname, '.tmp-store-test')
@@ -81,5 +81,20 @@ describe('Store multi-window', () => {
 
     store.saveWindowBounds('primary', { x: 0, y: 0, width: 1200, height: 800 })
     expect(new Store(TEST_FILE).getWindowMaximized('primary')).toBe(false)
+  })
+
+  it('keeps the last good layout when a write fails', () => {
+    // Session layout is written through a temp file and renamed into place: a
+    // write that dies partway would otherwise leave unparseable JSON, which
+    // load() swallows silently — losing every window layout the user had.
+    const store = new Store(TEST_FILE)
+    const good = { x: 10, y: 20, width: 1400, height: 900 }
+    store.saveWindowBounds('primary', good)
+
+    mkdirSync(TEST_FILE + '.tmp', { recursive: true }) // writes here now fail
+    store.saveWindowBounds('primary', { x: 0, y: 0, width: 1, height: 1 })
+
+    expect(() => JSON.parse(readFileSync(TEST_FILE, 'utf-8'))).not.toThrow()
+    expect(new Store(TEST_FILE).getWindowBounds('primary')).toEqual(good)
   })
 })

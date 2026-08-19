@@ -128,6 +128,8 @@ export interface AttachSessionStatus {
 
 export interface ElectronAPI {
   platform: 'win32' | 'darwin' | 'linux'
+  /** Absolute path of a dropped File (Electron's webUtils; File.path is gone). */
+  getPathForFile: (file: File) => string
   createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex' | 'grok', launchArgs?: string, elevated?: boolean) => Promise<void>
   writeTerminal: (id: string, data: string) => Promise<void>
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>

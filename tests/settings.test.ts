@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { Settings } from '../src/main/settings'
 import {
@@ -51,6 +51,27 @@ describe('Settings agent CLI defaults', () => {
     const reloaded = new Settings(FILE)
     expect(reloaded.get('defaultAgentCli')).toBe('codex')
     expect(reloaded.get('codexArgs')).toBe('--sandbox workspace-write')
+  })
+})
+
+describe('Settings durability', () => {
+  it('keeps the last good file when a write fails', () => {
+    // Settings are written through a temp file and renamed into place, so a
+    // write that dies partway (crash, full disk) can never leave the real file
+    // truncated — which load() would silently swallow, resetting every setting
+    // to defaults. Fault injected by occupying the temp path with a directory.
+    const settings = new Settings(FILE)
+    settings.set('editor', 'code')
+    settings.set('remotePort', 4321)
+
+    mkdirSync(FILE + '.tmp', { recursive: true }) // writes here now fail
+    settings.set('editor', 'clobbered')
+
+    const onDisk = readFileSync(FILE, 'utf-8')
+    expect(() => JSON.parse(onDisk)).not.toThrow()
+    const reloaded = new Settings(FILE)
+    expect(reloaded.get('editor')).toBe('code')
+    expect(reloaded.get('remotePort')).toBe(4321)
   })
 })
 

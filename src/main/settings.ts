@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'fs'
 import { dirname } from 'path'
 import { DEFAULT_AGENT_CLI, normalizeAgentCli, type AgentCli } from '../shared/agent-cli'
 import { DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE } from '../shared/terminal-font'
@@ -90,7 +90,12 @@ export class Settings {
     this.settings[key] = value
     try {
       mkdirSync(dirname(this.filePath), { recursive: true })
-      writeFileSync(this.filePath, JSON.stringify(this.settings, null, 2))
+      // Write-then-rename: load() silently falls back to defaults on unparseable
+      // JSON, so a half-written file would quietly reset every setting. The
+      // rename is atomic, so the real file only ever holds a complete write.
+      const tmp = this.filePath + '.tmp'
+      writeFileSync(tmp, JSON.stringify(this.settings, null, 2))
+      renameSync(tmp, this.filePath)
     } catch {}
   }
 

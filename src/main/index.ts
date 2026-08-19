@@ -5,6 +5,7 @@ import { spawn, execSync } from 'child_process'
 import { appendFileSync, existsSync, statSync, writeFileSync, readFileSync, mkdirSync } from 'fs'
 import * as os from 'os'
 import { PtyManager, getDefaultShell } from './pty-manager'
+import { validatePtyCreate } from './pty-create-validation'
 import { openAdminShell, detectElevationBridge } from './admin-shell'
 import { Store } from './store'
 import { WindowRegistry } from './window-registry'
@@ -453,15 +454,20 @@ function getWindowIdFromEvent(event: Electron.IpcMainInvokeEvent): string | unde
 // PTY IPC handlers
 ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: AgentCli, launchArgsRaw?: string, elevatedRaw?: unknown) => {
   const windowId = getWindowIdFromEvent(event)
-  if (!windowId) return
-  const wc = registry.getWebContents(windowId)
-  if (!wc) return
-  // Validate cwd is a real directory
-  try {
-    if (!existsSync(cwd) || !statSync(cwd).isDirectory()) return
-  } catch { return }
-  // Prevent overwriting existing PTY
-  if (ptyManager.getMeta(id)) return
+  const wc = windowId ? registry.getWebContents(windowId) : null
+  // Refuse with a reason rather than a bare `return`: an undefined resolve
+  // leaves the renderer with a blank tile and nothing to display.
+  const invalid = validatePtyCreate({
+    id,
+    cwd,
+    hasWindow: Boolean(windowId && wc),
+    idInUse: Boolean(ptyManager.getMeta(id)),
+  })
+  if (invalid || !wc) {
+    const reason = invalid ?? 'No owning window for this request.'
+    log(`pty:create refused: ${reason}`)
+    throw new Error(reason)
+  }
   const name = cwd.split(/[\\/]/).pop() || cwd
   const agentCli = normalizeAgentCli(agentCliRaw)
   const launchArgs = typeof launchArgsRaw === 'string' ? launchArgsRaw : getArgsForAgent(agentCli, {

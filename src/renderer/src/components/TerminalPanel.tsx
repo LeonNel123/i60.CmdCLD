@@ -8,6 +8,7 @@ import '@xterm/xterm/css/xterm.css'
 import { onTerminalDataReceived, removeTerminalActivity } from '../utils/terminal-activity'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatPaths } from '../utils/format-paths'
+import { extractDroppedPaths } from '../utils/dropped-paths'
 import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
 import { findTerminalPaths, resolveTerminalPath } from '../../../shared/terminal-link'
 import {
@@ -401,7 +402,7 @@ export function TerminalPanel({
       e.preventDefault()
       setDragActive(false)
       const files = Array.from(e.dataTransfer?.files ?? [])
-      const paths = files.map((f: any) => f.path as string).filter(Boolean)
+      const paths = extractDroppedPaths(files, (f) => window.api.getPathForFile(f))
       if (paths.length === 0) return
       const payload = bracketedPasteRef.current
         ? '\x1b[200~' + formatPaths(paths) + '\x1b[201~'
