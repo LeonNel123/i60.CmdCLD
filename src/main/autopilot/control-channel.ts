@@ -51,7 +51,7 @@ export function reconcileMilestoneState(memory: Milestone[], disk: Milestone[]):
     const allDone = subgoals.every((s) => s.status === 'done')
     const anyBlocked = subgoals.some((s) => s.status === 'blocked')
     const anyStarted = subgoals.some((s) => s.status !== 'pending')
-    const status = anyBlocked ? 'blocked' : allDone ? 'done' : anyStarted ? 'in-progress' : 'pending'
+    const status: Milestone['status'] = anyBlocked ? 'blocked' : allDone ? 'done' : anyStarted ? 'in-progress' : 'pending'
     if (status !== m.status) changed = true
     return { ...m, subgoals, status }
   })

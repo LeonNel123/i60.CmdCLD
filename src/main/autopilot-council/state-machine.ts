@@ -17,6 +17,7 @@ import {
   COUNCIL_GATES_BY_INTENSITY,
   DEFAULT_COUNCIL_HUMAN_APPROVAL,
   type AutopilotCouncilOptions,
+  type CouncilControl,
   type CouncilGate,
   type CouncilState,
   type ProMarker,
@@ -111,6 +112,19 @@ export class AutopilotCouncilStateMachine {
     }
   }
 
+  /**
+   * Read `control` without flow-narrowing.
+   *
+   * TypeScript narrows `this.state.control` from an assignment earlier in a method and
+   * carries that narrowing across `await`s, but `stop()` can mutate it concurrently. A
+   * direct comparison in a catch block is then reported as impossible when detecting
+   * exactly that concurrent stop is the point of the guard. Reading through a typed
+   * accessor restores the declared union — do not inline this back.
+   */
+  private currentControl(): CouncilControl {
+    return this.state.control
+  }
+
   private async performStart(): Promise<void> {
     const generation = ++this.lifecycleGeneration
     let reviewerProcessStarted = false
@@ -152,7 +166,7 @@ export class AutopilotCouncilStateMachine {
 
       if (this.isGenerationActive(generation)) this.notify()
     } catch (error) {
-      if (this.lifecycleGeneration === generation && this.state.control !== 'stopped') {
+      if (this.lifecycleGeneration === generation && this.currentControl() !== 'stopped') {
         this.cleanupReviewerStartup(reviewerProcessStarted)
         const message = errorMessage(error)
         this.state.control = 'blocked'

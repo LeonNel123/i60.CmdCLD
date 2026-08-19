@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { parseDecision, parseDebug } from '../src/main/autopilot/api-client'
+import {
+  assertUsableText,
+  extractText,
+  MAX_TOKENS_CHAT,
+  MAX_TOKENS_DEBUG,
+  MAX_TOKENS_DECIDE,
+  parseDecision,
+  parseDebug,
+} from '../src/main/autopilot/api-client'
 
 // These tests pin the contract of the response parsers used by both the
 // Anthropic and OpenRouter clients. The orchestrator's correctness depends on
@@ -282,5 +290,83 @@ describe('parseDebug', () => {
       const r = parseDebug('I think you should retry with npm install.')
       expect(r.kind).toBe('human')
     })
+  })
+})
+
+// Reading content[0].text is wrong on every model that runs adaptive thinking
+// (Sonnet 5, Opus 5, Opus 4.8, Fable 5): the first block is a thinking block with no
+// .text, so index 0 yields '' and the caller reports an empty answer while the model
+// in fact replied. Broadcast's "Refine with AI" hit exactly this.
+describe('extractText', () => {
+  it('skips a leading thinking block and returns the text', () => {
+    expect(extractText([
+      { type: 'thinking', thinking: 'weighing the options' },
+      { type: 'text', text: 'the rewritten prompt' },
+    ])).toBe('the rewritten prompt')
+  })
+
+  it('joins multiple text blocks in order', () => {
+    expect(extractText([
+      { type: 'text', text: 'first' },
+      { type: 'thinking', thinking: 'aside' },
+      { type: 'text', text: ' second' },
+    ])).toBe('first second')
+  })
+
+  it('returns the text when it is the only block', () => {
+    expect(extractText([{ type: 'text', text: 'plain' }])).toBe('plain')
+  })
+
+  it('returns empty string when no text block is present', () => {
+    expect(extractText([{ type: 'thinking', thinking: 'only thought' }])).toBe('')
+  })
+
+  it('tolerates non-array and empty content', () => {
+    expect(extractText(undefined)).toBe('')
+    expect(extractText(null)).toBe('')
+    expect(extractText([])).toBe('')
+  })
+})
+
+// Thinking tokens count against max_tokens, so a budget spent entirely on thinking
+// returns no text block at all. Left unguarded the parsers degrade quietly —
+// parseDecision('') is a well-formed { kind: 'reply', text: '' } that writes an empty
+// reply into the doer's PTY and looks like normal operation. Every caller escalates or
+// reports on a throw, so failing loudly is the only way this stays visible.
+describe('assertUsableText', () => {
+  it('passes usable text through unchanged', () => {
+    expect(assertUsableText('{"kind":"done"}', 'end_turn', 'decide')).toBe('{"kind":"done"}')
+  })
+
+  it('throws with a ceiling-specific message when Anthropic truncates', () => {
+    expect(() => assertUsableText('', 'max_tokens', 'decide'))
+      .toThrow(/decide: hit the token ceiling/)
+    expect(() => assertUsableText('', 'max_tokens', 'decide'))
+      .toThrow(/raise max_tokens or lower reasoning effort/i)
+  })
+
+  // OpenRouter signals the same condition as finish_reason 'length'.
+  it('throws on an OpenRouter length stop', () => {
+    expect(() => assertUsableText('', 'length', 'chat')).toThrow(/chat: hit the token ceiling/)
+  })
+
+  it('throws distinctly when the model simply returned nothing', () => {
+    expect(() => assertUsableText('', 'end_turn', 'debug')).toThrow(/debug: model returned no text/)
+    expect(() => assertUsableText('', undefined, 'debug')).toThrow(/stop_reason=unknown/)
+  })
+
+  it('treats whitespace-only output as empty', () => {
+    expect(() => assertUsableText('   \n  ', 'end_turn', 'chat')).toThrow(/returned no text/)
+  })
+})
+
+// Regression pin: these were 250-400 when every model was non-thinking. A ceiling that
+// low can be consumed entirely by thinking before any text is emitted. Raising them is
+// free — billing is on tokens produced, not on the ceiling.
+describe('token ceilings', () => {
+  it('leaves room for thinking as well as the answer', () => {
+    expect(MAX_TOKENS_DECIDE).toBeGreaterThanOrEqual(2048)
+    expect(MAX_TOKENS_DEBUG).toBeGreaterThanOrEqual(2048)
+    expect(MAX_TOKENS_CHAT).toBeGreaterThanOrEqual(2048)
   })
 })

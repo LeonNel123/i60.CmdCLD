@@ -12,6 +12,7 @@
 // shape carrying the raw text — same degradation as Classic.
 
 import type { ApiClient, ApiUsage } from '../autopilot/types'
+import { MAX_TOKENS_CHAT } from '../autopilot/api-client'
 import type { DecisionShape, ProDecideInput, ProDecideResult } from './types'
 import { buildPlannerPrompt } from './prompts'
 
@@ -149,7 +150,7 @@ export async function decidePro(
   const { text, usage } = await client.chat({
     system: parts.cachedSystem,
     user: userMsg,
-    maxTokens: 400,
+    maxTokens: MAX_TOKENS_CHAT,
   })
   const result = parseProDecision(input.shape, text)
   const costUsd = client.estimateCost(usage)
