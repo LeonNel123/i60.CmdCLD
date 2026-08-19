@@ -84,13 +84,25 @@ function expandEnv(p: string): string | null {
   return missing ? null : out
 }
 
-function onPath(bin: string): boolean {
+/**
+ * Resolve a bare command name to its absolute path via where/which, or null if
+ * it is not on PATH.
+ *
+ * Returning the resolved path rather than a boolean matters: launching a bare
+ * name on Windows requires spawning through a shell, and Node does not escape
+ * arguments in that mode, so a folder path containing a shell metacharacter
+ * (an "R&D" directory, say) would be split by cmd.exe. An absolute path is
+ * spawned directly with no shell involved.
+ */
+function resolveOnPath(bin: string): string | null {
   const which = process.platform === 'win32' ? 'where' : 'which'
   try {
-    execFileSync(which, [bin], { stdio: 'ignore', timeout: 3000 })
-    return true
+    const out = execFileSync(which, [bin], { encoding: 'utf8', timeout: 3000 })
+    // `where` can report several hits, one per line; take the first.
+    const first = out.split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 0)
+    return first && existsSync(first) ? first : null
   } catch {
-    return false
+    return null
   }
 }
 
@@ -105,7 +117,8 @@ function resolveEditor(e: KnownEditor): EditorInfo | null {
     const full = expandEnv(raw)
     if (full && existsSync(full)) return { id: e.id, name: e.name, cmd: full }
   }
-  if (onPath(e.bin)) return { id: e.id, name: e.name, cmd: e.bin }
+  const fromPath = resolveOnPath(e.bin)
+  if (fromPath) return { id: e.id, name: e.name, cmd: fromPath }
   return null
 }
 

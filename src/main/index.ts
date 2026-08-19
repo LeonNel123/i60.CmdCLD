@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Menu, powerSaveBlocker, safeStorage, screen } from 'electron'
-import { join, resolve as resolvePath, sep as pathSep, isAbsolute } from 'path'
+import { join, resolve as resolvePath, sep as pathSep } from 'path'
 import { fileURLToPath } from 'url'
 import { spawn, execSync } from 'child_process'
 import { appendFileSync, existsSync, statSync, writeFileSync, readFileSync, mkdirSync } from 'fs'
@@ -564,13 +564,25 @@ function spawnEditor(cmd: string, args: string[]): Promise<{ ok: boolean; error?
     try {
       if (isBatch) {
         // .cmd/.bat wrappers (VS Code, Cursor, …) aren't directly executable by
-        // CreateProcess; run them through cmd.exe, which handles spaced paths.
-        child = spawn('cmd.exe', ['/c', cmd, ...args], { detached: true, stdio: 'ignore', windowsHide: true })
+        // CreateProcess, so they run through cmd.exe.
+        //
+        // The command line is built and quoted here rather than left to Node.
+        // Node only quotes an argument that contains a space, tab or quote, so a
+        // path like C:\R&D arrives unquoted and cmd.exe reads the & as a
+        // command separator. /s plus one fully-quoted string is the documented
+        // form that makes cmd take the remainder verbatim; windowsVerbatimArguments
+        // stops Node from re-quoting what we just built. Windows paths cannot
+        // contain a double quote, so quoting each part is sufficient.
+        const line = [cmd, ...args].map((a) => `"${a}"`).join(' ')
+        child = spawn('cmd.exe', ['/s', '/c', `"${line}"`], {
+          detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true,
+        })
       } else {
-        // Absolute .exe / POSIX binary: spawn directly. Bare command names
-        // (the PATH fallback) still need a shell on Windows.
-        const shellNeeded = isWin && !isAbsolute(cmd)
-        child = spawn(cmd, args, { shell: shellNeeded, detached: true, stdio: 'ignore', windowsHide: true })
+        // Absolute .exe or POSIX binary, spawned directly with no shell. Editor
+        // commands are always absolute now — resolveOnPath turns a PATH hit into
+        // its full path — so there is no bare-name case needing a shell, and no
+        // unescaped-argument exposure.
+        child = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true })
       }
     } catch (e) {
       resolveResult({ ok: false, error: e instanceof Error ? e.message : String(e) })
