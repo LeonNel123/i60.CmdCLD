@@ -47,12 +47,16 @@ describe('RecentDB', () => {
     expect(list[1].path).toBe('C:\\older')
   })
 
+  // 25 sequential awaited writes against sql.js with disk persistence. This runs well
+  // under vitest's 5s default on an idle machine but was observed at 5273ms under
+  // load, so both prune tests get an explicit timeout — a contended CI runner should
+  // not fail a release build over machine load.
   it('prunes to 20 entries', async () => {
     for (let i = 0; i < 25; i++) {
       await db.add(`C:\\folder-${i}`)
     }
     expect(await db.list()).toHaveLength(20)
-  })
+  }, 30_000)
 
   it('prune keeps most recent, drops oldest', async () => {
     for (let i = 0; i < 25; i++) {
@@ -62,7 +66,7 @@ describe('RecentDB', () => {
     const paths = list.map((f) => f.path)
     expect(paths).not.toContain('C:\\folder-00')
     expect(paths).toContain('C:\\folder-24')
-  })
+  }, 30_000)
 
   it('removes a folder by path', async () => {
     await db.add('C:\\projects\\keep-me')

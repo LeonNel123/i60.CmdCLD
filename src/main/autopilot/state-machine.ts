@@ -10,7 +10,7 @@ import { readGoal, readMilestones, writeMilestone, appendLog, appendTranscript, 
 import { discoverValidation } from './validation'
 import { decide } from './decision'
 import { runResetSequence } from './reset'
-import { makeApiClient } from './api-client'
+import { makeApiClient, MAX_TOKENS_CHAT } from './api-client'
 import { buildDoerSystemPrompt, buildExecutionKickoff, buildWizardKickoff } from './prompts'
 import { debugCall } from './debug'
 import { saveRuntimeClassic, loadRuntimeClassic } from './runtime-state'
@@ -730,8 +730,15 @@ export class AutopilotStateMachine {
       '{"verdict":"no_marker"}',
     ].join('\n')
     const user = `Terminal tail:\n${tail.slice(-2500)}`
+    // chat() is optional on ApiClient — bind it up front so a client without it
+    // degrades to "no adjudication" instead of a TypeError inside the recovery path.
+    const chat = this.api.chat?.bind(this.api)
+    if (!chat) {
+      this.appendActivity('orchestrator-reply', 'marker adjudication unavailable: ApiClient.chat() is not implemented on this client')
+      return null
+    }
     try {
-      const { text, usage } = await this.api.chat({ system, user, maxTokens: 120 })
+      const { text, usage } = await chat({ system, user, maxTokens: MAX_TOKENS_CHAT })
       this.cost.add(this.api.estimateCost(usage))
       this.state.costUsd = this.cost.totalUsd
       const result = parseMarkerAdjudication(text, tail)

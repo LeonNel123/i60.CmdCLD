@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { X } from './icons'
 import { selectBroadcastTargets } from '../../../shared/broadcast'
 
@@ -10,6 +10,10 @@ interface BroadcastBarProps {
 type SendResult = { id: string; ok: boolean; error?: string }
 
 const MONO = 'Menlo, Consolas, monospace'
+
+const COMPOSER_MIN_HEIGHT = 160
+/** Ceiling as a share of the window, so a long dictation never swallows the grid. */
+const COMPOSER_MAX_VIEWPORT_FRACTION = 0.45
 
 const buttonBase: CSSProperties = {
   border: '1px solid #444', borderRadius: '4px', padding: '5px 12px',
@@ -46,6 +50,17 @@ export function BroadcastBar({ terminals, onClose }: BroadcastBarProps) {
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
+
+  // Grow the composer to fit its content, between the floor and the viewport ceiling.
+  // Runs before paint so a pasted or dictated block never flashes at the old height.
+  useLayoutEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const ceiling = Math.round(window.innerHeight * COMPOSER_MAX_VIEWPORT_FRACTION)
+    el.style.height = 'auto'
+    // Clamp order matters: the ceiling wins over the floor, so a short window keeps its grid.
+    el.style.height = `${Math.min(Math.max(COMPOSER_MIN_HEIGHT, el.scrollHeight), ceiling)}px`
+  }, [draft])
 
   // Keep the selection in step with the console list: drop closed consoles,
   // auto-select ones opened while the bar is up.
@@ -192,14 +207,15 @@ export function BroadcastBar({ terminals, onClose }: BroadcastBarProps) {
             if (mod && e.key === 'Enter') { e.preventDefault(); void handleSend() }
             if (e.key === 'Escape') { e.preventDefault(); onClose() }
           }}
-          rows={3}
+          rows={8}
           spellCheck={false}
-          placeholder="Describe what all agents should do… (Ctrl+Enter to send)"
+          placeholder="Describe what all agents should do — type or dictate, rough is fine… (Ctrl+Enter to send)"
           disabled={refining}
           style={{
             flex: 1,
             resize: 'vertical',
-            minHeight: '56px',
+            maxHeight: `${COMPOSER_MAX_VIEWPORT_FRACTION * 100}vh`,
+            overflowY: 'auto',
             background: '#0d1117',
             border: '1px solid #333',
             borderRadius: '4px',

@@ -6,6 +6,7 @@ import type {
 import { ATTACH_CLASSIFICATIONS } from './attach-types'
 import { inspectAutopilotOutput } from './output-inspector'
 import type { ApiClient } from './types'
+import { MAX_TOKENS_CHAT } from './api-client'
 
 const ATTACH_CLASSIFICATION_SET = new Set<AttachClassification>(ATTACH_CLASSIFICATIONS)
 
@@ -175,7 +176,7 @@ export async function createLlmAttachDraft(args: {
     const response = await args.client.chat({
       system: prompt.system,
       user: prompt.user,
-      maxTokens: 700,
+      maxTokens: MAX_TOKENS_CHAT,
     })
     const estimatedCostUsd = args.client.estimateCost(response.usage)
     try {

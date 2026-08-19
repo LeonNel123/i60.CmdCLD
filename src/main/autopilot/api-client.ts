@@ -60,6 +60,50 @@ export function estimateCostFor(model: string, usage: ApiUsage): number {
   )
 }
 
+/**
+ * Concatenate every `text` block in a Messages response.
+ *
+ * Do NOT read `content[0].text` — on models that run adaptive thinking (Sonnet 5,
+ * Opus 5, Opus 4.8, Fable 5) the first block is a `thinking` block with no `.text`,
+ * so index 0 silently yields '' and the caller sees an "empty" answer.
+ */
+export function extractText(content: unknown): string {
+  if (!Array.isArray(content)) return ''
+  return content
+    .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
+    .map((b: any) => b.text as string)
+    .join('')
+}
+
+// Token ceilings must cover thinking as well as the visible answer: current Anthropic
+// models run adaptive thinking unless told otherwise, and thinking tokens count against
+// max_tokens. The previous 120-400 ceilings predate that and could be spent entirely on
+// thinking, leaving no text block at all. Raising them costs nothing — billing is on
+// tokens actually produced, never on the ceiling.
+export const MAX_TOKENS_DECIDE = 4096
+export const MAX_TOKENS_DEBUG = 4096
+export const MAX_TOKENS_CHAT = 4096
+
+/**
+ * Convert a silently-truncated or text-free response into a visible error.
+ *
+ * When thinking consumes the whole budget the response carries no text block, and the
+ * parsers degrade quietly: parseDecision('') yields { kind: 'reply', text: '' }, which
+ * writes an empty reply into the doer's PTY and looks like normal operation. Every
+ * caller either escalates or reports on a thrown error, so throwing is the honest
+ * outcome — a stalled run with a reason beats a silent no-op.
+ */
+export function assertUsableText(text: string, stopReason: string | null | undefined, label: string): string {
+  if (text.trim()) return text
+  if (stopReason === 'max_tokens' || stopReason === 'length') {
+    throw new Error(
+      `${label}: hit the token ceiling before producing an answer (stop_reason=${stopReason}). ` +
+      'Thinking likely consumed the whole budget — raise max_tokens or lower reasoning effort.',
+    )
+  }
+  throw new Error(`${label}: model returned no text (stop_reason=${stopReason ?? 'unknown'}).`)
+}
+
 // ----- AnthropicClient -----
 
 export class AnthropicClient implements ApiClient {
@@ -85,7 +129,7 @@ export class AnthropicClient implements ApiClient {
 
     const response = await this.client.messages.create({
       model: this.model,
-      max_tokens: 400,
+      max_tokens: MAX_TOKENS_DECIDE,
       system: [
         { type: 'text', text: parts.cachedSystem, cache_control: { type: 'ephemeral' } as any },
         { type: 'text', text: parts.cachedGoalAndMilestones, cache_control: { type: 'ephemeral' } as any },
@@ -95,7 +139,7 @@ export class AnthropicClient implements ApiClient {
       ],
     })
 
-    const text = (response.content[0] as any)?.text ?? ''
+    const text = assertUsableText(extractText(response.content), response.stop_reason, 'decide')
     const result = parseDecision(text)
 
     const u: any = response.usage as any
@@ -113,13 +157,13 @@ export class AnthropicClient implements ApiClient {
     const parts = (await import('./prompts')).buildDebugPrompt(input)
     const response = await this.client.messages.create({
       model: this.model,
-      max_tokens: 250,
+      max_tokens: MAX_TOKENS_DEBUG,
       system: [
         { type: 'text', text: parts.system, cache_control: { type: 'ephemeral' } as any },
       ] as any,
       messages: [{ role: 'user', content: parts.user }],
     })
-    const text = (response.content[0] as any)?.text ?? ''
+    const text = assertUsableText(extractText(response.content), response.stop_reason, 'debug')
     const result = parseDebug(text)
     const u: any = response.usage as any
     const usage: ApiUsage = {
@@ -134,13 +178,13 @@ export class AnthropicClient implements ApiClient {
   async chat(args: { system: string; user: string; maxTokens?: number }): Promise<{ text: string; usage: ApiUsage }> {
     const response = await this.client.messages.create({
       model: this.model,
-      max_tokens: args.maxTokens ?? 400,
+      max_tokens: args.maxTokens ?? MAX_TOKENS_CHAT,
       system: [
         { type: 'text', text: args.system, cache_control: { type: 'ephemeral' } as any },
       ] as any,
       messages: [{ role: 'user', content: args.user }],
     })
-    const text = (response.content[0] as any)?.text ?? ''
+    const text = assertUsableText(extractText(response.content), response.stop_reason, 'chat')
     const u: any = response.usage as any
     const usage: ApiUsage = {
       inputTokens: u?.input_tokens ?? 0,
@@ -267,12 +311,12 @@ export class OpenRouterClient implements ApiClient {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ model: this.model, messages, max_tokens: 400 }),
+      body: JSON.stringify({ model: this.model, messages, max_tokens: MAX_TOKENS_DECIDE }),
     })
 
     if (!res.ok) throw new Error(`OpenRouter error: ${res.status} ${await res.text()}`)
     const data = await res.json() as any
-    const text = data.choices?.[0]?.message?.content ?? ''
+    const text = assertUsableText(data.choices?.[0]?.message?.content ?? '', data.choices?.[0]?.finish_reason, 'decide')
     const result = parseDecision(text)
     const u = data.usage ?? {}
     const usage: ApiUsage = {
@@ -293,11 +337,11 @@ export class OpenRouterClient implements ApiClient {
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.model, messages, max_tokens: 250 }),
+      body: JSON.stringify({ model: this.model, messages, max_tokens: MAX_TOKENS_DEBUG }),
     })
     if (!res.ok) throw new Error(`OpenRouter error: ${res.status} ${await res.text()}`)
     const data = await res.json() as any
-    const text = data.choices?.[0]?.message?.content ?? ''
+    const text = assertUsableText(data.choices?.[0]?.message?.content ?? '', data.choices?.[0]?.finish_reason, 'debug')
     const result = parseDebug(text)
     const u = data.usage ?? {}
     const usage: ApiUsage = {
@@ -317,11 +361,11 @@ export class OpenRouterClient implements ApiClient {
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.model, messages, max_tokens: args.maxTokens ?? 400 }),
+      body: JSON.stringify({ model: this.model, messages, max_tokens: args.maxTokens ?? MAX_TOKENS_CHAT }),
     })
     if (!res.ok) throw new Error(`OpenRouter error: ${res.status} ${await res.text()}`)
     const data = await res.json() as any
-    const text = data.choices?.[0]?.message?.content ?? ''
+    const text = assertUsableText(data.choices?.[0]?.message?.content ?? '', data.choices?.[0]?.finish_reason, 'chat')
     const u = data.usage ?? {}
     const usage: ApiUsage = {
       inputTokens: u.prompt_tokens ?? 0,

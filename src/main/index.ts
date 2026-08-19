@@ -906,12 +906,13 @@ ipcMain.handle('autopilot:approveGoal', (_event, terminalId: string) => {
   // PRO doesn't use a goal-approve gate — approval is via DECISION_SHAPE: approve.
 })
 ipcMain.handle('autopilot:replyToWaiting', async (_event, terminalId: string, text: string) => {
-  type Replyer = { replyToWaiting: (text: string) => void | Promise<{ ok: boolean; error?: string }> }
-  const handles: Replyer[] = [
+  // All three handles expose replyToWaiting; narrowing to NonNullable keeps their real
+  // types instead of a hand-written structural alias that no handle is assignable to.
+  const handles = [
     autopilots.get(terminalId),
     autopilotPros.get(terminalId),
     autopilotCouncils.get(terminalId),
-  ].filter((h): h is Replyer => h != null)
+  ].filter((h): h is NonNullable<typeof h> => h != null)
   if (handles.length === 0) {
     return { ok: false, error: 'No active Autopilot run is attached to this terminal.' }
   }
@@ -1053,7 +1054,7 @@ ipcMain.handle('broadcast:refine', async (_event, args: { text: string; targetLa
     const { text } = await client.chat({
       system: BROADCAST_REFINE_SYSTEM_PROMPT,
       user: buildRefineUserMessage(raw, Array.isArray(args.targetLabels) ? args.targetLabels : []),
-      maxTokens: 1024,
+      maxTokens: 4096,  // adaptive-thinking models spend part of this budget before emitting text
     })
     const refined = text.trim()
     return refined ? { ok: true, text: refined } : { ok: false, error: 'The model returned an empty rewrite.' }

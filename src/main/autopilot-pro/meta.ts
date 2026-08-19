@@ -18,6 +18,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs'
 import { join, dirname } from 'path'
 import type { ApiClient } from '../autopilot/types'
+import { MAX_TOKENS_CHAT } from '../autopilot/api-client'
 import type { MetaReflectResult, MetaClassification } from './types'
 import { PRO_DIR } from './types'
 import { META_REFLECT_SYSTEM_PROMPT, buildMetaReflectPrompt } from './prompts'
@@ -195,7 +196,7 @@ export async function runMetaReflect(
     const { text: responseText } = await client.chat({
       system: META_REFLECT_SYSTEM_PROMPT,
       user: userPrompt,
-      maxTokens: 1500,
+      maxTokens: MAX_TOKENS_CHAT,
     })
     text = responseText
   } catch (e: any) {
