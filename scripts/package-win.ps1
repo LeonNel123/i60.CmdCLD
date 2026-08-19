@@ -66,10 +66,14 @@ Write-Host "package-win: running electron-builder --win nsis ..."
 & node @($builderCli, '--win', 'nsis')
 if ($LASTEXITCODE -ne 0) { throw "electron-builder failed." }
 
-$installer = Join-Path $repo 'dist\CmdCLD-Setup.exe'
+# Installer names carry the version (CmdCLD-Setup-1.2.3.exe) so GitHub Release assets
+# and downloaded files are distinguishable. Read it from package.json rather than
+# hardcoding, so this check follows artifactName automatically.
+$version   = (Get-Content (Join-Path $repo 'package.json') -Raw | ConvertFrom-Json).version
+$installer = Join-Path $repo "dist\CmdCLD-Setup-$version.exe"
 if (Test-Path $installer) {
     $mb = [math]::Round((Get-Item $installer).Length / 1MB, 1)
-    Write-Host "package-win: SUCCESS -> dist\CmdCLD-Setup.exe ($mb MB)"
+    Write-Host "package-win: SUCCESS -> dist\CmdCLD-Setup-$version.exe ($mb MB)"
 } else {
-    throw "Build reported success but dist\CmdCLD-Setup.exe is missing."
+    throw "Build reported success but dist\CmdCLD-Setup-$version.exe is missing."
 }

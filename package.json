@@ -3,6 +3,10 @@
   "version": "1.6.21",
   "description": "Multi-terminal Claude and Codex launcher",
   "main": "./out/main/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LeonNel123/i60.CmdCLD.git"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -14,7 +18,8 @@
     "package:win": "pwsh -NoProfile -File scripts/package-win.ps1",
     "package:mac": "electron-vite build && electron-builder --mac dmg",
     "package:linux": "electron-vite build && electron-builder --linux AppImage",
-    "release:win": "npm version patch --no-git-tag-version && npm run package:win && npm run version:check"
+    "release:win": "npm version patch --no-git-tag-version && npm run package:win && npm run version:check",
+    "release:tag": "npm version patch -m \"chore(release): v%s\" && git push --follow-tags"
   },
   "build": {
     "appId": "com.i60.cmdcld",
@@ -30,20 +35,37 @@
       "icon": "build/icon.ico"
     },
     "mac": {
-      "target": "dmg",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
       "icon": "build/icon.png",
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "artifactName": "CmdCLD-${version}-${arch}.dmg"
     },
     "linux": {
       "target": "AppImage",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "artifactName": "CmdCLD-${version}.AppImage"
     },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
-      "artifactName": "CmdCLD-Setup.exe"
+      "artifactName": "CmdCLD-Setup-${version}.exe"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "LeonNel123",
+        "repo": "i60.CmdCLD"
+      }
+    ],
     "npmRebuild": false,
     "asarUnpack": [
       "node_modules/node-pty/**",

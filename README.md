@@ -72,6 +72,35 @@ Open multiple project folders, each running its own Claude or Codex CLI instance
 - Cross-platform shell detection (bash/zsh on Mac/Linux)
 - Window bounds saved and restored
 
+## Download
+
+Prebuilt installers for every release are attached to the
+[latest release](https://github.com/LeonNel123/i60.CmdCLD/releases/latest) — no toolchain
+or build step required.
+
+| Platform | File |
+| --- | --- |
+| Windows | `CmdCLD-Setup-<version>.exe` |
+| macOS (Apple Silicon) | `CmdCLD-<version>-arm64.dmg` |
+| macOS (Intel) | `CmdCLD-<version>-x64.dmg` |
+
+### First launch
+
+The builds are **not code-signed**, so both operating systems warn on first run. The
+binaries are built in public by [GitHub Actions](.github/workflows/release.yml) from the
+tagged commit, so you can check the build log for any release.
+
+**Windows** — SmartScreen shows *"Windows protected your PC"*. Click **More info**, then
+**Run anyway**.
+
+**macOS** — Gatekeeper usually reports the app as *"damaged and can't be opened"*. It is
+not damaged; that is the message for an unsigned app carrying the download quarantine
+flag. Clear it once after dragging to Applications:
+
+```bash
+xattr -cr /Applications/CmdCLD.app
+```
+
 ## Getting Started
 
 ```bash
@@ -88,6 +117,16 @@ npm run package:win      # Windows (NSIS installer)
 npm run package:mac      # macOS (DMG)
 npm run package:linux    # Linux (AppImage)
 ```
+
+### Cut a Release
+
+```bash
+npm run release:tag      # bump patch version, commit, tag, push
+```
+
+Pushing the tag runs the release workflow, which builds Windows and macOS installers on
+their native runners and attaches them to the GitHub Release. Nothing needs to be built
+by hand on a Mac.
 
 ### Run Tests
 

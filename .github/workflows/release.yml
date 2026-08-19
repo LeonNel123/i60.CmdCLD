@@ -1,0 +1,89 @@
+name: Release
+
+# Builds the Windows and macOS installers on their native runners and attaches them
+# to the GitHub Release for the pushed tag. Colleagues download from
+# https://github.com/LeonNel123/i60.CmdCLD/releases/latest — no toolchain needed.
+#
+# Trigger:  npm run release:tag   (bumps the patch version, tags, pushes)
+# or push a v* tag by hand, or run the workflow manually from the Actions tab.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  # Required for electron-builder to create the Release and upload assets.
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing should not cancel the other — a usable Windows build is
+      # better than no build while a macOS issue is sorted out.
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows installer
+            os: windows-latest
+            target: --win nsis
+          - name: macOS disk images
+            os: macos-latest
+            target: --mac dmg
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # postinstall runs `electron-builder install-app-deps` on macOS only, which
+      # rebuilds node-pty against Electron's ABI. npmRebuild is false in the build
+      # config, so that step is what makes the packaged macOS app work.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Typecheck
+        run: npx tsc --noEmit -p tsconfig.node.json && npx tsc --noEmit -p tsconfig.web.json
+
+      - name: Build renderer and main
+        run: npm run build
+
+      # Deliberately NOT scripts/package-win.ps1 — that wraps 7-Zip to work around a
+      # missing symlink privilege on a machine without admin rights. Hosted runners
+      # have that privilege, so the plain builder invocation is correct here.
+      # Publish ONLY for tag pushes. A manual workflow_dispatch run builds and uploads
+      # artifacts without touching Releases, so the pipeline can be smoke-tested without
+      # publishing anything. electron-builder names the Release from the version in
+      # package.json, not from the git ref, so a throwaway tag would still target the
+      # real version's Release — dispatch is the safe rehearsal, not a scratch tag.
+      - name: Package and publish
+        run: npx electron-builder ${{ matrix.target }} --publish ${{ github.ref_type == 'tag' && 'always' || 'never' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No signing certificates in CI. Without this, electron-builder searches the
+          # keychain for an identity and the macOS build fails instead of shipping
+          # unsigned. See the release notes about Gatekeeper on first launch.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # Kept for the case where publishing fails but the binaries are fine — they are
+      # still retrievable from the run instead of needing a full rebuild.
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-installers
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.yml
