@@ -11,24 +11,23 @@
     return /[\r\n]/.test(String(raw))
   }
 
-  // Build the terminal-bound payload from the input value.
-  // - \r\n and \n are both converted to \r (terminal Enter) so multi-line
-  //   pasted content executes each line in sequence instead of collapsing.
-  // - Leading/trailing blank lines are stripped (nothing to execute there).
-  // - Always appends a final \r so the last line submits.
-  // - Returns null if the input is empty or only whitespace/newlines.
-  function buildSendPayload(raw) {
+  // Build the text of a composed message (input bar, quick actions).
+  //
+  // Internal newlines are PRESERVED as \n. The server wraps the body in bracketed
+  // paste and appends a single Enter, so a multi-paragraph prompt arrives as one
+  // message. The old buildSendPayload converted every newline to \r, which made each
+  // line submit separately and split one prompt into several messages.
+  //
+  // No trailing \r here — the server owns the submit so it can delay it.
+  // Returns null when there is nothing to send.
+  function buildSubmitText(raw) {
     if (raw == null) return null
-    var s = String(raw)
-    // Normalise Windows line endings, then \n → \r.
-    s = s.replace(/\r\n/g, '\r').replace(/\n/g, '\r')
-    // Strip leading/trailing \r's (blank lines produce nothing).
-    s = s.replace(/^\r+|\r+$/g, '')
-    if (!s) return null
-    return s + '\r'
+    var s = String(raw).replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    s = s.replace(/^[\s]+|[\s]+$/g, '')
+    return s ? s : null
   }
 
-  var api = { hasNewline: hasNewline, buildSendPayload: buildSendPayload }
+  var api = { hasNewline: hasNewline, buildSubmitText: buildSubmitText }
 
   // Expose for browser (terminal-view.js) and CommonJS (vitest).
   if (typeof window !== 'undefined') window.CmdCLD_InputSanitizer = api

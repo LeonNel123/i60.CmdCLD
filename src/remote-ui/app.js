@@ -434,6 +434,21 @@
     if (e.key === 'Enter') { e.preventDefault(); submitCustomPath() }
   })
 
+  var copyBtn = document.getElementById('copy-btn')
+  if (copyBtn) {
+    copyBtn.addEventListener('click', function () {
+      var ok = window.CmdCLD_Terminal.copyOutput()
+      // No clipboard permission prompt over plain http, so confirm visually.
+      var previous = copyBtn.title
+      copyBtn.title = ok ? 'Copied' : 'Copy failed'
+      copyBtn.classList.toggle('copy-ok', !!ok)
+      setTimeout(function () {
+        copyBtn.title = previous
+        copyBtn.classList.remove('copy-ok')
+      }, 1200)
+    })
+  }
+
   ctrlCBtn.addEventListener('click', function () {
     if (currentSessionId && socket) {
       socket.emit('session:input', { id: currentSessionId, data: '\x03' })

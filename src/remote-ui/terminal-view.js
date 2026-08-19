@@ -49,6 +49,63 @@
     return n
   }
 
+  // Clipboard write that also works over plain http.
+  //
+  // The remote server is http, and Tailscale addresses are not localhost, so the page
+  // is NOT a secure context and navigator.clipboard is unavailable there. The hidden
+  // textarea + execCommand('copy') path is the only one that works on that setup, so
+  // it is a required fallback, not a legacy nicety.
+  function copyText(text) {
+    if (!text) return false
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).catch(function () { legacyCopy(text) })
+        return true
+      }
+    } catch (e) {}
+    return legacyCopy(text)
+  }
+
+  function legacyCopy(text) {
+    var ta = document.createElement('textarea')
+    ta.value = text
+    // Keep it off-screen but selectable; display:none would break execCommand.
+    ta.setAttribute('readonly', 'readonly')
+    ta.style.position = 'fixed'
+    ta.style.top = '-1000px'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    var ok = false
+    try {
+      ta.select()
+      ta.setSelectionRange(0, ta.value.length)
+      ok = document.execCommand('copy')
+    } catch (e) {}
+    document.body.removeChild(ta)
+    return ok
+  }
+
+  // Whole scrollback, trailing blank lines trimmed. term.buffer.active covers
+  // scrollback and viewport together.
+  function bufferText() {
+    if (!term) return ''
+    var buf = term.buffer.active
+    var out = []
+    for (var i = 0; i < buf.length; i++) {
+      var line = buf.getLine(i)
+      out.push(line ? line.translateToString(true) : '')
+    }
+    while (out.length && !out[out.length - 1]) out.pop()
+    return out.join('\n')
+  }
+
+  // Selection if there is one, otherwise the whole buffer.
+  function copyOutput() {
+    if (!term) return false
+    var text = term.hasSelection() ? term.getSelection() : bufferText()
+    return copyText(text)
+  }
+
   var ptyCols = 80
   var ptyRows = 24
 
@@ -161,6 +218,21 @@
         if (ev.type === 'keydown' && (ev.ctrlKey || ev.metaKey) && !ev.altKey && (ev.key === 'v' || ev.key === 'V')) {
           return false
         }
+        // Ctrl/Cmd+C with an active selection copies. Without a selection it must
+        // still reach the PTY as  — that is the interrupt, and stealing it would
+        // leave no way to stop a running agent from the keyboard.
+        if (ev.type === 'keydown' && (ev.ctrlKey || ev.metaKey) && !ev.altKey && (ev.key === 'c' || ev.key === 'C')) {
+          if (term && term.hasSelection()) {
+            copyText(term.getSelection())
+            return false
+          }
+          return true
+        }
+        // Ctrl+Shift+C always copies, matching common terminal emulators.
+        if (ev.type === 'keydown' && ev.ctrlKey && ev.shiftKey && (ev.key === 'C' || ev.key === 'c')) {
+          copyOutput()
+          return false
+        }
         return true
       })
 
@@ -242,15 +314,17 @@
     }).catch(function () {})
   }
 
-  // Single source of truth for sending. Uses CmdCLD_InputSanitizer to
-  // strip any embedded newlines (Samsung keyboards on long text inject
-  // raw \n) and build the terminal-ready payload (text + \r). Every
-  // trigger — Send tap, Enter key, input-event fallback — funnels here.
+  // Single source of truth for sending. Every trigger — Send tap, Enter key,
+  // input-event fallback — funnels here.
+  //
+  // Emits session:submit, NOT session:input. The server routes submits through the
+  // queued writer so the Enter is delayed behind the text; sending both in one write
+  // lets the agent CLI drop the submit and leaves the prompt sitting unsent.
   function sendMobileInput() {
     if (!currentSocket || !currentId) return
-    var payload = window.CmdCLD_InputSanitizer.buildSendPayload(mobileInput.value)
-    if (!payload) return
-    currentSocket.emit('session:input', { id: currentId, data: payload })
+    var text = window.CmdCLD_InputSanitizer.buildSubmitText(mobileInput.value)
+    if (text === null) return
+    currentSocket.emit('session:submit', { id: currentId, text: text })
     mobileInput.value = ''
   }
 
@@ -286,10 +360,12 @@
   for (var i = 0; i < quickBtns.length; i++) {
     (function (btn) {
       btn.addEventListener('click', function () {
-        var input = btn.dataset.input
-        if (input && currentSocket && currentId) {
-          currentSocket.emit('session:input', { id: currentId, data: input })
-        }
+        if (!currentSocket || !currentId) return
+        // data-input values end in &#13;, which buildSubmitText strips — the server
+        // appends the Enter itself once the body has landed.
+        var text = window.CmdCLD_InputSanitizer.buildSubmitText(btn.dataset.input)
+        if (text === null) return
+        currentSocket.emit('session:submit', { id: currentId, text: text })
       })
     })(quickBtns[i])
   }
@@ -350,5 +426,5 @@
   }
 
   // Expose globally
-  window.CmdCLD_Terminal = { open: open, close: close, onData: onData, onExit: onExit, onResize: onResize }
+  window.CmdCLD_Terminal = { open: open, close: close, onData: onData, onExit: onExit, onResize: onResize, copyOutput: copyOutput }
 })()

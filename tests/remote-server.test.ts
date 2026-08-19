@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import http from 'http'
-import { RemoteServer } from '../src/main/remote-server'
+import { RemoteServer, normalizeSubmitText } from '../src/main/remote-server'
 
 function fakeDeps(settingsOverrides: Record<string, unknown> = {}) {
   const values: Record<string, unknown> = {
@@ -70,5 +70,37 @@ describe('RemoteServer request gating', () => {
     const { port } = await server.start(0)
     const second = make()
     await expect(second.start(port)).rejects.toThrow()
+  })
+})
+
+// Composed messages (mobile input bar, quick-action buttons) are normalised here
+// before going to the queued writer, which appends the Enter as a delayed chunk.
+// Internal newlines MUST survive as \\n: the server wraps the body in bracketed paste
+// so a multi-paragraph prompt lands as one message. Converting them to \\r — what the
+// client used to do — submits each line separately and splits the prompt into several
+// messages in the agent console.
+describe('normalizeSubmitText', () => {
+  it('returns null when there is nothing to send', () => {
+    expect(normalizeSubmitText('')).toBeNull()
+    expect(normalizeSubmitText('   ')).toBeNull()
+    expect(normalizeSubmitText('\n\n')).toBeNull()
+  })
+
+  it('keeps a multi-paragraph body as one block', () => {
+    expect(normalizeSubmitText('para one\n\npara two')).toBe('para one\n\npara two')
+  })
+
+  it('normalises CRLF and lone CR to LF', () => {
+    expect(normalizeSubmitText('a\r\nb')).toBe('a\nb')
+    expect(normalizeSubmitText('a\rb')).toBe('a\nb')
+  })
+
+  it('trims surrounding whitespace without touching the interior', () => {
+    expect(normalizeSubmitText('\n  hello\n\n')).toBe('hello')
+    expect(normalizeSubmitText('  a\n  b  ')).toBe('a\n  b')
+  })
+
+  it('strips the trailing Enter carried by quick-action payloads', () => {
+    expect(normalizeSubmitText('yes\r')).toBe('yes')
   })
 })

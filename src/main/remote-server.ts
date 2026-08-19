@@ -7,6 +7,7 @@ import { networkInterfaces } from 'os'
 import type { AddressInfo } from 'net'
 import type { PtyManager, TerminalMeta } from './pty-manager'
 import { isRequestAllowed } from './remote-guard'
+import { QueuedPtyWriter } from './autopilot/pty-input-queue'
 import { Settings } from './settings'
 import { RecentDB } from './recent-db'
 import { trustFolder } from './claude-config'
@@ -20,6 +21,21 @@ import { detectAgentCliAvailability } from './agent-cli-detect'
 
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024 // 10MB
 
+/**
+ * Normalise a composed message for submission.
+ *
+ * Internal newlines are preserved as \n so bracketed paste delivers the whole
+ * thing as ONE message. Converting them to \r (the old behaviour) submits each
+ * line separately, turning a multi-paragraph prompt into several messages.
+ *
+ * Returns null when there is nothing to send.
+ */
+export function normalizeSubmitText(raw: string): string | null {
+  const normalised = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const trimmed = normalised.replace(/^[\s]+|[\s]+$/g, '')
+  return trimmed ? trimmed : null
+}
+
 export class RemoteServer {
   private app: ReturnType<typeof express> | null = null
   private httpServer: HttpServer | null = null
@@ -30,6 +46,9 @@ export class RemoteServer {
   private getWebContents: () => Electron.WebContents | null
   private startTime: number = 0
   private boundListeners: { event: string; fn: (...args: any[]) => void }[] = []
+  // Composed messages only. Raw keystrokes must never go through this — the
+  // submit delay and chunking would break interactive typing.
+  private submitWriter: QueuedPtyWriter
 
   constructor(opts: {
     ptyManager: PtyManager
@@ -38,6 +57,10 @@ export class RemoteServer {
     getWebContents: () => Electron.WebContents | null
   }) {
     this.ptyManager = opts.ptyManager
+    this.submitWriter = new QueuedPtyWriter(
+      (id, data) => this.ptyManager.write(id, data),
+      { existsRaw: (id) => this.ptyManager.has(id) },
+    )
     this.settings = opts.settings
     this.recentDB = opts.recentDB
     this.getWebContents = opts.getWebContents
@@ -384,10 +407,26 @@ export class RemoteServer {
     this.io.on('connection', (socket) => {
       socket.emit('sessions:changed', this.ptyManager.listAll())
 
+      // Raw keystroke stream from xterm — must stay unbuffered and unwrapped so
+      // control sequences and interactive editing behave normally.
       socket.on('session:input', ({ id, data }: { id: string; data: string }) => {
         if (this.ptyManager.has(id)) {
           this.ptyManager.write(id, data)
         }
+      })
+
+      // Composed messages: the mobile input bar and the quick-action buttons.
+      //
+      // These go through QueuedPtyWriter, which sends the trailing \r as a separate
+      // chunk after submitDelayMs and wraps multi-line bodies in bracketed paste.
+      // Writing body+Enter in one go lets an agent CLI consume the Enter while it is
+      // still processing the text, which drops the submit — the text sits in the
+      // input buffer until some later keystroke submits it.
+      socket.on('session:submit', ({ id, text }: { id: string; text: string }) => {
+        if (typeof text !== 'string' || !this.ptyManager.has(id)) return
+        const body = normalizeSubmitText(text)
+        if (body === null) return
+        void this.submitWriter.write(id, `${body}\r`).catch(() => {})
       })
 
       // Remote clients can drive the PTY size. The PtyManager broadcasts

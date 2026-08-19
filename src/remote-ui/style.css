@@ -804,3 +804,9 @@ body {
   color: #555;
   font-size: 14px;
 }
+
+/* Brief confirmation that a copy landed — there is no permission prompt to rely on
+   when the page is served over plain http. */
+#copy-btn.copy-ok svg {
+  stroke: #22c55e;
+}
