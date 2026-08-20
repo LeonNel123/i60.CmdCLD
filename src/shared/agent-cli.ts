@@ -167,6 +167,7 @@ export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup
         { id: 'codex-approval-untrusted', label: 'Untrusted', args: '--ask-for-approval untrusted', conflictsWith: ['codex-dangerous-bypass'] },
         { id: 'codex-approval-on-request', label: 'On Request', args: '--ask-for-approval on-request', conflictsWith: ['codex-dangerous-bypass'] },
         { id: 'codex-approval-never', label: 'Never Ask', args: '--ask-for-approval never', dangerous: true, conflictsWith: ['codex-dangerous-bypass'] },
+        { id: 'codex-approve-for-me', label: 'Approve For Me', args: '--approve-for-me', conflictsWith: ['codex-dangerous-bypass'] },
       ],
     },
     {
@@ -221,6 +222,7 @@ export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup
         { id: 'grok-permission-dont-ask', label: "Don't Ask", args: '--permission-mode dontAsk' },
         { id: 'grok-permission-plan', label: 'Plan', args: '--permission-mode plan' },
         { id: 'grok-permission-bypass', label: 'Bypass Permissions', args: '--permission-mode bypassPermissions', dangerous: true },
+        { id: 'grok-permission-dontask', label: 'Do Not Ask', args: '--permission-mode dontAsk' },
       ],
     },
     {
@@ -241,6 +243,8 @@ export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup
         { id: 'grok-no-alt-screen', label: 'Inline Scrollback', args: '--no-alt-screen' },
         { id: 'grok-disable-web-search', label: 'No Web Search', args: '--disable-web-search' },
         { id: 'grok-no-plan', label: 'No Plan Mode', args: '--no-plan' },
+        { id: 'grok-always-approve', label: 'Always Approve', args: '--always-approve', dangerous: true },
+        { id: 'grok-fullscreen', label: 'Fullscreen', args: '--fullscreen' },
       ],
     },
   ],

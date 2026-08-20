@@ -268,10 +268,13 @@ describe('grok agent CLI', () => {
     expect(features).toBe('--no-alt-screen --disable-web-search')
   })
 
-  it('marks bypassPermissions as the only dangerous grok option', () => {
+  // Both of these hand the agent unattended execution: bypassPermissions skips the
+  // permission system, --always-approve auto-approves every tool call. Anything that
+  // removes the human from the loop belongs on this list.
+  it('marks the unattended-execution grok options as dangerous', () => {
     const options = AGENT_CLI_OPTION_GROUPS.grok.flatMap((g) => g.options)
-    const dangerous = options.filter((o) => o.dangerous).map((o) => o.id)
-    expect(dangerous).toEqual(['grok-permission-bypass'])
+    const dangerous = options.filter((o) => o.dangerous).map((o) => o.id).sort()
+    expect(dangerous).toEqual(['grok-always-approve', 'grok-permission-bypass'])
   })
 
   it('lets grok start Autopilot and warns on permission bypass', () => {
