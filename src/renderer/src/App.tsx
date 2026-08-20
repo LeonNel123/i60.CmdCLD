@@ -127,6 +127,14 @@ export default function App() {
   // that pushes the selection back up here — a render loop that pegged a core.
   // Actual height of the terminal area. A ResizeObserver keeps it current as the
   // broadcast bar opens, closes, or grows, so the grid always fits the space it has.
+  // External terminals available on this machine, probed once. Empty means no entries
+  // are offered rather than showing an item that cannot work.
+  const [externalTerminals, setExternalTerminals] = useState<Array<{ id: string; name: string }>>([])
+  useEffect(() => {
+    window.api.terminalListExternal().then(setExternalTerminals).catch(() => setExternalTerminals([]))
+  }, [])
+
+
   const gridAreaRef = useRef<HTMLDivElement>(null)
   const [gridAreaHeight, setGridAreaHeight] = useState(() => window.innerHeight)
   useEffect(() => {
@@ -189,6 +197,12 @@ export default function App() {
     setToast({ message, kind })
     toastTimerRef.current = setTimeout(() => setToast(null), 3000)
   }, [])
+
+  const openExternalTerminalAt = useCallback((path: string, id?: string) => {
+    window.api.terminalOpenExternal({ folderPath: path, id })
+      .then((res) => { if (!res.ok) showToast(res.error || 'Could not open a terminal', 'warn') })
+      .catch(() => showToast('Could not open a terminal', 'warn'))
+  }, [showToast])
 
 
   useEffect(() => {
@@ -1147,6 +1161,14 @@ export default function App() {
               }},
               { label: '', divider: true, onClick: () => {} },
               { label: isFav ? 'Remove from favorites' : 'Add to favorites', icon: Star, onClick: () => handleToggleFavorite(path) },
+              // One entry per detected terminal: on Windows that is typically Windows
+              // Terminal, PowerShell and Command Prompt, so the choice is explicit
+              // rather than whatever the app decides is best.
+              ...externalTerminals.map((t) => ({
+                label: `Open in ${t.name}`,
+                icon: TerminalSquare,
+                onClick: () => openExternalTerminalAt(path, t.id),
+              })),
               { label: 'Open in Explorer', icon: FolderSearch, onClick: () => { window.api.openInExplorer(path).catch(() => {}) } },
               { label: 'Open in Editor', icon: Code, onClick: () => { window.api.openInEditor(path).then((res) => { if (!res.ok) showToast(res.error || 'Could not open in editor', 'warn') }).catch(() => showToast('Could not open in editor', 'warn')) } },
               { label: 'Copy path', icon: Copy, onClick: () => { navigator.clipboard.writeText(path).catch(() => {}) } },

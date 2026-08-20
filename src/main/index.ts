@@ -11,6 +11,7 @@ import { Store } from './store'
 import { WindowRegistry } from './window-registry'
 import { RecentDB } from './recent-db'
 import { PromptLog, sentTextOf } from './prompt-log'
+import { detectTerminals, openExternalTerminal } from './external-terminal'
 import { Settings } from './settings'
 import { LastSessionStore, type SavedSession } from './last-session-store'
 import { detectEditors, getDefaultEditor, findProjectAnchor, type EditorInfo } from './editor-detect'
@@ -1177,6 +1178,18 @@ ipcMain.handle('broadcast:send', async (_event, args: {
   } catch { /* history is not worth failing a send over */ }
 
   return { ok, results, sentText: toSend, originalText: original, refineError }
+})
+
+// External terminal at a project folder — for running things outside CmdCLD's own
+// consoles (npm run dev and the like) without tying them to the app's lifetime.
+ipcMain.handle('terminal:listExternal', () =>
+  detectTerminals().map((t) => ({ id: t.id, name: t.name })))
+
+ipcMain.handle('terminal:openExternal', (_e, args: { folderPath: string; id?: string }) => {
+  if (typeof args?.folderPath !== 'string' || !args.folderPath) {
+    return { ok: false, error: 'No folder given' }
+  }
+  return openExternalTerminal(args.folderPath, args.id)
 })
 
 ipcMain.handle('prompts:list', async (_e, args?: { limit?: number; offset?: number }) =>

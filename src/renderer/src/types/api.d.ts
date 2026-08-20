@@ -264,6 +264,8 @@ export interface ElectronAPI {
   autopilotAttachCancel: (terminalId: string) => Promise<{ ok: boolean }>
   broadcastRefine: (args: { text: string; targetLabels?: string[] }) => Promise<{ ok: boolean; text?: string; error?: string }>
   broadcastSend: (args: { terminalIds: string[]; text: string; autoRefine?: boolean; targetLabels?: string[]; projects?: string[]; originalText?: string; model?: string }) => Promise<{ ok: boolean; results: Array<{ id: string; ok: boolean; error?: string }>; sentText?: string; originalText?: string; refineError?: string }>
+  terminalListExternal: () => Promise<Array<{ id: string; name: string }>>
+  terminalOpenExternal: (args: { folderPath: string; id?: string }) => Promise<{ ok: boolean; name?: string; error?: string }>
   promptsList: (args?: { limit?: number; offset?: number }) => Promise<PromptRecord[]>
   promptsDelete: (id: number) => Promise<{ ok: boolean }>
   promptsClear: () => Promise<{ ok: boolean }>
