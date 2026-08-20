@@ -40,7 +40,8 @@ docs/TestSpecs/
 .env.*
 
 # Claude settings (local only)
-.claude/
+.claude/*
+!.claude/agents/
 
 # Temp
 *.tmp
