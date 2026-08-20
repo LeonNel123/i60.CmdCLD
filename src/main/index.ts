@@ -1079,7 +1079,7 @@ ipcMain.handle('broadcast:refine', async (_event, args: { text: string; targetLa
       system: BROADCAST_REFINE_SYSTEM_PROMPT,
       user: buildRefineUserMessage(raw, Array.isArray(args.targetLabels) ? args.targetLabels : []),
       maxTokens: 4096,  // adaptive-thinking models spend part of this budget before emitting text
-      noReasoning: true,  // measured: reasoning adds seconds and can consume the whole budget
+      reasoningOptional: true,  // a rewrite needs none; recover if a model reasons itself dry
     })
     const refined = text.trim()
     return refined ? { ok: true, text: refined } : { ok: false, error: 'The model returned an empty rewrite.' }

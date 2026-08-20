@@ -198,7 +198,7 @@ export class AnthropicClient implements ApiClient {
     return { result, usage }
   }
 
-  async chat(args: { system: string; user: string; maxTokens?: number; noReasoning?: boolean }): Promise<{ text: string; usage: ApiUsage }> {
+  async chat(args: { system: string; user: string; maxTokens?: number; reasoningOptional?: boolean }): Promise<{ text: string; usage: ApiUsage }> {
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: args.maxTokens ?? MAX_TOKENS_CHAT,
@@ -376,40 +376,45 @@ export class OpenRouterClient implements ApiClient {
     return { result, usage }
   }
 
-  async chat(args: { system: string; user: string; maxTokens?: number; noReasoning?: boolean }): Promise<{ text: string; usage: ApiUsage }> {
+  async chat(args: { system: string; user: string; maxTokens?: number; reasoningOptional?: boolean }): Promise<{ text: string; usage: ApiUsage }> {
     const messages = [
       { role: 'system', content: args.system },
       { role: 'user', content: args.user },
     ]
-    const post = (withReasoningOff: boolean) => fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const post = (disableReasoning: boolean) => fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: this.model,
         messages,
         max_tokens: args.maxTokens ?? MAX_TOKENS_CHAT,
-        ...(withReasoningOff ? { reasoning: { enabled: false } } : {}),
+        ...(disableReasoning ? { reasoning: { enabled: false } } : {}),
       }),
     })
 
-    // Reasoning tokens count against max_tokens, so for a one-shot rewrite they are
-    // pure cost: measured on the refine prompt, deepseek-v4-flash and qwen3.7-flash
-    // spent the entire budget reasoning and returned NO content at all (10.1s and 7.3s
-    // for nothing); disabling it gave 1.6s and 1.4s with a full answer.
+    // The reasoning flag is never sent up front. Models differ too much: several
+    // (gemini-3.7-flash, glm-5.3) reject it outright with 400 "Reasoning is mandatory",
+    // and on most it changes nothing worth the risk of an unsupported parameter.
     //
-    // But some endpoints — gemini-3.7-flash, glm-5.3 — reject the flag outright with
-    // 400 "Reasoning is mandatory for this endpoint". Rather than maintain a list of
-    // which models allow it, ask once and retry without on that specific refusal.
-    let res = await post(!!args.noReasoning)
-    if (!res.ok && args.noReasoning && res.status === 400) {
-      const detail = await res.text()
-      if (/reasoning/i.test(detail)) res = await post(false)
-      else throw new Error(`OpenRouter error: 400 ${detail}`)
-    }
+    // It is only worth sending after a model has demonstrably starved itself: reasoning
+    // tokens count against max_tokens, and deepseek-v4-flash and qwen3.7-flash were each
+    // measured spending an entire budget reasoning and returning no content at all.
+    // That shows up as finish_reason 'length' with empty content, so retry once there —
+    // and only there, for a caller that has said reasoning is not needed for its task.
+    let res = await post(false)
     if (!res.ok) throw new Error(`OpenRouter error: ${res.status} ${await res.text()}`)
+    let data = await res.json() as any
+    let choice = data.choices?.[0]
 
-    const data = await res.json() as any
-    const text = assertUsableText(data.choices?.[0]?.message?.content ?? '', data.choices?.[0]?.finish_reason, 'chat')
+    const starved = !((choice?.message?.content ?? '').trim()) && choice?.finish_reason === 'length'
+    if (starved && args.reasoningOptional) {
+      const retry = await post(true)
+      // A model that refuses the flag keeps its original (empty) response, which then
+      // surfaces through assertUsableText as a truncation error rather than a silent ''.
+      if (retry.ok) { data = await retry.json(); choice = data.choices?.[0] }
+    }
+
+    const text = assertUsableText(choice?.message?.content ?? '', choice?.finish_reason, 'chat')
     const u = data.usage ?? {}
     const usage: ApiUsage = {
       inputTokens: u.prompt_tokens ?? 0,
