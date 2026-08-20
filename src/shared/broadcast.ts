@@ -28,6 +28,29 @@ export function selectBroadcastTargets(
 // The rewrite is broadcast verbatim to every selected console, so it must not lean on
 // any one CLI's syntax, and it must not invent specifics the author never gave — an
 // invented path or test name is what actually derails the receiving agents.
+/**
+ * Decide which consoles stay selected after the open-console list changes.
+ *
+ * Three rules, in one pass:
+ *  - a console that has gone away drops out;
+ *  - a console the user has already seen keeps whatever they chose for it, so an
+ *    explicit deselection survives closing and reopening the bar;
+ *  - a console never seen before is selected, so opening a new one includes it
+ *    without a click.
+ *
+ * `known` is what makes the second rule work. Without it every console looks new on
+ * reopen and gets auto-selected, silently undoing the user's choices.
+ */
+export function reconcileSelection(
+  currentIds: string[],
+  previouslySelected: Iterable<string>,
+  known: Iterable<string>,
+): string[] {
+  const prev = new Set(previouslySelected)
+  const seen = new Set(known)
+  return currentIds.filter((id) => prev.has(id) || !seen.has(id))
+}
+
 export const BROADCAST_REFINE_SYSTEM_PROMPT = `You rewrite rough, informal task descriptions into clear, technically precise instructions for AI coding agents working in a software repository.
 
 The rewritten prompt is broadcast unchanged to several agent consoles at once. They may be different CLIs sitting in different repositories, so it has to work for all of them.

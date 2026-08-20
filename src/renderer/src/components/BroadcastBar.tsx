@@ -1,10 +1,18 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { X } from './icons'
-import { selectBroadcastTargets } from '../../../shared/broadcast'
+import { reconcileSelection, selectBroadcastTargets } from '../../../shared/broadcast'
 
 interface BroadcastBarProps {
   terminals: Array<{ id: string; name: string; agentCli?: string; isPlainShell?: boolean; folderPath?: string }>
   onOpenHistory?: () => void
+  /**
+   * Console selection, held by the parent so it survives the bar being closed and
+   * reopened. `known` carries the ids the bar has already seen: without it, every
+   * console would look newly-opened on remount and be auto-selected, which would undo
+   * the memory. Session-only by design — nothing is persisted to disk.
+   */
+  selection?: { selected: string[]; known: string[] } | null
+  onSelectionChange?: (v: { selected: string[]; known: string[] }) => void
   /**
    * Seeded from history replay. Carries a counter because replaying the same prompt
    * twice produces an identical string, which on its own would not re-fire the effect.
@@ -31,7 +39,7 @@ const buttonBase: CSSProperties = {
  * once, with an optional AI rewrite first. Selection defaults to every open
  * agent console and reconciles as consoles open and close.
  */
-export function BroadcastBar({ terminals, onClose, onOpenHistory, seed }: BroadcastBarProps) {
+export function BroadcastBar({ terminals, onClose, onOpenHistory, seed, selection, onSelectionChange }: BroadcastBarProps) {
   const targets = useMemo(() => selectBroadcastTargets(terminals), [terminals])
 
   const [draft, setDraft] = useState('')
@@ -41,14 +49,17 @@ export function BroadcastBar({ terminals, onClose, onOpenHistory, seed }: Broadc
   // so the composer can restore it afterwards — the send itself is not undoable.
   const [autoRefine, setAutoRefine] = useState(false)
   const [lastOriginal, setLastOriginal] = useState<string | null>(null)
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(targets.map((t) => t.id)))
+  // Restored from the parent when reopening; first open selects everything.
+  const [selected, setSelected] = useState<Set<string>>(() =>
+    new Set(selection ? selection.selected : targets.map((t) => t.id)))
   const [refining, setRefining] = useState(false)
   const [sending, setSending] = useState(false)
   const [refineAvailable, setRefineAvailable] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<SendResult[] | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const knownIdsRef = useRef<Set<string>>(new Set(targets.map((t) => t.id)))
+  const knownIdsRef = useRef<Set<string>>(
+    new Set(selection ? selection.known : targets.map((t) => t.id)))
 
   // Refine needs an API key for the Autopilot provider; the key itself never
   // reaches the renderer, only its existence.
@@ -76,16 +87,17 @@ export function BroadcastBar({ terminals, onClose, onOpenHistory, seed }: Broadc
   // Keep the selection in step with the console list: drop closed consoles,
   // auto-select ones opened while the bar is up.
   useEffect(() => {
-    const currentIds = new Set(targets.map((t) => t.id))
-    setSelected((prev) => {
-      const next = new Set<string>()
-      for (const id of currentIds) {
-        if (prev.has(id) || !knownIdsRef.current.has(id)) next.add(id)
-      }
-      return next
-    })
-    knownIdsRef.current = currentIds
+    const currentIds = targets.map((t) => t.id)
+    setSelected((prev) => new Set(reconcileSelection(currentIds, prev, knownIdsRef.current)))
+    knownIdsRef.current = new Set(currentIds)
   }, [targets])
+
+  // Push every selection change up so it outlives this component. Runs after the
+  // reconcile above, so what the parent stores already excludes closed consoles.
+  useEffect(() => {
+    onSelectionChange?.({ selected: [...selected], known: [...knownIdsRef.current] })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, targets])
 
   const toggleTarget = (id: string) => {
     setSelected((prev) => {

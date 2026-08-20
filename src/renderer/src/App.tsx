@@ -118,6 +118,10 @@ export default function App() {
   const [autopilotKickoffFor, setAutopilotKickoffFor] = useState<string | null>(null)  // terminalId
   const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  // Broadcast console selection, kept here so closing and reopening the bar does not
+  // reset it. Session-only: deliberately not persisted, since which consoles are open
+  // rarely survives a restart anyway.
+  const [broadcastSelection, setBroadcastSelection] = useState<{ selected: string[]; known: string[] } | null>(null)
   // Bumped on every replay so the composer re-seeds even when the same text is chosen twice.
   const [replaySeed, setReplaySeed] = useState<{ text: string; n: number } | null>(null)
   const [autopilotRunning, setAutopilotRunning] = useState<Set<string>>(new Set())
@@ -980,6 +984,8 @@ export default function App() {
           onClose={() => setBroadcastOpen(false)}
           onOpenHistory={() => setHistoryOpen(true)}
           seed={replaySeed}
+          selection={broadcastSelection}
+          onSelectionChange={setBroadcastSelection}
         />
       )}
       </div>

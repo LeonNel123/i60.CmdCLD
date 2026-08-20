@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BROADCAST_REFINE_SYSTEM_PROMPT,
   buildRefineUserMessage,
+  reconcileSelection,
   selectBroadcastTargets,
 } from '../src/shared/broadcast'
 
@@ -123,5 +124,41 @@ describe('BROADCAST_REFINE_SYSTEM_PROMPT', () => {
     expect(BROADCAST_REFINE_SYSTEM_PROMPT).toMatch(/dictated speech/i)
     expect(BROADCAST_REFINE_SYSTEM_PROMPT).toMatch(/doubled words, false starts/i)
     expect(BROADCAST_REFINE_SYSTEM_PROMPT).toMatch(/keep only their final phrasing/i)
+  })
+})
+
+// The bar is closed and reopened constantly; losing the selection each time meant
+// re-picking consoles on every open. `known` is what separates 'user deselected this'
+// from 'this console is new'.
+describe('reconcileSelection', () => {
+  it('selects everything the first time, when nothing is known yet', () => {
+    expect(reconcileSelection(['a', 'b'], [], [])).toEqual(['a', 'b'])
+  })
+
+  it('remembers a deselected console across a close and reopen', () => {
+    // 'b' was explicitly unticked; both are known, so reopening must not re-tick it.
+    expect(reconcileSelection(['a', 'b'], ['a'], ['a', 'b'])).toEqual(['a'])
+  })
+
+  it('auto-selects a console opened since last time', () => {
+    expect(reconcileSelection(['a', 'b', 'c'], ['a'], ['a', 'b'])).toEqual(['a', 'c'])
+  })
+
+  it('drops a console that has closed', () => {
+    expect(reconcileSelection(['a'], ['a', 'b'], ['a', 'b'])).toEqual(['a'])
+  })
+
+  it('keeps an empty selection empty rather than reviving it', () => {
+    expect(reconcileSelection(['a', 'b'], [], ['a', 'b'])).toEqual([])
+  })
+
+  it('preserves the order consoles are listed in', () => {
+    expect(reconcileSelection(['c', 'a', 'b'], ['a', 'b', 'c'], ['a', 'b', 'c'])).toEqual(['c', 'a', 'b'])
+  })
+
+  it('handles a console closing and reopening under a new id', () => {
+    // New id was never seen, so it comes back selected even though its predecessor
+    // had been unticked.
+    expect(reconcileSelection(['a', 'b2'], ['a'], ['a', 'b'])).toEqual(['a', 'b2'])
   })
 })
