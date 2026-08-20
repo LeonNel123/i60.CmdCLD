@@ -21,10 +21,20 @@ declare module 'express' {
 }
 
 declare module 'sql.js/dist/sql-asm.js' {
+  // Hand-written shim. sql.js ships no types, so only the surface actually used is
+  // declared — extend it rather than casting at call sites.
+  export class Statement {
+    bind(params?: unknown[]): boolean
+    step(): boolean
+    get(): unknown[]
+    free(): boolean
+  }
+
   export class Database {
     constructor(data?: Uint8Array)
     run(sql: string, params?: unknown[]): void
     exec(sql: string): Array<{ columns: string[]; values: unknown[][] }>
+    prepare(sql: string): Statement
     export(): Uint8Array
     close(): void
   }

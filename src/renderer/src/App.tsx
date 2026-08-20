@@ -9,6 +9,7 @@ import { SettingsDialog } from './components/settings/SettingsDialog'
 import { LaunchDialog } from './components/LaunchDialog'
 import { MarkdownViewer } from './components/MarkdownViewer'
 import { BroadcastBar } from './components/BroadcastBar'
+import { PromptHistory } from './components/PromptHistory'
 import { Toast } from './components/Toast'
 import { WelcomeBackCard } from './components/WelcomeBackCard'
 import { EmptyWorkspace } from './components/EmptyWorkspace'
@@ -116,6 +117,9 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [autopilotKickoffFor, setAutopilotKickoffFor] = useState<string | null>(null)  // terminalId
   const [broadcastOpen, setBroadcastOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  // Bumped on every replay so the composer re-seeds even when the same text is chosen twice.
+  const [replaySeed, setReplaySeed] = useState<{ text: string; n: number } | null>(null)
   const [autopilotRunning, setAutopilotRunning] = useState<Set<string>>(new Set())
   const [autopilotPanelFor, setAutopilotPanelFor] = useState<string | null>(null)
   const [autopilotDefaults, setAutopilotDefaults] = useState({ costCap: 1.0, maxIterations: 40 })
@@ -971,9 +975,27 @@ export default function App() {
         onClose={handleRequestClose}
       />
       {broadcastOpen && (
-        <BroadcastBar terminals={terminals} onClose={() => setBroadcastOpen(false)} />
+        <BroadcastBar
+          terminals={terminals.map((t) => ({ ...t, folderPath: t.path }))}
+          onClose={() => setBroadcastOpen(false)}
+          onOpenHistory={() => setHistoryOpen(true)}
+          seed={replaySeed}
+        />
       )}
       </div>
+
+      {historyOpen && (
+        <PromptHistory
+          onClose={() => setHistoryOpen(false)}
+          onReplay={(text) => {
+            // Replay puts the text in the composer rather than resending: targets are
+            // chosen there, which is what makes sending to a different project possible.
+            setReplaySeed((prev) => ({ text, n: (prev?.n ?? 0) + 1 }))
+            setHistoryOpen(false)
+            setBroadcastOpen(true)
+          }}
+        />
+      )}
 
       {autopilotPanelFor && (
         <AutopilotPanel

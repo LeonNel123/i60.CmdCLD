@@ -298,8 +298,26 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('autopilot:attachCancel', terminalId),
   broadcastRefine: (args: { text: string; targetLabels?: string[] }): Promise<{ ok: boolean; text?: string; error?: string }> =>
     ipcRenderer.invoke('broadcast:refine', args),
-  broadcastSend: (args: { terminalIds: string[]; text: string }): Promise<{ ok: boolean; results: Array<{ id: string; ok: boolean; error?: string }> }> =>
+  broadcastSend: (args: {
+    terminalIds: string[]
+    text: string
+    autoRefine?: boolean
+    targetLabels?: string[]
+    projects?: string[]
+    originalText?: string
+    model?: string
+  }): Promise<{ ok: boolean; results: Array<{ id: string; ok: boolean; error?: string }>; sentText?: string; originalText?: string; refineError?: string }> =>
     ipcRenderer.invoke('broadcast:send', args),
+
+  // Broadcast prompt history
+  promptsList: (args?: { limit?: number; offset?: number }): Promise<Array<{
+    id: number; sentAt: number; targets: string[]; projects: string[];
+    originalText: string; refinedText: string | null; model: string | null;
+    refineMs: number | null; ok: boolean
+  }>> => ipcRenderer.invoke('prompts:list', args),
+  promptsDelete: (id: number): Promise<{ ok: boolean }> => ipcRenderer.invoke('prompts:delete', id),
+  promptsClear: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('prompts:clear'),
+  promptsCount: (): Promise<number> => ipcRenderer.invoke('prompts:count'),
   onAutopilotUpdate: (callback: (terminalId: string, state: unknown) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, terminalId: string, state: unknown) => callback(terminalId, state)
     ipcRenderer.on('autopilot:update', listener)

@@ -59,6 +59,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   const [apProvider, setApProvider] = useState<'anthropic' | 'openrouter'>('anthropic')
   const [apModel, setApModel] = useState('claude-sonnet-5')
   const [refineModel, setRefineModel] = useState('nvidia/nemotron-3.5-lightning')
+  const [autoRefine, setAutoRefine] = useState(false)
   const [apCostCap, setApCostCap] = useState(1.0)
   const [apMaxIter, setApMaxIter] = useState(40)
 
@@ -116,6 +117,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
       setApProvider((s.autopilotApiProvider as 'anthropic' | 'openrouter') ?? 'anthropic')
       setApModel(s.autopilotPlannerModel ?? 'claude-sonnet-5')
       setRefineModel(s.broadcastRefineModel ?? 'nvidia/nemotron-3.5-lightning')
+      setAutoRefine(!!s.broadcastAutoRefine)
       setApCostCap(s.autopilotDefaultCostCap ?? 1.0)
       setApMaxIter(s.autopilotDefaultMaxIterations ?? 40)
       setLoaded(true)
@@ -219,6 +221,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
     window.api.settingsSet('autopilotApiProvider', apProvider)
     window.api.settingsSet('autopilotPlannerModel', apModel)
     window.api.settingsSet('broadcastRefineModel', refineModel)
+    window.api.settingsSet('broadcastAutoRefine', autoRefine)
     window.api.settingsSet('autopilotDefaultCostCap', apCostCap)
     window.api.settingsSet('autopilotDefaultMaxIterations', apMaxIter)
     onClose()
@@ -319,6 +322,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
             provider={apProvider} onProviderChange={setApProvider}
             model={apModel} onModelChange={setApModel}
             refineModel={refineModel} onRefineModelChange={setRefineModel}
+            autoRefine={autoRefine} onAutoRefineChange={setAutoRefine}
             costCap={apCostCap} onCostCapChange={setApCostCap}
             maxIter={apMaxIter} onMaxIterChange={setApMaxIter}
             activeProjectPath={activeProjectPath}

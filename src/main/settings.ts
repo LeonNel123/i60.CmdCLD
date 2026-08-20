@@ -36,6 +36,8 @@ export interface AppSettings {
    * slash is an OpenRouter id, otherwise Anthropic.
    */
   broadcastRefineModel: string
+  /** Refine every broadcast automatically on send, with no separate button press. */
+  broadcastAutoRefine: boolean
   autopilotDefaultCostCap: number
   autopilotDefaultMaxIterations: number
 }
@@ -64,6 +66,7 @@ const DEFAULTS: AppSettings = {
   autopilotApiProvider: 'anthropic',
   autopilotPlannerModel: 'claude-sonnet-5',
   broadcastRefineModel: 'nvidia/nemotron-3.5-lightning',
+  broadcastAutoRefine: false,
   autopilotDefaultCostCap: 1.0,
   autopilotDefaultMaxIterations: 40,
 }

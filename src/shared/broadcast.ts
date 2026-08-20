@@ -9,17 +9,19 @@ export interface BroadcastTarget {
   id: string
   label: string
   agentCli: AgentCli
+  /** Project folder behind the console, so history can record and replay by project. */
+  folderPath?: string
 }
 
 /** Agent consoles only — a plain shell would execute the prompt as commands. */
 export function selectBroadcastTargets(
-  terminals: Array<{ id: string; name: string; agentCli?: string; isPlainShell?: boolean }>,
+  terminals: Array<{ id: string; name: string; agentCli?: string; isPlainShell?: boolean; folderPath?: string }>,
 ): BroadcastTarget[] {
   return terminals
     .filter((t) => !t.isPlainShell)
     .map((t) => {
       const cli = normalizeAgentCli(t.agentCli)
-      return { id: t.id, agentCli: cli, label: `${t.name} (${AGENT_CLI_LABELS[cli]})` }
+      return { id: t.id, agentCli: cli, label: `${t.name} (${AGENT_CLI_LABELS[cli]})`, folderPath: t.folderPath }
     })
 }
 

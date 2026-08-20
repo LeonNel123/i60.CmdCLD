@@ -11,6 +11,8 @@ export interface AutopilotPaneProps {
   maxIter: number
   onMaxIterChange: (v: number) => void
   refineModel: string
+  autoRefine: boolean
+  onAutoRefineChange: (v: boolean) => void
   onRefineModelChange: (v: string) => void
   activeProjectPath?: string
 }
@@ -183,6 +185,20 @@ export function AutopilotPane(p: AutopilotPaneProps) {
           }))}
         />
       </Field>
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontSize: 12, color: '#ccc', cursor: 'pointer' }}>
+        <input type="checkbox" checked={p.autoRefine}
+          onChange={(e) => p.onAutoRefineChange(e.target.checked)}
+          style={{ accentColor: '#22c55e' }} />
+        <span>
+          Auto-refine broadcasts
+          <div style={{ color: '#666', fontSize: 10, marginTop: 2 }}>
+            Send rewrites the prompt and dispatches it in one press. The message is not
+            recallable once sent — the composer keeps your original so you can restore and
+            resend it, and Send as is skips the rewrite for a single message.
+          </div>
+        </span>
+      </label>
 
       <Field label="Broadcast refine model">
         <TextInput

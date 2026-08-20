@@ -3,7 +3,13 @@ import { X } from './icons'
 import { selectBroadcastTargets } from '../../../shared/broadcast'
 
 interface BroadcastBarProps {
-  terminals: Array<{ id: string; name: string; agentCli?: string; isPlainShell?: boolean }>
+  terminals: Array<{ id: string; name: string; agentCli?: string; isPlainShell?: boolean; folderPath?: string }>
+  onOpenHistory?: () => void
+  /**
+   * Seeded from history replay. Carries a counter because replaying the same prompt
+   * twice produces an identical string, which on its own would not re-fire the effect.
+   */
+  seed?: { text: string; n: number } | null
   onClose: () => void
 }
 
@@ -25,12 +31,16 @@ const buttonBase: CSSProperties = {
  * once, with an optional AI rewrite first. Selection defaults to every open
  * agent console and reconciles as consoles open and close.
  */
-export function BroadcastBar({ terminals, onClose }: BroadcastBarProps) {
+export function BroadcastBar({ terminals, onClose, onOpenHistory, seed }: BroadcastBarProps) {
   const targets = useMemo(() => selectBroadcastTargets(terminals), [terminals])
 
   const [draft, setDraft] = useState('')
   // The pre-refine text, so a rewrite can be undone.
   const [rawBackup, setRawBackup] = useState<string | null>(null)
+  // Auto-refine sends the rewrite straight through. The text the author typed is kept
+  // so the composer can restore it afterwards — the send itself is not undoable.
+  const [autoRefine, setAutoRefine] = useState(false)
+  const [lastOriginal, setLastOriginal] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(() => new Set(targets.map((t) => t.id)))
   const [refining, setRefining] = useState(false)
   const [sending, setSending] = useState(false)
@@ -44,6 +54,7 @@ export function BroadcastBar({ terminals, onClose }: BroadcastBarProps) {
   // reaches the renderer, only its existence.
   useEffect(() => {
     let cancelled = false
+    window.api.settingsGetAll().then((st) => { if (!cancelled) setAutoRefine(!!st.broadcastAutoRefine) }).catch(() => {})
     window.api.settingsGetAll()
       .then((s) => window.api.autopilotKeyExists(s.autopilotApiProvider ?? 'anthropic'))
       .then((exists) => { if (!cancelled) setRefineAvailable(exists) })
@@ -84,6 +95,15 @@ export function BroadcastBar({ terminals, onClose }: BroadcastBarProps) {
     })
   }
 
+  useEffect(() => {
+    if (!seed || !seed.text) return
+    setDraft(seed.text)
+    setLastOriginal(null)
+    setRawBackup(null)
+    textareaRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed?.n])
+
   const handleDraftChange = (value: string) => {
     setDraft(value)
     setResults(null)
@@ -121,17 +141,34 @@ export function BroadcastBar({ terminals, onClose }: BroadcastBarProps) {
     textareaRef.current?.focus()
   }
 
-  const handleSend = async () => {
+  // `refine` false forces a raw send even when auto-refine is on — the "Send as is"
+  // escape hatch for a prompt that is already exactly as intended.
+  const handleSend = async (refine = autoRefine) => {
     const text = draft.trim()
-    const ids = targets.filter((t) => selected.has(t.id)).map((t) => t.id)
+    const chosen = targets.filter((t) => selected.has(t.id))
+    const ids = chosen.map((t) => t.id)
     if (!text || ids.length === 0 || sending) return
     setSending(true)
     setError(null)
     try {
-      const res = await window.api.broadcastSend({ terminalIds: ids, text })
+      const res = await window.api.broadcastSend({
+        terminalIds: ids,
+        text,
+        autoRefine: refine,
+        targetLabels: chosen.map((t) => t.label),
+        projects: chosen.map((t) => t.folderPath).filter((p): p is string => !!p),
+        // An explicit Refine press already replaced the composer text; pass what was
+        // typed so history stores the pair rather than calling the rewrite the original.
+        originalText: rawBackup ?? undefined,
+      })
       setResults(res.results)
+      // Surfaced rather than swallowed: the message still went, just unrewritten.
+      if (res.refineError) setError(`Sent without refining — ${res.refineError}`)
       if (res.ok) {
-        setDraft('')
+        const original = res.originalText ?? text
+        const sent = res.sentText ?? text
+        setLastOriginal(sent !== original ? original : null)
+        setDraft(sent !== original ? sent : '')
         setRawBackup(null)
       }
     } catch (e) {
@@ -140,6 +177,16 @@ export function BroadcastBar({ terminals, onClose }: BroadcastBarProps) {
       setSending(false)
       textareaRef.current?.focus()
     }
+  }
+
+  // Restores what was typed before an auto-refine. The send already happened; this only
+  // repopulates the composer so it can be corrected and sent again.
+  const handleRevertToOriginal = () => {
+    if (lastOriginal === null) return
+    setDraft(lastOriginal)
+    setLastOriginal(null)
+    setResults(null)
+    textareaRef.current?.focus()
   }
 
   const selectedCount = targets.filter((t) => selected.has(t.id)).length
@@ -186,6 +233,31 @@ export function BroadcastBar({ terminals, onClose }: BroadcastBarProps) {
           )
         })}
         <div style={{ flex: 1 }} />
+        <label
+          title={refineAvailable
+            ? 'Rewrite every broadcast through the AI automatically, then send it'
+            : 'Set an API key in Settings → Autopilot to enable AI refine'}
+          style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10,
+            color: autoRefine ? '#22c55e' : '#888', cursor: refineAvailable ? 'pointer' : 'not-allowed' }}
+        >
+          <input
+            type="checkbox"
+            checked={autoRefine}
+            disabled={!refineAvailable}
+            onChange={(e) => {
+              setAutoRefine(e.target.checked)
+              void window.api.settingsSet('broadcastAutoRefine', e.target.checked)
+            }}
+            style={{ accentColor: '#22c55e', margin: 0 }}
+          />
+          Auto-refine
+        </label>
+        {onOpenHistory && (
+          <button onClick={onOpenHistory} title="Prompt history"
+            style={{ ...buttonBase, padding: '3px 8px', background: '#ffffff08', color: '#888' }}>
+            History
+          </button>
+        )}
         <button
           onClick={onClose}
           title="Close broadcast bar (Esc)"
@@ -247,6 +319,25 @@ export function BroadcastBar({ terminals, onClose }: BroadcastBarProps) {
           >
             {refining ? 'Refining…' : '✨ Refine'}
           </button>
+          {lastOriginal !== null && (
+            <button
+              onClick={handleRevertToOriginal}
+              title="Put the text you typed back in the composer. The message already went out — this does not recall it."
+              style={{ ...buttonBase, background: '#ffffff08', color: '#fbbf24', borderColor: '#fbbf2455' }}
+            >
+              ↩ Revert
+            </button>
+          )}
+          {autoRefine && (
+            <button
+              onClick={() => { void handleSend(false) }}
+              disabled={!canSend}
+              title="Send exactly what is in the composer, skipping the rewrite"
+              style={{ ...buttonBase, background: '#ffffff08', color: canSend ? '#ccc' : '#666', cursor: canSend ? 'pointer' : 'not-allowed' }}
+            >
+              Send as is
+            </button>
+          )}
           {rawBackup !== null && (
             <button
               onClick={handleUndo}
@@ -269,7 +360,7 @@ export function BroadcastBar({ terminals, onClose }: BroadcastBarProps) {
               cursor: canSend ? 'pointer' : 'not-allowed',
             }}
           >
-            {sending ? 'Sending…' : `Send to ${selectedCount}`}
+            {sending ? (autoRefine ? 'Refining & sending…' : 'Sending…') : `${autoRefine ? '✨ ' : ''}Send to ${selectedCount}`}
           </button>
         </div>
       </div>
