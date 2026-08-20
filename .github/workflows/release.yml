@@ -42,9 +42,16 @@ jobs:
             target: --linux
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      # v5 of these actions moved to the Node 24 runtime; on v4 the runner was forcing
+      # them off the retired Node 20 and annotating every run to say so. `cache` stays
+      # explicit: v6 narrowed automatic caching to npm, and saying it outright survives
+      # whatever the default does next.
+      #
+      # node-version is the Node the build and tests run under, unrelated to the runtime
+      # the actions themselves use.
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -85,7 +92,7 @@ jobs:
       # still retrievable from the run instead of needing a full rebuild.
       - name: Upload build artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.os }}-installers
           retention-days: 7
