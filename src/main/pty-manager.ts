@@ -1,8 +1,9 @@
 import * as pty from 'node-pty'
-import { WebContents } from 'electron'
+import { WebContents, app } from 'electron'
 import { execFileSync } from 'child_process'
 import { EventEmitter } from 'events'
 import type { AgentCli } from '../shared/agent-cli'
+import { buildPtyEnv } from './pty-env'
 
 // Detect the best available shell for the platform
 function getShell(): string {
@@ -142,7 +143,9 @@ export class PtyManager extends EventEmitter {
       cols: 80,
       rows: 24,
       cwd,
-      env: process.env as Record<string, string>,
+      // Not process.env directly: that omits COLORTERM (so CLIs downgrade their colour)
+      // and leaks the launching terminal's identity into every session. See pty-env.ts.
+      env: buildPtyEnv(process.env, { appVersion: app.getVersion() }),
     })
 
     const scrollback = new ScrollbackBuffer(SCROLLBACK_SIZE)
