@@ -13,6 +13,12 @@ export interface TerminalCandidate {
    * inherited as the child's cwd.
    */
   passesFolderAsArg?: boolean
+  /**
+   * True for a console application (a shell) as opposed to a terminal window that
+   * hosts one. Windows gives a detached console app no console at all, so these have
+   * to be launched a different way — see buildLaunchPlan.
+   */
+  needsConsole?: boolean
 }
 
 function expandEnv(p: string): string | null {
@@ -43,15 +49,15 @@ export function detectTerminals(): TerminalCandidate[] {
     }
     const pwsh = expandEnv('${ProgramFiles}\\PowerShell\\7\\pwsh.exe')
     if (pwsh && existsSync(pwsh)) {
-      found.push({ id: 'pwsh', name: 'PowerShell 7', cmd: pwsh, args: ['-NoLogo', '-NoExit'] })
+      found.push({ id: 'pwsh', name: 'PowerShell 7', cmd: pwsh, args: ['-NoLogo', '-NoExit'], needsConsole: true })
     }
     const ps = expandEnv('${SystemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe')
     if (ps && existsSync(ps)) {
-      found.push({ id: 'powershell', name: 'Windows PowerShell', cmd: ps, args: ['-NoLogo', '-NoExit'] })
+      found.push({ id: 'powershell', name: 'Windows PowerShell', cmd: ps, args: ['-NoLogo', '-NoExit'], needsConsole: true })
     }
     const cmdExe = expandEnv('${SystemRoot}\\System32\\cmd.exe')
     if (cmdExe && existsSync(cmdExe)) {
-      found.push({ id: 'cmd', name: 'Command Prompt', cmd: cmdExe, args: ['/K'] })
+      found.push({ id: 'cmd', name: 'Command Prompt', cmd: cmdExe, args: ['/K'], needsConsole: true })
     }
     return found
   }
@@ -86,6 +92,58 @@ export interface LaunchResult {
   error?: string
 }
 
+export interface LaunchPlan {
+  cmd: string
+  args: string[]
+  /** Undefined only for candidates that take the folder as an argument instead. */
+  cwd?: string
+}
+
+/**
+ * What to actually spawn for a chosen candidate.
+ *
+ * The Windows detour exists because of how `detached: true` behaves there: Node maps it
+ * to DETACHED_PROCESS, which gives the child *no* console rather than a new one. A GUI
+ * terminal like Windows Terminal does not care — it draws its own window. A console
+ * application does: powershell.exe with nowhere to draw reads EOF from its NUL stdin and
+ * exits within milliseconds, and since spawn() itself succeeded, the app happily reported
+ * success while nothing appeared. That is the whole "Open in PowerShell does nothing" bug.
+ *
+ * cmd's `start` is the way to ask for a console: it launches its target with
+ * CREATE_NEW_CONSOLE and returns immediately, so the shell still outlives CmdCLD. Two
+ * details it is easy to get wrong:
+ *
+ *   - the empty '' argument is the window title. `start` treats the first quoted token as
+ *     one, so without it a quoted shell path would be eaten as the title;
+ *   - `start` reads a leading /-token as its own switch, so the executable path must use
+ *     backslashes. Everything here is built from ${SystemRoot}-style paths that already
+ *     do, and the conversion below keeps that true for anything that does not.
+ *
+ * The folder never joins the command line — it stays the cwd of the cmd.exe process and
+ * the new console inherits it — so a path with a space or an ampersand is still not
+ * something a parser ever sees.
+ */
+export function buildLaunchPlan(
+  chosen: TerminalCandidate,
+  folderPath: string,
+  platform: NodeJS.Platform = process.platform,
+): LaunchPlan {
+  if (chosen.passesFolderAsArg) {
+    return { cmd: chosen.cmd, args: [...chosen.args, folderPath], cwd: undefined }
+  }
+
+  if (platform === 'win32' && chosen.needsConsole) {
+    const comspec = expandEnv('${SystemRoot}\\System32\\cmd.exe')
+    if (comspec) {
+      const exe = chosen.cmd.replace(/\//g, '\\')
+      return { cmd: comspec, args: ['/c', 'start', '', exe, ...chosen.args], cwd: folderPath }
+    }
+    // No cmd.exe to lean on: spawning directly at least reports a real failure.
+  }
+
+  return { cmd: chosen.cmd, args: chosen.args, cwd: folderPath }
+}
+
 /**
  * Open an external terminal at `folderPath`.
  *
@@ -105,12 +163,12 @@ export function openExternalTerminal(folderPath: string, preferredId?: string): 
   if (candidates.length === 0) return { ok: false, error: 'No terminal application found' }
 
   const chosen = (preferredId && candidates.find((c) => c.id === preferredId)) || candidates[0]
-  const args = chosen.passesFolderAsArg ? [...chosen.args, folderPath] : chosen.args
+  const plan = buildLaunchPlan(chosen, folderPath)
 
   try {
-    const child = spawn(chosen.cmd, args, {
+    const child = spawn(plan.cmd, plan.args, {
       // Inheriting cwd is what keeps the path out of any shell's parser.
-      cwd: chosen.passesFolderAsArg ? undefined : folderPath,
+      cwd: plan.cwd,
       detached: true,
       stdio: 'ignore',
       // The whole point is a visible window, so this must not be hidden.
