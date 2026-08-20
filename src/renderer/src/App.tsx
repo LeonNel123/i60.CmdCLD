@@ -22,6 +22,7 @@ import { TaskBar } from './components/TaskBar'
 import { AppWindow, Star, FolderSearch, Code, Copy, Trash2, Sparkles, TerminalSquare, Shield } from './components/icons'
 import { assignColor } from './utils/colors'
 import { calculateLayout, getRowCount } from './utils/grid-layout'
+import { createHeightTracker } from './utils/element-height'
 import { onActivityChange } from './utils/terminal-activity'
 import notificationSound from './assets/notification.wav'
 import type { RecentFolder } from './types/api'
@@ -135,20 +136,15 @@ export default function App() {
   }, [])
 
 
-  const gridAreaRef = useRef<HTMLDivElement>(null)
   const [gridAreaHeight, setGridAreaHeight] = useState(() => window.innerHeight)
-  useEffect(() => {
-    const el = gridAreaRef.current
-    if (!el) return
-    const apply = (): void => {
-      const h = el.getBoundingClientRect().height
-      if (h > 0) setGridAreaHeight((prev) => (Math.abs(prev - h) < 1 ? prev : h))
-    }
-    apply()
-    const ro = new ResizeObserver(apply)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
+  // Ref callback, not an effect: the grid area is absent from the tree on the first
+  // render (the !loaded branch below returns a loading screen), so an effect with []
+  // deps found a null ref, bailed, and never re-ran — nothing was ever observed and the
+  // grid kept its startup height, running its tiles under the broadcast bar.
+  const trackGridArea = useMemo(
+    () => createHeightTracker((h) => setGridAreaHeight((prev) => (Math.abs(prev - h) < 1 ? prev : h))),
+    [],
+  )
 
   const broadcastTerminals = useMemo(
     () => terminals.map((t) => ({ ...t, folderPath: t.path })),
@@ -901,7 +897,7 @@ export default function App() {
       {/* Content column: the terminal area shrinks to make room for the
           broadcast bar docked underneath, rather than being overlapped. */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <div ref={gridAreaRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+      <div ref={trackGridArea} style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
         <ErrorBoundary>
         {terminals.length === 0 && savedSessionProjects.length > 0 && !welcomeDismissed && (
           <WelcomeBackCard
