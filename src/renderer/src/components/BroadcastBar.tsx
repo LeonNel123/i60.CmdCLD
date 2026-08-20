@@ -30,7 +30,7 @@ const COMPOSER_MIN_HEIGHT = 104
 const COMPOSER_MAX_VIEWPORT_FRACTION = 0.34
 
 const buttonBase: CSSProperties = {
-  border: '1px solid #444', borderRadius: '4px', padding: '5px 12px',
+  border: '1px solid #3c3c3c', borderRadius: '4px', padding: '5px 12px',
   fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap',
 }
 
@@ -224,8 +224,8 @@ export function BroadcastBar({ terminals, onClose, onOpenHistory, seed, selectio
   return (
     <div style={{
       flexShrink: 0,
-      background: '#1a1a2e',
-      borderTop: '1px solid #2a2a3a',
+      background: '#252526',
+      borderTop: '1px solid #333',
       padding: '8px 12px',
       display: 'flex',
       flexDirection: 'column',
@@ -251,7 +251,7 @@ export function BroadcastBar({ terminals, onClose, onOpenHistory, seed, selectio
                 ...buttonBase,
                 padding: '3px 9px',
                 background: on ? '#22c55e20' : '#ffffff08',
-                border: on ? '1px solid #22c55e' : '1px solid #333',
+                border: on ? '1px solid #22c55e' : '1px solid #3c3c3c',
                 color: on ? '#22c55e' : '#888',
               }}
             >
@@ -389,7 +389,7 @@ export function BroadcastBar({ terminals, onClose, onOpenHistory, seed, selectio
       {lastSent && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8, paddingTop: 5,
-          borderTop: '1px solid #2a2a3a', fontSize: 10, color: '#666', minWidth: 0,
+          borderTop: '1px solid #333', fontSize: 10, color: '#666', minWidth: 0,
         }}>
           <span style={{ flexShrink: 0, color: '#555' }}>
             Last sent {new Date(lastSent.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
