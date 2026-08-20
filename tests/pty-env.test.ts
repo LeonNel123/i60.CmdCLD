@@ -31,6 +31,19 @@ describe('buildPtyEnv', () => {
     expect(Object.keys(env).some((k) => k.startsWith('VSCODE_'))).toBe(false)
   })
 
+  // NO_COLOR silences colour in everything that honours the convention, and it arrives
+  // by inheritance far more often than by intent — any launcher that starts CmdCLD from
+  // a non-interactive context passes it down, and every session then renders flat white.
+  it('does not let an inherited NO_COLOR silence the session', () => {
+    const env = buildPtyEnv({ NO_COLOR: '1', PATH: '/usr/bin' })
+    expect('NO_COLOR' in env).toBe(false)
+    expect(env.COLORTERM).toBe('truecolor')
+  })
+
+  it('drops an inherited FORCE_COLOR too, so the session decides', () => {
+    expect('FORCE_COLOR' in buildPtyEnv({ FORCE_COLOR: '0' })).toBe(false)
+  })
+
   it('reports the app version as the host version', () => {
     expect(buildPtyEnv({}, { appVersion: '1.6.30' }).TERM_PROGRAM_VERSION).toBe('1.6.30')
   })

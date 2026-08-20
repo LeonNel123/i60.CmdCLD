@@ -1,7 +1,7 @@
 /**
  * Environment handed to every PTY.
  *
- * Passing `process.env` straight through has two consequences that show up as odd CLI
+ * Passing `process.env` straight through has three consequences that show up as odd CLI
  * behaviour rather than as errors:
  *
  * 1. COLORTERM is usually absent, because most launchers do not set it. Agent CLIs read
@@ -9,7 +9,11 @@
  *    reduced palette — the same session renders with less styling in CmdCLD than in a
  *    terminal that advertises truecolor, while basic colours still work.
  *
- * 2. Terminal identity from whatever launched the app leaks in. Start CmdCLD from a VS
+ * 2. Colour is silenced by an inherited NO_COLOR. Launchers set it so their own
+ *    subprocess output parses cleanly, and it then travels all the way into interactive
+ *    sessions, which render flat white regardless of what the terminal can do.
+ *
+ * 3. Terminal identity from whatever launched the app leaks in. Start CmdCLD from a VS
  *    Code terminal and every session inherits TERM_PROGRAM=vscode plus the VSCODE_*
  *    hooks, so a CLI believes it is running inside VS Code — affecting IDE auto-connect,
  *    shell integration and git askpass, none of which point anywhere useful here.
@@ -17,7 +21,20 @@
 
 /** Host-specific variables that must not describe CmdCLD's sessions. */
 const STRIPPED_PREFIXES = ['VSCODE_']
-const STRIPPED_EXACT = ['TERM_PROGRAM', 'TERM_PROGRAM_VERSION']
+const STRIPPED_EXACT = [
+  'TERM_PROGRAM',
+  'TERM_PROGRAM_VERSION',
+  // NO_COLOR silences colour in every tool that honours the convention, and it arrives
+  // by inheritance far more often than by intent: any launcher that spawns CmdCLD from a
+  // non-interactive context passes it down, and every session then renders flat white
+  // even though the terminal is fully colour-capable. A GUI app's launch chain is not a
+  // statement about how its terminals should look, so it does not survive the boundary.
+  // Set it inside a session to opt out there.
+  'NO_COLOR',
+  // Same reasoning inverted: an inherited FORCE_COLOR would override what the session
+  // actually advertises.
+  'FORCE_COLOR',
+]
 
 export interface PtyEnvOptions {
   /** Reported as TERM_PROGRAM_VERSION so a CLI can identify the host precisely. */
