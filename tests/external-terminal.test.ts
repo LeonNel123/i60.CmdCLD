@@ -8,6 +8,14 @@ describe('detectTerminals', () => {
   const found = detectTerminals()
 
   it('finds at least one terminal on this machine', () => {
+    // Windows and macOS always have one — System32\cmd.exe and Terminal.app ship with
+    // the OS. A Linux box, and a CI container especially, may genuinely have no terminal
+    // emulator installed; offering nothing is the right answer there, and the menu
+    // simply shows no entries.
+    if (process.platform === 'linux') {
+      expect(Array.isArray(found)).toBe(true)
+      return
+    }
     expect(found.length).toBeGreaterThan(0)
   })
 
@@ -69,6 +77,22 @@ describe('buildLaunchPlan', () => {
     // window title, and without it the shell path would be swallowed as one.
     expect(plan.args.slice(0, 3)).toEqual(['/c', 'start', ''])
     expect(plan.args.slice(3)).toEqual([winShell.cmd, '-NoLogo', '-NoExit'])
+  })
+
+  // The win32 branch must depend on the platform it is given, not on the machine running
+  // it: CI checks all three platforms from Linux and macOS runners, where ${SystemRoot}
+  // resolves to nothing. Reading the host environment as a precondition is what made the
+  // first version of this pass on Windows and fail everywhere else.
+  it('still routes through cmd when the environment has no SystemRoot', () => {
+    const saved = process.env.SystemRoot
+    delete process.env.SystemRoot
+    try {
+      const plan = buildLaunchPlan(winShell, 'D:\\code', 'win32')
+      expect(plan.cmd).toBe('cmd.exe')
+      expect(plan.args.slice(0, 3)).toEqual(['/c', 'start', ''])
+    } finally {
+      if (saved !== undefined) process.env.SystemRoot = saved
+    }
   })
 
   // `start` reads a leading /-token as one of its own switches, so a path handed to it

@@ -133,12 +133,13 @@ export function buildLaunchPlan(
   }
 
   if (platform === 'win32' && chosen.needsConsole) {
-    const comspec = expandEnv('${SystemRoot}\\System32\\cmd.exe')
-    if (comspec) {
-      const exe = chosen.cmd.replace(/\//g, '\\')
-      return { cmd: comspec, args: ['/c', 'start', '', exe, ...chosen.args], cwd: folderPath }
-    }
-    // No cmd.exe to lean on: spawning directly at least reports a real failure.
+    // Absolute where ${SystemRoot} resolves, a bare name otherwise — which PATH finds on
+    // any real Windows machine. Falling back rather than reading the host environment as
+    // a precondition is what lets the win32 branch be exercised from a Linux or macOS
+    // test runner, where SystemRoot does not exist.
+    const comspec = expandEnv('${SystemRoot}\\System32\\cmd.exe') ?? 'cmd.exe'
+    const exe = chosen.cmd.replace(/\//g, '\\')
+    return { cmd: comspec, args: ['/c', 'start', '', exe, ...chosen.args], cwd: folderPath }
   }
 
   return { cmd: chosen.cmd, args: chosen.args, cwd: folderPath }
@@ -174,6 +175,11 @@ export function openExternalTerminal(folderPath: string, preferredId?: string): 
       // The whole point is a visible window, so this must not be hidden.
       windowsHide: false,
     })
+    // spawn reports a missing executable asynchronously, and an 'error' event with no
+    // listener takes the main process down with it. Every candidate was existsSync'd
+    // during detection, so this is a guard rather than an expected path — but it must
+    // not be the thing that crashes the app.
+    child.on('error', () => {})
     child.unref()
     return { ok: true, name: chosen.name }
   } catch (e) {
