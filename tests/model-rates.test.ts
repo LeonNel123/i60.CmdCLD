@@ -15,11 +15,11 @@ describe('refreshed model rates', () => {
   const cases: Array<[string, number]> = [
     ['nvidia/nemotron-3.5-lightning', 0.08 + 0.20],
     ['qwen/qwen3.7-flash', 0.03 + 0.13],
-    ['deepseek/deepseek-v4-flash', 0.08 + 0.16],
+    ['deepseek/deepseek-v4-flash', 0.09 + 0.18],
     ['openai/gpt-5.6-luna', 0.20 + 1.20],
     ['google/gemini-3.1-flash-lite', 0.25 + 1.50],
     ['google/gemini-3.7-flash', 0.38 + 1.88],
-    ['moonshotai/kimi-k2.6', 0.54 + 2.28],
+    ['moonshotai/kimi-k2.6', 0.95 + 4.00],
     ['deepseek/deepseek-v4-pro', 1.44 + 2.88],
     ['z-ai/glm-5.3', 1.40 + 4.40],
     ['x-ai/grok-4.6', 2.00 + 6.00],

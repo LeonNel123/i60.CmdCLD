@@ -20,32 +20,44 @@ const RATES: Record<string, { input: number; cachedInput: number; cacheCreation:
   'claude-opus-4-7':               { input: 5.0,  cachedInput: 0.50,  cacheCreation: 6.25,  output: 25.0 },
 
   // ---- OpenRouter ----
-  // Verified against the OpenRouter catalogue on 2026-08-19. cachedInput uses each
-  // model's published input_cache_read; cacheCreation tracks input where the provider
-  // publishes no separate write price.
-  //
-  // Fast/cheap tier — benchmarked for the broadcast refine path.
-  'qwen/qwen3.7-flash':            { input: 0.03, cachedInput: 0.006, cacheCreation: 0.03,  output: 0.13 },
-  'deepseek/deepseek-v4-flash':    { input: 0.08, cachedInput: 0.016, cacheCreation: 0.08,  output: 0.16 },
-  'nvidia/nemotron-3.5-lightning': { input: 0.08, cachedInput: 0.040, cacheCreation: 0.08,  output: 0.20 },
-  'openai/gpt-5.6-luna':           { input: 0.20, cachedInput: 0.020, cacheCreation: 0.20,  output: 1.20 },
-  'google/gemini-3.1-flash-lite':  { input: 0.25, cachedInput: 0.025, cacheCreation: 0.25,  output: 1.50 },
-  'minimax/minimax-m3':            { input: 0.30, cachedInput: 0.060, cacheCreation: 0.30,  output: 1.20 },
-  // Mid / high tier.
-  'qwen/qwen3.7-plus':             { input: 0.32, cachedInput: 0.064, cacheCreation: 0.32,  output: 1.28 },
-  'google/gemini-3.7-flash':       { input: 0.38, cachedInput: 0.037, cacheCreation: 0.38,  output: 1.88 },
-  'moonshotai/kimi-k2.6':          { input: 0.54, cachedInput: 0.091, cacheCreation: 0.54,  output: 2.28 },
-  'deepseek/deepseek-v4-pro':      { input: 1.44, cachedInput: 0.121, cacheCreation: 1.44,  output: 2.88 },
-  'z-ai/glm-5.3':                  { input: 1.40, cachedInput: 0.260, cacheCreation: 1.40,  output: 4.40 },
-  'x-ai/grok-4.6':                 { input: 2.00, cachedInput: 0.500, cacheCreation: 2.00,  output: 6.00 },
-  // Prior-gen, repriced to current published rates (several had drifted).
-  'moonshotai/kimi-k2-0905':       { input: 0.60, cachedInput: 0.15,  cacheCreation: 0.60,  output: 2.50 },
-  'google/gemini-2.5-flash':       { input: 0.30, cachedInput: 0.030, cacheCreation: 0.30,  output: 2.50 },
-  'google/gemini-2.5-pro':         { input: 1.25, cachedInput: 0.125, cacheCreation: 1.25,  output: 10.0 },
-  'openai/gpt-5-mini':             { input: 0.25, cachedInput: 0.025, cacheCreation: 0.25,  output: 2.00 },
-  'openai/gpt-5':                  { input: 1.25, cachedInput: 0.125, cacheCreation: 1.25,  output: 10.0 },
-  'deepseek/deepseek-v3.2-exp':    { input: 0.27, cachedInput: 0.07,  cacheCreation: 0.27,  output: 0.41 },
-  'qwen/qwen3-coder':              { input: 0.30, cachedInput: 0.100, cacheCreation: 0.30,  output: 1.00 },
+  // Regenerated from the live catalogue on 2026-08-20. Prices move: within 24 hours
+  // deepseek-v4-pro-0813 went $0.66 -> $1.19 input and kimi-k2.6 $0.54 -> $0.95, so
+  // treat this table as a snapshot and re-verify when the cost cap starts looking off.
+  // Anything not listed falls through to openrouter-default below.
+
+  'openai/gpt-5.6-luna':               { input: 0.20, cachedInput: 0.020, cacheCreation: 0.20, output: 1.20 },
+  'openai/gpt-5.6-luna-pro':           { input: 0.20, cachedInput: 0.020, cacheCreation: 0.20, output: 1.20 },
+  'openai/gpt-5.6-terra':              { input: 2.00, cachedInput: 0.200, cacheCreation: 2.00, output: 12.00 },
+  'openai/gpt-5.6-terra-pro':          { input: 2.00, cachedInput: 0.200, cacheCreation: 2.00, output: 12.00 },
+  'openai/gpt-5.6-sol':                { input: 2.50, cachedInput: 0.250, cacheCreation: 2.50, output: 15.00 },
+  'openai/gpt-5.6-sol-pro':            { input: 2.50, cachedInput: 0.250, cacheCreation: 2.50, output: 15.00 },
+  'qwen/qwen3.8-max':                  { input: 2.00, cachedInput: 0.250, cacheCreation: 2.00, output: 6.00 },
+  'qwen/qwen3.8-27b':                  { input: 0.45, cachedInput: 0.050, cacheCreation: 0.45, output: 3.20 },
+  'qwen/qwen3.8-2.4t-a95b':            { input: 2.00, cachedInput: 0.250, cacheCreation: 2.00, output: 6.00 },
+  'qwen/qwen3.7-plus':                 { input: 0.32, cachedInput: 0.064, cacheCreation: 0.32, output: 1.28 },
+  'qwen/qwen3.7-flash':                { input: 0.03, cachedInput: 0.006, cacheCreation: 0.03, output: 0.13 },
+  'deepseek/deepseek-v4-flash-0731':   { input: 0.14, cachedInput: 0.028, cacheCreation: 0.14, output: 0.28 },
+  'deepseek/deepseek-v4-pro-0813':     { input: 1.19, cachedInput: 0.040, cacheCreation: 1.19, output: 3.56 },
+  'deepseek/deepseek-v4-flash':        { input: 0.09, cachedInput: 0.018, cacheCreation: 0.09, output: 0.18 },
+  'google/gemini-3.7-flash':           { input: 0.38, cachedInput: 0.037, cacheCreation: 0.38, output: 1.88 },
+  'google/gemini-3.1-flash-lite':      { input: 0.25, cachedInput: 0.025, cacheCreation: 0.25, output: 1.50 },
+  'z-ai/glm-5.2':                      { input: 0.97, cachedInput: 0.193, cacheCreation: 0.97, output: 3.04 },
+  'z-ai/glm-5.3':                      { input: 1.40, cachedInput: 0.260, cacheCreation: 1.40, output: 4.40 },
+  'z-ai/glm-4.7-flash':                { input: 0.06, cachedInput: 0.010, cacheCreation: 0.06, output: 0.40 },
+  'moonshotai/kimi-k3':                { input: 3.00, cachedInput: 0.300, cacheCreation: 3.00, output: 15.00 },
+  'x-ai/grok-4.6':                     { input: 2.00, cachedInput: 0.500, cacheCreation: 2.00, output: 6.00 },
+  'nvidia/nemotron-3.5-lightning':     { input: 0.08, cachedInput: 0.040, cacheCreation: 0.08, output: 0.20 },
+  'minimax/minimax-m3':                { input: 0.30, cachedInput: 0.060, cacheCreation: 0.30, output: 1.20 },
+  // Superseded, kept so existing saved configs still price accurately.
+  'moonshotai/kimi-k2-0905':           { input: 0.60, cachedInput: 0.150, cacheCreation: 0.60, output: 2.50 },
+  'moonshotai/kimi-k2.6':              { input: 0.95, cachedInput: 0.160, cacheCreation: 0.95, output: 4.00 },
+  'google/gemini-2.5-flash':           { input: 0.30, cachedInput: 0.030, cacheCreation: 0.30, output: 2.50 },
+  'google/gemini-2.5-pro':             { input: 1.25, cachedInput: 0.125, cacheCreation: 1.25, output: 10.00 },
+  'openai/gpt-5-mini':                 { input: 0.25, cachedInput: 0.025, cacheCreation: 0.25, output: 2.00 },
+  'openai/gpt-5':                      { input: 1.25, cachedInput: 0.125, cacheCreation: 1.25, output: 10.00 },
+  'deepseek/deepseek-v3.2-exp':        { input: 0.27, cachedInput: 0.068, cacheCreation: 0.27, output: 0.41 },
+  'qwen/qwen3-coder':                  { input: 0.30, cachedInput: 0.100, cacheCreation: 0.30, output: 1.00 },
+  'deepseek/deepseek-v4-pro':          { input: 1.44, cachedInput: 0.121, cacheCreation: 1.44, output: 2.88 },
 
   // ---- Conservative fallback for any unknown OpenRouter model ----
   // Kept high so the cost cap errs on pausing too early rather than too late.
