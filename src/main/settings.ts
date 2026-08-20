@@ -38,6 +38,11 @@ export interface AppSettings {
   broadcastRefineModel: string
   /** Refine every broadcast automatically on send, with no separate button press. */
   broadcastAutoRefine: boolean
+  /**
+   * Overrides the built-in refine system prompt. Empty means use the shipped default,
+   * so an untouched install keeps tracking improvements to it.
+   */
+  broadcastRefineSystemPrompt: string
   autopilotDefaultCostCap: number
   autopilotDefaultMaxIterations: number
 }
@@ -67,6 +72,7 @@ const DEFAULTS: AppSettings = {
   autopilotPlannerModel: 'claude-sonnet-5',
   broadcastRefineModel: 'nvidia/nemotron-3.5-lightning',
   broadcastAutoRefine: false,
+  broadcastRefineSystemPrompt: '',
   autopilotDefaultCostCap: 1.0,
   autopilotDefaultMaxIterations: 40,
 }

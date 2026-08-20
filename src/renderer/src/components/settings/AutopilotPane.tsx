@@ -10,10 +10,6 @@ export interface AutopilotPaneProps {
   onCostCapChange: (v: number) => void
   maxIter: number
   onMaxIterChange: (v: number) => void
-  refineModel: string
-  autoRefine: boolean
-  onAutoRefineChange: (v: boolean) => void
-  onRefineModelChange: (v: string) => void
   activeProjectPath?: string
 }
 
@@ -22,21 +18,6 @@ interface BudgetState {
   perProject: Record<string, { spentUsd: number; capUsd: number }>
   global: { spentUsd: number; capUsd: number }
 }
-
-// Measured 2026-08-19 against the real refine system prompt with reasoning disabled:
-// median of 3 runs, end-to-end including network. Cost is per refine call at the
-// observed token counts (~840 in / ~65 out).
-const REFINE_PICKS = [
-  { id: 'nvidia/nemotron-3.5-lightning', label: 'Nemotron 3.5 Lightning', speed: '1.08s · $0.08/1k', star: true,  hint: 'fastest measured, faithful rewrites' },
-  { id: 'qwen/qwen3.7-flash',            label: 'Qwen3.7 Flash',          speed: '1.29s · $0.03/1k', star: false, hint: 'cheapest; fastest first token (0.50s)' },
-  { id: 'openai/gpt-5.6-luna',           label: 'GPT-5.6 Luna',           speed: '1.38s · $0.24/1k', star: false, hint: 'best quality - preserves hedging and nuance' },
-  { id: 'google/gemini-3.1-flash-lite',  label: 'Gemini 3.1 Flash Lite',  speed: '1.56s · $0.34/1k', star: false, hint: 'fast, but blurred a detail in testing' },
-  { id: 'deepseek/deepseek-v4-flash-0731', label: 'DeepSeek V4 Flash',    speed: '~1.7s · $0.14/1k', star: false, hint: 'latest dated flash; faithful and tight' },
-  { id: 'z-ai/glm-4.7-flash',            label: 'GLM 4.7 Flash',          speed: '1.80s · $0.07/1k', star: false, hint: 'cheapest of the GLM line' },
-  { id: 'google/gemini-3.7-flash',       label: 'Gemini 3.7 Flash',       speed: '~6s · $0.60/1k',   star: false, hint: 'capable but slow here - reasoning cannot be disabled' },
-  { id: 'moonshotai/kimi-k3',            label: 'Kimi K3',                speed: '1.61s · $3.83/1k', star: false, hint: 'fast but 48x the flash tier for a rewrite' },
-  { id: 'claude-haiku-4-5',              label: 'Haiku 4.5 (Anthropic)',  speed: 'n/a · $1/$5 per M', star: false, hint: 'stay on Anthropic - uses that key' },
-] as const
 
 const MODEL_PICKS = {
   anthropic: [
@@ -180,48 +161,6 @@ export function AutopilotPane(p: AutopilotPaneProps) {
               <>
                 {m.star && <span style={{ color: '#fbbf24', marginRight: 3 }}>★</span>}
                 {m.label} <span style={{ color: '#555' }}>{m.cost}</span>
-              </>
-            ),
-          }))}
-        />
-      </Field>
-
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontSize: 12, color: '#ccc', cursor: 'pointer' }}>
-        <input type="checkbox" checked={p.autoRefine}
-          onChange={(e) => p.onAutoRefineChange(e.target.checked)}
-          style={{ accentColor: '#22c55e' }} />
-        <span>
-          Auto-refine broadcasts
-          <div style={{ color: '#666', fontSize: 10, marginTop: 2 }}>
-            Send rewrites the prompt and dispatches it in one press. The message is not
-            recallable once sent — the composer keeps your original so you can restore and
-            resend it, and Send as is skips the rewrite for a single message.
-          </div>
-        </span>
-      </label>
-
-      <Field label="Broadcast refine model">
-        <TextInput
-          value={p.refineModel}
-          onChange={(e) => p.onRefineModelChange(e.target.value)}
-          placeholder="blank = use the planner model above"
-        />
-        <div style={{ color: '#666', fontSize: 10, marginTop: 6, marginBottom: 4 }}>
-          Used only by Broadcast → Refine. A one-shot rewrite, so a small fast model is
-          the right tool — the planner model is for orchestration. Times below are median
-          end-to-end on the real refine prompt, reasoning off.
-        </div>
-        <PillGroup
-          small
-          value={p.refineModel}
-          onChange={p.onRefineModelChange}
-          options={REFINE_PICKS.map((m) => ({
-            value: m.id,
-            title: m.hint,
-            label: (
-              <>
-                {m.star && <span style={{ color: '#fbbf24', marginRight: 3 }}>★</span>}
-                {m.label} <span style={{ color: '#555' }}>{m.speed}</span>
               </>
             ),
           }))}

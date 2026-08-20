@@ -1,3 +1,18 @@
+export interface AiUsageSite {
+  id: string
+  label: string
+  what: string
+  model: string
+  provider: 'anthropic' | 'openrouter'
+  setting: string
+}
+
+export interface AiUsageSummary {
+  sites: AiUsageSite[]
+  keys: { anthropic: boolean; openrouter: boolean }
+  refine: { count: number; byModel: Record<string, number>; avgMs: number | null }
+  broadcastsLogged: number
+}
 export interface PromptRecord {
   id: number
   sentAt: number
@@ -175,7 +190,7 @@ export interface ElectronAPI {
   getHomeDir: () => Promise<string>
   getVersion: () => Promise<string>
   projectCreate: (folderName: string) => Promise<string | null>
-  settingsGetAll: () => Promise<{ editor: string; defaultAgentCli: 'claude' | 'codex' | 'grok'; claudeArgs: string; codexArgs: string; grokArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; remoteLanAccess: boolean; favoriteFolders: string[]; restoreSessionEnabled: boolean; restoreSessionResume: boolean; terminalFontFamily: string; terminalFontSize: number; appFontFamily: string; uiScalePct: number; autopilotApiProvider: 'anthropic' | 'openrouter'; autopilotPlannerModel: string; broadcastRefineModel: string; broadcastAutoRefine: boolean; autopilotDefaultCostCap: number; autopilotDefaultMaxIterations: number }>
+  settingsGetAll: () => Promise<{ editor: string; defaultAgentCli: 'claude' | 'codex' | 'grok'; claudeArgs: string; codexArgs: string; grokArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; remoteLanAccess: boolean; favoriteFolders: string[]; restoreSessionEnabled: boolean; restoreSessionResume: boolean; terminalFontFamily: string; terminalFontSize: number; appFontFamily: string; uiScalePct: number; autopilotApiProvider: 'anthropic' | 'openrouter'; autopilotPlannerModel: string; broadcastRefineModel: string; broadcastAutoRefine: boolean; broadcastRefineSystemPrompt: string; autopilotDefaultCostCap: number; autopilotDefaultMaxIterations: number }>
   settingsSet: (key: string, value: unknown) => Promise<void>
   agentCliAvailability: () => Promise<Record<'claude' | 'codex' | 'grok', { available: boolean; path: string | null }>>
   settingsGetBudgetState: (projectPath: string) => Promise<{
@@ -264,6 +279,7 @@ export interface ElectronAPI {
   autopilotAttachCancel: (terminalId: string) => Promise<{ ok: boolean }>
   broadcastRefine: (args: { text: string; targetLabels?: string[] }) => Promise<{ ok: boolean; text?: string; error?: string }>
   broadcastSend: (args: { terminalIds: string[]; text: string; autoRefine?: boolean; targetLabels?: string[]; projects?: string[]; originalText?: string; model?: string }) => Promise<{ ok: boolean; results: Array<{ id: string; ok: boolean; error?: string }>; sentText?: string; originalText?: string; refineError?: string }>
+  aiUsageSummary: () => Promise<AiUsageSummary>
   terminalListExternal: () => Promise<Array<{ id: string; name: string }>>
   terminalOpenExternal: (args: { folderPath: string; id?: string }) => Promise<{ ok: boolean; name?: string; error?: string }>
   promptsList: (args?: { limit?: number; offset?: number }) => Promise<PromptRecord[]>
