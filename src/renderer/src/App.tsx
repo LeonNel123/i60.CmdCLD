@@ -122,6 +122,13 @@ export default function App() {
   // reset it. Session-only: deliberately not persisted, since which consoles are open
   // rarely survives a restart anyway.
   const [broadcastSelection, setBroadcastSelection] = useState<{ selected: string[]; known: string[] } | null>(null)
+  // Memoised deliberately. Building this inline gave BroadcastBar a new array identity
+  // on every App render, which invalidated its targets memo, which re-fired the effect
+  // that pushes the selection back up here — a render loop that pegged a core.
+  const broadcastTerminals = useMemo(
+    () => terminals.map((t) => ({ ...t, folderPath: t.path })),
+    [terminals],
+  )
   // Bumped on every replay so the composer re-seeds even when the same text is chosen twice.
   const [replaySeed, setReplaySeed] = useState<{ text: string; n: number } | null>(null)
   const [autopilotRunning, setAutopilotRunning] = useState<Set<string>>(new Set())
@@ -980,7 +987,7 @@ export default function App() {
       />
       {broadcastOpen && (
         <BroadcastBar
-          terminals={terminals.map((t) => ({ ...t, folderPath: t.path }))}
+          terminals={broadcastTerminals}
           onClose={() => setBroadcastOpen(false)}
           onOpenHistory={() => setHistoryOpen(true)}
           seed={replaySeed}

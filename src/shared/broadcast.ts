@@ -51,6 +51,18 @@ export function reconcileSelection(
   return currentIds.filter((id) => prev.has(id) || !seen.has(id))
 }
 
+/**
+ * True when a reconciled id list holds exactly what the current selection already holds.
+ *
+ * Used to bail out of a state update instead of handing React a fresh Set with identical
+ * contents. A new Set identity always re-renders, and if anything upstream also churns
+ * identities that is a render loop rather than a wasted render — which is precisely what
+ * pegged a core once.
+ */
+export function selectionUnchanged(current: Set<string>, next: string[]): boolean {
+  return next.length === current.size && next.every((id) => current.has(id))
+}
+
 export const BROADCAST_REFINE_SYSTEM_PROMPT = `You rewrite rough, informal task descriptions into clear, technically precise instructions for AI coding agents working in a software repository.
 
 The rewritten prompt is broadcast unchanged to several agent consoles at once. They may be different CLIs sitting in different repositories, so it has to work for all of them.

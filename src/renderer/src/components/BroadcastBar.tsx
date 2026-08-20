@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { X } from './icons'
-import { reconcileSelection, selectBroadcastTargets } from '../../../shared/broadcast'
+import { reconcileSelection, selectBroadcastTargets, selectionUnchanged } from '../../../shared/broadcast'
 
 interface BroadcastBarProps {
   terminals: Array<{ id: string; name: string; agentCli?: string; isPlainShell?: boolean; folderPath?: string }>
@@ -88,14 +88,30 @@ export function BroadcastBar({ terminals, onClose, onOpenHistory, seed, selectio
   // auto-select ones opened while the bar is up.
   useEffect(() => {
     const currentIds = targets.map((t) => t.id)
-    setSelected((prev) => new Set(reconcileSelection(currentIds, prev, knownIdsRef.current)))
+    setSelected((prev) => {
+      const next = reconcileSelection(currentIds, prev, knownIdsRef.current)
+      // Returning `prev` unchanged makes React bail out. Handing back a fresh Set with
+      // identical contents would re-render, and with anything upstream churning the
+      // targets identity that becomes a loop rather than a wasted render.
+      if (selectionUnchanged(prev, next)) return prev
+      return new Set(next)
+    })
     knownIdsRef.current = new Set(currentIds)
   }, [targets])
 
   // Push every selection change up so it outlives this component. Runs after the
   // reconcile above, so what the parent stores already excludes closed consoles.
+  //
+  // Guarded against re-sending an identical payload: the parent stores this in state, so
+  // an unconditional push re-renders the parent, which can feed straight back here. The
+  // guard makes that terminate regardless of what upstream does with identities.
+  const lastPushedRef = useRef('')
   useEffect(() => {
-    onSelectionChange?.({ selected: [...selected], known: [...knownIdsRef.current] })
+    const payload = { selected: [...selected], known: [...knownIdsRef.current] }
+    const key = JSON.stringify(payload)
+    if (key === lastPushedRef.current) return
+    lastPushedRef.current = key
+    onSelectionChange?.(payload)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, targets])
 

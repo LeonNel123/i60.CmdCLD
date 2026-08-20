@@ -8,6 +8,7 @@ const root = join(__dirname, '..')
 const bar = readFileSync(join(root, 'src', 'renderer', 'src', 'components', 'BroadcastBar.tsx'), 'utf-8')
 const history = readFileSync(join(root, 'src', 'renderer', 'src', 'components', 'PromptHistory.tsx'), 'utf-8')
 const main = readFileSync(join(root, 'src', 'main', 'index.ts'), 'utf-8')
+const app = readFileSync(join(root, 'src', 'renderer', 'src', 'App.tsx'), 'utf-8')
 
 describe('auto-refine send path', () => {
   // Send must be able to refine and dispatch in one action, and Send as is must be able
@@ -55,5 +56,28 @@ describe('prompt history', () => {
   it('distinguishes a sent-as-is prompt from a rewritten one', () => {
     expect(history).toMatch(/SENT \(as typed\)/)
     expect(history).toMatch(/ORIGINAL \(what you typed\)/)
+  })
+})
+
+// A render loop here is not a slow UI, it is an unusable app: the renderer pegged a core
+// and grew past 2 GB for hours. Neither guard raises anything when removed, so both are
+// pinned.
+describe('broadcast render-loop guards', () => {
+  // Building the array inline gave BroadcastBar a new identity every App render, which
+  // invalidated its targets memo and re-fired the effect that pushes state back up.
+  it('passes a memoised terminals array to the bar', () => {
+    expect(app).toMatch(/const broadcastTerminals = useMemo\(/)
+    expect(app).toMatch(/terminals=\{broadcastTerminals\}/)
+    expect(app).not.toMatch(/terminals=\{terminals\.map\(/)
+  })
+
+  it('bails out of the state update when the selection is unchanged', () => {
+    expect(bar).toMatch(/selectionUnchanged\(prev, next\)/)
+    expect(bar).toMatch(/return prev/)
+  })
+
+  it('never pushes an identical selection back to the parent', () => {
+    expect(bar).toMatch(/lastPushedRef/)
+    expect(bar).toMatch(/if \(key === lastPushedRef\.current\) return/)
   })
 })

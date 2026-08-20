@@ -3,6 +3,7 @@ import {
   BROADCAST_REFINE_SYSTEM_PROMPT,
   buildRefineUserMessage,
   reconcileSelection,
+  selectionUnchanged,
   selectBroadcastTargets,
 } from '../src/shared/broadcast'
 
@@ -160,5 +161,35 @@ describe('reconcileSelection', () => {
     // New id was never seen, so it comes back selected even though its predecessor
     // had been unticked.
     expect(reconcileSelection(['a', 'b2'], ['a'], ['a', 'b'])).toEqual(['a', 'b2'])
+  })
+})
+
+// Handing React a new Set with identical contents re-renders for nothing. Combined with
+// anything upstream churning identities that became a render loop that pegged a core for
+// hours, so the bail-out is pinned here.
+describe('selectionUnchanged', () => {
+  it('is true for the same ids in any order', () => {
+    expect(selectionUnchanged(new Set(['a', 'b']), ['b', 'a'])).toBe(true)
+  })
+
+  it('is false when an id is added or removed', () => {
+    expect(selectionUnchanged(new Set(['a']), ['a', 'b'])).toBe(false)
+    expect(selectionUnchanged(new Set(['a', 'b']), ['a'])).toBe(false)
+  })
+
+  it('is false when an id is swapped for another', () => {
+    expect(selectionUnchanged(new Set(['a', 'b']), ['a', 'c'])).toBe(false)
+  })
+
+  it('is true for two empty selections', () => {
+    expect(selectionUnchanged(new Set(), [])).toBe(true)
+  })
+
+  // The steady state: reconciling an unchanged console list must report no change, which
+  // is what stops the effect from updating state on every pass.
+  it('reports no change when reconciling a stable console list', () => {
+    const current = new Set(['a', 'b'])
+    const next = reconcileSelection(['a', 'b'], current, ['a', 'b'])
+    expect(selectionUnchanged(current, next)).toBe(true)
   })
 })
