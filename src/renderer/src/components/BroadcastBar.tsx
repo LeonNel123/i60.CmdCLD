@@ -25,9 +25,9 @@ type SendResult = { id: string; ok: boolean; error?: string }
 
 const MONO = 'Menlo, Consolas, monospace'
 
-const COMPOSER_MIN_HEIGHT = 160
+const COMPOSER_MIN_HEIGHT = 104
 /** Ceiling as a share of the window, so a long dictation never swallows the grid. */
-const COMPOSER_MAX_VIEWPORT_FRACTION = 0.45
+const COMPOSER_MAX_VIEWPORT_FRACTION = 0.34
 
 const buttonBase: CSSProperties = {
   border: '1px solid #444', borderRadius: '4px', padding: '5px 12px',
@@ -48,7 +48,9 @@ export function BroadcastBar({ terminals, onClose, onOpenHistory, seed, selectio
   // Auto-refine sends the rewrite straight through. The text the author typed is kept
   // so the composer can restore it afterwards — the send itself is not undoable.
   const [autoRefine, setAutoRefine] = useState(false)
-  const [lastOriginal, setLastOriginal] = useState<string | null>(null)
+  // What actually went out, so the composer can clear for the next prompt while the
+  // send stays visible and recoverable below it.
+  const [lastSent, setLastSent] = useState<{ sent: string; original: string; at: number } | null>(null)
   // Restored from the parent when reopening; first open selects everything.
   const [selected, setSelected] = useState<Set<string>>(() =>
     new Set(selection ? selection.selected : targets.map((t) => t.id)))
@@ -126,7 +128,6 @@ export function BroadcastBar({ terminals, onClose, onOpenHistory, seed, selectio
   useEffect(() => {
     if (!seed || !seed.text) return
     setDraft(seed.text)
-    setLastOriginal(null)
     setRawBackup(null)
     textareaRef.current?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -193,10 +194,10 @@ export function BroadcastBar({ terminals, onClose, onOpenHistory, seed, selectio
       // Surfaced rather than swallowed: the message still went, just unrewritten.
       if (res.refineError) setError(`Sent without refining — ${res.refineError}`)
       if (res.ok) {
-        const original = res.originalText ?? text
-        const sent = res.sentText ?? text
-        setLastOriginal(sent !== original ? original : null)
-        setDraft(sent !== original ? sent : '')
+        // Clear for the next prompt. What went out is not lost — it moves to the
+        // last-sent strip below, where it can be reused or reverted.
+        setLastSent({ original: res.originalText ?? text, sent: res.sentText ?? text, at: Date.now() })
+        setDraft('')
         setRawBackup(null)
       }
     } catch (e) {
@@ -207,12 +208,10 @@ export function BroadcastBar({ terminals, onClose, onOpenHistory, seed, selectio
     }
   }
 
-  // Restores what was typed before an auto-refine. The send already happened; this only
-  // repopulates the composer so it can be corrected and sent again.
-  const handleRevertToOriginal = () => {
-    if (lastOriginal === null) return
-    setDraft(lastOriginal)
-    setLastOriginal(null)
+  // Puts text from the last send back in the composer. The send already happened; this
+  // only repopulates the box so it can be corrected and sent again.
+  const restoreToComposer = (text: string) => {
+    setDraft(text)
     setResults(null)
     textareaRef.current?.focus()
   }
@@ -307,7 +306,7 @@ export function BroadcastBar({ terminals, onClose, onOpenHistory, seed, selectio
             if (mod && e.key === 'Enter') { e.preventDefault(); void handleSend() }
             if (e.key === 'Escape') { e.preventDefault(); onClose() }
           }}
-          rows={8}
+          rows={5}
           spellCheck={false}
           placeholder="Describe what all agents should do — type or dictate, rough is fine… (Ctrl+Enter to send)"
           disabled={refining}
@@ -347,15 +346,7 @@ export function BroadcastBar({ terminals, onClose, onOpenHistory, seed, selectio
           >
             {refining ? 'Refining…' : '✨ Refine'}
           </button>
-          {lastOriginal !== null && (
-            <button
-              onClick={handleRevertToOriginal}
-              title="Put the text you typed back in the composer. The message already went out — this does not recall it."
-              style={{ ...buttonBase, background: '#ffffff08', color: '#fbbf24', borderColor: '#fbbf2455' }}
-            >
-              ↩ Revert
-            </button>
-          )}
+
           {autoRefine && (
             <button
               onClick={() => { void handleSend(false) }}
@@ -392,6 +383,44 @@ export function BroadcastBar({ terminals, onClose, onOpenHistory, seed, selectio
           </button>
         </div>
       </div>
+
+      {/* Row 3: what went out last. Keeps the send visible after the composer clears,
+          and is the only place the original is recoverable once auto-refine replaced it. */}
+      {lastSent && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, paddingTop: 5,
+          borderTop: '1px solid #2a2a3a', fontSize: 10, color: '#666', minWidth: 0,
+        }}>
+          <span style={{ flexShrink: 0, color: '#555' }}>
+            Last sent {new Date(lastSent.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+          </span>
+          <span
+            title={lastSent.sent}
+            style={{
+              flex: 1, minWidth: 0, color: '#8a8a8a', whiteSpace: 'nowrap',
+              overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: MONO,
+            }}
+          >
+            {lastSent.sent.replace(/\s+/g, ' ')}
+          </span>
+          <button
+            onClick={() => restoreToComposer(lastSent.sent)}
+            title="Put this text back in the composer to send again"
+            style={{ ...buttonBase, padding: '2px 7px', fontSize: 10, background: '#ffffff08', color: '#999' }}
+          >
+            Reuse
+          </button>
+          {lastSent.sent !== lastSent.original && (
+            <button
+              onClick={() => restoreToComposer(lastSent.original)}
+              title="Put back what you typed before the rewrite. The message already went out — this does not recall it."
+              style={{ ...buttonBase, padding: '2px 7px', fontSize: 10, background: '#ffffff08', color: '#fbbf24', borderColor: '#fbbf2455' }}
+            >
+              ↩ Revert
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Row 3: feedback */}
       {(error || results) && (

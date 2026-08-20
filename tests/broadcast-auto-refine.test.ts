@@ -21,8 +21,17 @@ describe('auto-refine send path', () => {
 
   // The send is not recallable, so Revert restores the composer only. The wording must
   // not imply the message can be pulled back.
-  it('offers revert without claiming the message is recalled', () => {
-    expect(bar).toMatch(/handleRevertToOriginal/)
+  // The composer clears on send, so what went out lives in the last-sent strip. That is
+  // the only place the pre-rewrite original stays recoverable.
+  it('clears the composer on send and keeps the send visible below', () => {
+    expect(bar).toMatch(/setLastSent\(\{/)
+    expect(bar).toMatch(/setDraft\(''\)/)
+    expect(bar).toMatch(/Last sent/)
+  })
+
+  it('offers reuse and revert without claiming the message is recalled', () => {
+    expect(bar).toMatch(/restoreToComposer\(lastSent\.sent\)/)
+    expect(bar).toMatch(/restoreToComposer\(lastSent\.original\)/)
     expect(bar).toMatch(/does not recall it/i)
   })
 

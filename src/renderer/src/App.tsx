@@ -125,6 +125,23 @@ export default function App() {
   // Memoised deliberately. Building this inline gave BroadcastBar a new array identity
   // on every App render, which invalidated its targets memo, which re-fired the effect
   // that pushes the selection back up here — a render loop that pegged a core.
+  // Actual height of the terminal area. A ResizeObserver keeps it current as the
+  // broadcast bar opens, closes, or grows, so the grid always fits the space it has.
+  const gridAreaRef = useRef<HTMLDivElement>(null)
+  const [gridAreaHeight, setGridAreaHeight] = useState(() => window.innerHeight)
+  useEffect(() => {
+    const el = gridAreaRef.current
+    if (!el) return
+    const apply = (): void => {
+      const h = el.getBoundingClientRect().height
+      if (h > 0) setGridAreaHeight((prev) => (Math.abs(prev - h) < 1 ? prev : h))
+    }
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   const broadcastTerminals = useMemo(
     () => terminals.map((t) => ({ ...t, folderPath: t.path })),
     [terminals],
@@ -817,7 +834,11 @@ export default function App() {
 
   const visibleTerminals = terminals.filter((t) => !minimizedIds.has(t.id))
   const gridRows = getRowCount(visibleTerminals.length)
-  const rowHeight = Math.max(150, Math.floor(window.innerHeight / gridRows) - 4)
+  // Sized from the grid's own container, not window.innerHeight. The broadcast bar and
+  // taskbar are siblings that take real space, so measuring the window made terminals
+  // compute a height larger than the box they sit in — they ran on underneath the bar,
+  // which read as the bar overlapping them.
+  const rowHeight = Math.max(120, Math.floor(gridAreaHeight / gridRows) - 4)
   const isFocused = viewMode.type === 'focused'
 
   if (!loaded) {
@@ -866,7 +887,7 @@ export default function App() {
       {/* Content column: the terminal area shrinks to make room for the
           broadcast bar docked underneath, rather than being overlapped. */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+      <div ref={gridAreaRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
         <ErrorBoundary>
         {terminals.length === 0 && savedSessionProjects.length > 0 && !welcomeDismissed && (
           <WelcomeBackCard
