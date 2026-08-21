@@ -795,3 +795,35 @@ describe('marker-token enumerations are not markers (p2/t1)', () => {
     })
   })
 })
+
+// The retired heuristic rejected any indented tail containing "- ", which suppressed
+// genuine markers like `p1/t1 - done`. The replacement asks a narrower question: does the
+// tail read as documentation of the protocol — a placeholder, an alternatives list, or an
+// instruction to emit a marker — rather than an instance of it.
+describe('documentation tails are not markers (p2/t2)', () => {
+  it('rejects a placeholder-and-alternatives tail behind a prompt glyph', () => {
+    expect(findLastMarker('> [ORCH:PROGRESS] <id> done|partial|blocked')).toBeNull()
+  })
+
+  it('rejects a tail instructing someone to emit a marker', () => {
+    expect(findLastMarker('[ORCH:WAITING] please emit this when you need a decision')).toBeNull()
+  })
+
+  it('keeps rejecting the pinned indented protocol example', () => {
+    expect(parseTerminalMarkerLine('  [ORCH:WAITING] <question> — you need a decision')).toBeNull()
+  })
+
+  it('now accepts the hyphenated progress tail the old heuristic suppressed', () => {
+    expect(parseTerminalMarkerLine('  [ORCH:PROGRESS] p1/t1 - done')).toEqual({
+      kind: 'PROGRESS',
+      tail: 'p1/t1 - done',
+    })
+  })
+
+  // A first cut matched bare "emit" and "please", which rejected this ordinary tail and
+  // broke four PRO state-machine tests. Politeness is not documentation.
+  it('leaves an ordinary polite tail alone', () => {
+    expect(findLastMarker('[ORCH:WAITING] review please')?.marker.text).toBe('review please')
+    expect(findLastMarker('[ORCH:WAITING] should I emit the commit now?')?.marker.kind).toBe('WAITING')
+  })
+})

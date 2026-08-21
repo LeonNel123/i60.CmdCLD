@@ -35,14 +35,33 @@ export function parseTerminalMarkerLine(line: string): { kind: MarkerKind; tail:
   const m = candidate.match(MARKER_LINE_RE)
   if (!m) return null
   const tail = (m[2] ?? '').trim()
-  if (line.length !== candidate.length && looksLikeIndentedProtocolExample(tail)) {
+  if (line.length !== candidate.length && looksLikeDocumentationTail(tail)) {
     return null
   }
   return { kind: m[1] as MarkerKind, tail }
 }
 
-function looksLikeIndentedProtocolExample(tail: string): boolean {
-  return /<[^>]+>/.test(tail) || /[—–-]\s+/.test(tail)
+/**
+ * True for a tail that reads as documentation of the protocol rather than an instance of
+ * it: a placeholder in angle brackets, a `done|partial|blocked` alternatives list, or an
+ * imperative telling someone to emit a marker.
+ *
+ * This replaces a hyphen test — `/[—–-]\s+/` — that was broader than it looked. It
+ * rejected any indented tail containing "- ", which suppressed genuine markers such as
+ * `[ORCH:PROGRESS] p1/t1 - done`. Narrowing it lets more lines through, which is why the
+ * fence and multi-token rules landed first.
+ */
+function looksLikeDocumentationTail(tail: string): boolean {
+  if (/<[^>]+>/.test(tail)) return true
+  if (/\b\w+\|\w+/.test(tail)) return true
+  // Only the imperative with an elided subject — "please emit", "must emit". Two broader
+  // cuts each rejected an ordinary tail: bare `please` killed `review please` (and four
+  // PRO tests with it), and `emit the` killed `should I emit the commit now?`. The
+  // intervening pronoun is what separates a question from an instruction, and word-level
+  // rules on free text do not get more reliable than this — the structural rules above
+  // are the ones carrying the weight.
+  if (/\b(please|must|should)\s+emit\b/i.test(tail)) return true
+  return false
 }
 
 const ORCH_TOKEN_RE = /\[ORCH:(?:WAITING|PROGRESS|GOAL_READY|STUCK)\]/g
@@ -193,6 +212,10 @@ export function findLastMarker(text: string): { marker: DoerMarker; before: stri
     if (mentionsMultipleMarkerTokens(line)) continue
     const parsed = parseTerminalMarkerLine(line)
     if (!parsed) continue
+    // The line parser applies the documentation-tail rule only to indented lines, to keep
+    // the contract its unit tests pin. At buffer level there is no such constraint: a
+    // protocol line behind a prompt glyph is documentation wherever it sits.
+    if (looksLikeDocumentationTail(parsed.tail)) continue
     const { kind, tail } = parsed
     let subgoalId: string | undefined
     let status: 'done' | 'partial' | 'blocked' | undefined
