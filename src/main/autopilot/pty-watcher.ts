@@ -129,10 +129,46 @@ function parseStructuredBlock(lines: string[]): StructuredFields {
   return out
 }
 
+/**
+ * Line indices sitting inside a balanced fenced code block.
+ *
+ * A marker quoted inside a fence is documentation. The line itself is identical to the
+ * real thing — only the fence around it says otherwise, which is why this belongs here,
+ * where the whole buffer is visible, and not in the line parser.
+ *
+ * An unbalanced fence is deliberately ignored. Honouring it would suppress every line
+ * after it, the doer's own marker included, and since the buffer only clears on a settle
+ * that state is sticky: the marker never lands, the missing-marker path nudges twice and
+ * escalates. A stray ``` in prose must not be able to strand a run.
+ */
+function fencedLineIndices(lines: string[]): Set<number> {
+  const fenced = new Set<number>()
+  let openAt = -1
+  let openChar = ''
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].trim().match(/^(```+|~~~+)/)
+    if (!m) continue
+    const char = m[1][0]
+    if (openAt < 0) {
+      openAt = i
+      openChar = char
+      continue
+    }
+    // A ~~~ line inside a ``` block is content, not the closing fence.
+    if (char !== openChar) continue
+    for (let j = openAt + 1; j < i; j++) fenced.add(j)
+    openAt = -1
+    openChar = ''
+  }
+  return fenced
+}
+
 export function findLastMarker(text: string): { marker: DoerMarker; before: string } | null {
   const cleaned = stripTerminalAnsi(text)
   const lines = splitTerminalLines(cleaned)
+  const fenced = fencedLineIndices(lines)
   for (let i = lines.length - 1; i >= 0; i--) {
+    if (fenced.has(i)) continue
     const line = lines[i]
     const parsed = parseTerminalMarkerLine(line)
     if (!parsed) continue

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { parseTerminalMarkerLine, recoverLiteralMarkerFromTail, PtyWatcher } from '../src/main/autopilot/pty-watcher'
+import { findLastMarker, parseTerminalMarkerLine, recoverLiteralMarkerFromTail, PtyWatcher } from '../src/main/autopilot/pty-watcher'
 import type { SettledSnapshot } from '../src/main/autopilot/types'
 
 const IDLE_MS = 50  // smaller than default for fast tests
@@ -602,5 +602,86 @@ describe('PtyWatcher attach baseline', () => {
     expect(snapshots).toHaveLength(2)
     expect(snapshots[1].marker.text).toBe('second question?')
     vi.useRealTimers()
+  })
+})
+
+// A marker quoted inside a fenced code block is documentation, not a marker the doer
+// emitted. The line itself is indistinguishable from the real thing — only the fence
+// around it says otherwise, which is why this rule lives in findLastMarker, where the
+// surrounding lines are visible, rather than in the line parser.
+describe('findLastMarker fenced-code suppression (p1/t1)', () => {
+  it('ignores a marker-shaped line inside a fenced block', () => {
+    expect(findLastMarker([
+      'Here is the protocol I follow:',
+      '```',
+      '[ORCH:GOAL_READY]',
+      '```',
+      'That is all.',
+    ].join('\n'))).toBeNull()
+  })
+
+  it('ignores a marker inside a tilde-fenced block', () => {
+    expect(findLastMarker([
+      '~~~text',
+      '[ORCH:WAITING] is what I would emit',
+      '~~~',
+    ].join('\n'))).toBeNull()
+  })
+
+  it('ignores a fenced block carrying an info string', () => {
+    expect(findLastMarker([
+      '```markdown',
+      '[ORCH:STUCK]',
+      '```',
+    ].join('\n'))).toBeNull()
+  })
+
+  it('still finds a genuine marker after the fence closes', () => {
+    const found = findLastMarker([
+      '```',
+      '[ORCH:GOAL_READY]',
+      '```',
+      '[ORCH:WAITING] ready for review?',
+    ].join('\n'))
+    expect(found?.marker.kind).toBe('WAITING')
+    expect(found?.marker.text).toBe('ready for review?')
+  })
+
+  it('still finds a genuine marker before the fence opens', () => {
+    const found = findLastMarker([
+      '[ORCH:PROGRESS] p1/t1 done',
+      '```',
+      '[ORCH:GOAL_READY]',
+      '```',
+    ].join('\n'))
+    expect(found?.marker.kind).toBe('PROGRESS')
+    expect(found?.marker.subgoalId).toBe('p1/t1')
+  })
+
+  // Liveness over strictness. A fence that never closes would otherwise suppress every
+  // line after it — including the doer's real marker — and since the buffer only clears
+  // on a settle, that state is sticky: the marker never lands, the missing-marker path
+  // nudges twice and escalates. A stray ``` in prose must not be able to strand a run,
+  // so only a balanced fence suppresses.
+  it('does not suppress after an unterminated fence', () => {
+    const found = findLastMarker([
+      'wrap the block in ```',
+      '[ORCH:WAITING] continue?',
+    ].join('\n'))
+    expect(found?.marker.kind).toBe('WAITING')
+  })
+
+  it('keeps the structured block that follows a genuine post-fence marker', () => {
+    const found = findLastMarker([
+      '```',
+      '[ORCH:PROGRESS] p9/t9 done',
+      '```',
+      '[ORCH:PROGRESS] p1/t1 done',
+      'TESTS: 1074 passed / 0 failed',
+      'BOUNDARY_OK: yes',
+    ].join('\n'))
+    expect(found?.marker.subgoalId).toBe('p1/t1')
+    expect(found?.marker.tests).toBe('1074 passed / 0 failed')
+    expect(found?.marker.boundaryOk).toBe(true)
   })
 })
