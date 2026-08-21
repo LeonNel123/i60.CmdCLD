@@ -202,7 +202,15 @@ function fencedLineIndices(lines: string[]): Set<number> {
   return fenced
 }
 
-export function findLastMarker(text: string): { marker: DoerMarker; before: string } | null {
+/**
+ * The last marker in the buffer, with the index of the line it came from.
+ *
+ * The index is part of the result because the line's text is not enough to find it again:
+ * a quoted copy elsewhere in the buffer is byte-identical, so a caller searching for the
+ * raw text can land on the wrong one and read someone else's lines as the structured
+ * block. output-inspector did exactly that.
+ */
+export function findLastMarker(text: string): { marker: DoerMarker; before: string; lineIndex: number } | null {
   const cleaned = stripTerminalAnsi(text)
   const lines = splitTerminalLines(cleaned)
   const fenced = fencedLineIndices(lines)
@@ -255,7 +263,7 @@ export function findLastMarker(text: string): { marker: DoerMarker; before: stri
       blocker: struct.blocker,
       question: struct.question,
     }
-    return { marker, before }
+    return { marker, before, lineIndex: i }
   }
   return null
 }

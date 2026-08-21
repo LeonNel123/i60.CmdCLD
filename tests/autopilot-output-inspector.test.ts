@@ -61,3 +61,33 @@ describe('inspectAutopilotOutput', () => {
     })
   })
 })
+
+// The inspection is what an operator reads when a run looks wrong, so its marker and its
+// structured fields have to come from the same line. They did not: the marker comes from
+// findLastMarker, which skips markers quoted inside a fence, while the fields were found
+// by scanning back for a line equal to the marker's raw text — which matched the quoted
+// copy and read the fence as the structured block.
+describe('inspectAutopilotOutput with a quoted copy of the marker (p3/t1)', () => {
+  it('reads the fields belonging to the marker it reports', () => {
+    const result = inspectAutopilotOutput([
+      '[ORCH:WAITING] ready?',
+      'TESTS: 12 passed / 0 failed',
+      'BOUNDARY_OK: yes',
+      'and here is what that looks like:',
+      '```',
+      '[ORCH:WAITING] ready?',
+      '```',
+    ].join('\n'))
+    expect(result.marker?.kind).toBe('WAITING')
+    expect(result.markerLine).toBe('[ORCH:WAITING] ready?')
+    expect(result.structuredFields.TESTS).toBe('12 passed / 0 failed')
+    expect(result.structuredFields.BOUNDARY_OK).toBe('yes')
+  })
+
+  it('reports no marker when every marker-shaped line is quoted', () => {
+    const result = inspectAutopilotOutput(['```', '[ORCH:GOAL_READY]', '```'].join('\n'))
+    expect(result.marker).toBeNull()
+    expect(result.structuredFields).toEqual({})
+    expect(result.summary).toMatch(/No parser-visible/)
+  })
+})
