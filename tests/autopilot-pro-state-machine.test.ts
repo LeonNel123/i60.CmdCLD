@@ -593,6 +593,62 @@ describe('Stage 4 final-review + auto-meta (Wave 3.1 G4 + G5)', () => {
     expect(sm.state.stage).toBe('done')
   })
 
+  // Observed in a real run: the doer signed off, the orchestrator acknowledged
+  // "Run complete", and then kept answering every further marker — each transition
+  // decision walking the finished run back into final-review, which completed again.
+  // It only ended when the operator typed stop.
+  it('stops answering the doer once the run is done', async () => {
+    setupAllReviewsApproved()
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'transition', action: 'final-review', why: 'all reviews in' })), writes)
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    sm.feedPty('[ORCH:WAITING] final review complete\nDECISION_SHAPE: transition\n')
+    await flush()
+    await new Promise((r) => setTimeout(r, 100))
+    expect(sm.state.stage).toBe('done')
+
+    writes.length = 0
+    sm.feedPty('[ORCH:GOAL_READY]\nDECISION_SHAPE: transition\nPROGRESS_STATUS: done\n')
+    await flush()
+    await new Promise((r) => setTimeout(r, 100))
+    expect(sm.state.stage).toBe('done')
+    expect(writes).toEqual([])
+  })
+
+  it('leaves the run in a stopped control state so the panel shows it ended', async () => {
+    setupAllReviewsApproved()
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'transition', action: 'final-review', why: 'all reviews in' })))
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    sm.feedPty('[ORCH:WAITING] final review complete\nDECISION_SHAPE: transition\n')
+    await flush()
+    await new Promise((r) => setTimeout(r, 100))
+    expect(sm.state.stage).toBe('done')
+    expect(sm.state.control).toBe('stopped')
+    expect(sm.state.liveStatus).toBeNull()
+  })
+
+  // The mechanism that turned "no terminal state" into a loop rather than a stray
+  // extra reply: a final-review decision arriving at any stage other than final-review
+  // was read as "advance to final review", done included.
+  it('does not walk a finished run back into final-review', async () => {
+    setupAllReviewsApproved()
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'transition', action: 'final-review', why: 'all reviews in' })))
+    await sm.start()
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    sm.feedPty('[ORCH:WAITING] final review complete\nDECISION_SHAPE: transition\n')
+    await flush()
+    await new Promise((r) => setTimeout(r, 100))
+    expect(sm.state.stage).toBe('done')
+
+    await sm.testHandleResult({ shape: 'transition', action: 'final-review', why: 'again' } as ProDecideResult)
+    expect(sm.state.stage).toBe('done')
+  })
+
   it('auto-fires meta when stage transitions to done', async () => {
     setupAllReviewsApproved()
     const chatCalls: Array<{ system: string; user: string }> = []

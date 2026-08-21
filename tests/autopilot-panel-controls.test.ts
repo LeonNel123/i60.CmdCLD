@@ -34,6 +34,12 @@ describe('Autopilot attach panel helpers', () => {
     expect(shouldAllowAttachDraft({ control: 'stopped' } as any)).toBe(true)
   })
 
+  // A completed PRO run ends as stage 'done' + control 'stopped'. Without 'done' in
+  // the finished set the panel read that pair as still-running and refused the draft.
+  it('allows attach draft when a Pro run finished', () => {
+    expect(shouldAllowAttachDraft({ stage: 'done', control: 'stopped' } as any)).toBe(true)
+  })
+
   it('blocks attach draft for non-null empty state', () => {
     expect(shouldAllowAttachDraft({} as any)).toBe(false)
   })

@@ -438,6 +438,33 @@ export class AutopilotProStateMachine {
     this.notify()
   }
 
+  /**
+   * The run reached its terminal stage and the orchestrator is finished.
+   *
+   * Stage 'done' on its own never ended anything: control stayed 'running', so the
+   * machine kept answering every marker the doer produced after sign-off, and a
+   * transition decision arriving post-completion walked the stage back to final-review
+   * — which completed again, and again. In the run this was found in it only ended when
+   * the operator typed stop.
+   *
+   * Deliberately not stop(): that resets the Wave 3.1 kickoff flags so a later start()
+   * re-fires them, and metaAutoFired among them — this runs immediately before the meta
+   * orchestrator is fired, which must stay a once-only thing.
+   */
+  private finishRun(): void {
+    this.state.control = 'stopped'
+    if (this.detachPty) { this.detachPty(); this.detachPty = null }
+    this.stopControlWatchdog()
+    this.clearSilenceTimer()
+    if (this.markerNudgeObserveTimer) {
+      clearTimeout(this.markerNudgeObserveTimer)
+      this.markerNudgeObserveTimer = null
+    }
+    this.state.liveStatus = null
+    this.appendActivity('orchestrator-resume', 'run complete — orchestrator loop ended')
+    this.notify()
+  }
+
   stop(): void {
     this.state.control = 'stopped'
     if (this.detachPty) { this.detachPty(); this.detachPty = null }
@@ -971,7 +998,13 @@ export class AutopilotProStateMachine {
             this.sendToDoer(reply, writeReason)
             this.appendActivity('orchestrator-resume', 'stage→done')
             this.recordTranscript({ kind: 'transition', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'transition' })
+            this.finishRun()
             void this.fireMetaAutoAsync()
+          } else if (this.state.stage === 'done') {
+            // A finished run has nothing left to advance to. Without this the branch
+            // below read "final-review requested while not in final-review" as "go to
+            // final review" and sent the run round again — the loop this was found in.
+            this.appendActivity('orchestrator-resume', 'final-review requested after completion — ignored')
           } else {
             // Pre-Stage-4 final-review request (legacy path) — set stage and let next cycle handle kickoff.
             this.state.stage = 'final-review'

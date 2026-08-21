@@ -88,7 +88,9 @@ export function shouldAllowAttachDraft(state: AutopilotState | null): boolean {
   if (runStates.some((value) => value === 'executing' || value === 'running' || value === 'paused' || value === 'blocked')) {
     return false
   }
-  return runStates.every((value) => value === 'idle' || value === 'stopped' || value === 'completed')
+  // 'done' is PRO's terminal stage — a finished run reports stage 'done' alongside
+  // control 'stopped', and both have to read as finished or the pair looks active.
+  return runStates.every((value) => value === 'idle' || value === 'stopped' || value === 'completed' || value === 'done')
 }
 
 export function shouldShowManualReply(
