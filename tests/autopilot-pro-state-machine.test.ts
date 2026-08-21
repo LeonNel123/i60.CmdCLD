@@ -741,6 +741,28 @@ describe('Stage 4 final-review + auto-meta (Wave 3.1 G4 + G5)', () => {
     expect(sm.state.stage).toBe('done')
   })
 
+  // Observed live: the doer signalled completion, the planner answered 'advance', and the
+  // orchestrator replied "Stage now: final-review" and waited for another marker.
+  // maybeAdvanceStage has no edge out of final-review, so advancing there was a no-op that
+  // asked the doer to speak again — the stage machine's own version of a loop. It took a
+  // second marker naming the terminal action to actually end the run.
+  it('reads advance at final-review as completion rather than restating the stage', async () => {
+    setupAllReviewsApproved()
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'transition', action: 'advance', why: 'all work complete' })), writes)
+    await sm.start()
+    sm.feedPty(['[ORCH:WAITING] q', 'DECISION_SHAPE: reply', ''].join('\n'))
+    await flush()
+    expect(sm.state.stage).toBe('final-review')
+    writes.length = 0
+    sm.feedPty(['[ORCH:GOAL_READY]', 'DECISION_SHAPE: transition', ''].join('\n'))
+    await flush()
+    await new Promise((r) => setTimeout(r, 100))
+    expect(sm.state.stage).toBe('done')
+    expect(sm.state.control).toBe('stopped')
+    expect(writes.join('\n')).toContain('Run complete')
+  })
+
   it('auto-fires meta when stage transitions to done', async () => {
     setupAllReviewsApproved()
     const chatCalls: Array<{ system: string; user: string }> = []

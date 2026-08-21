@@ -993,6 +993,15 @@ On your question: ${answer}`
       }
 
       case 'transition': {
+        // At final-review there is nothing ahead: maybeAdvanceStage only moves
+        // discovery→planning and planning→implementation, so 'advance' here used to
+        // restate the stage and ask the doer to speak again — a stage with no forward
+        // edge, which is how a finished run kept talking. Read it as completion, which is
+        // what the planner meant by advancing past the last stage there is.
+        if (result.action === 'advance' && this.state.stage === 'final-review') {
+          this.appendActivity('orchestrator-resume', 'advance at final-review read as completion')
+          result = { ...result, action: 'final-review' }
+        }
         if (result.action === 'advance') {
           if (this.state.stage === 'research') {
             // Escape hatch: the planner can abandon research (e.g. the doer
