@@ -20,6 +20,7 @@ interface RuntimeStatePro extends RuntimeFlags {
   currentPhaseId: string | null
   currentTaskId: string | null
   cycleCount: number
+  completedSubgoals?: string[]
   costUsd: number
   researchInFlight?: {
     triggerStage: ProStage
@@ -45,6 +46,7 @@ export function saveRuntime(projectPath: string, state: ProState, flags: Runtime
     currentPhaseId: state.currentPhaseId,
     currentTaskId: state.currentTaskId,
     cycleCount: state.cycleCount,
+    completedSubgoals: state.completedSubgoals,
     costUsd: state.costUsd,
     ...flags,
     ...(state.researchInFlight ? { researchInFlight: state.researchInFlight } : {}),

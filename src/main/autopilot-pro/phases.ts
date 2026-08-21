@@ -88,3 +88,37 @@ export function phaseDoneFromTasks(phase: PhaseDescriptor): boolean {
   if (phase.tasks.length === 0) return false
   return phase.tasks.every((t) => t.done)
 }
+
+/**
+ * Normalises a phase or task id for comparison against a marker's subgoal id.
+ *
+ * The two vocabularies never matched: phases parse as `phase-p1`, tasks get `T1` (or an
+ * auto id when the plan writes `t1:` in lowercase, which TASK_RE's anchored `T(\d+)`
+ * does not capture), while the doer reports `p1/t1`.
+ */
+function normaliseId(id: string): string {
+  return id.replace(/^phase-/i, '').trim().toLowerCase()
+}
+
+/**
+ * Whether a phase is complete, counting the tasks the doer reported done as well as the
+ * ones ticked in plan.md.
+ *
+ * Stage 3 keys off phase completion, and completion was read only from `- [x]` checkboxes
+ * — which nothing ever writes. The doer contract does not ask for them and the
+ * orchestrator never wrote them either, so in a real run every phase looked unfinished,
+ * phase-review never fired, and Stage 4 never auto-triggered. The orchestrator already
+ * receives `[ORCH:PROGRESS] p1/t1 done` for each task; this counts what it was told
+ * rather than requiring the plan file to be edited underneath the doer.
+ */
+export function phaseDoneWithProgress(phase: PhaseDescriptor, completedSubgoals: string[]): boolean {
+  if (phase.tasks.length === 0) return false
+  const phaseId = normaliseId(phase.id)
+  const reported = new Set(
+    completedSubgoals
+      .map((s) => s.split('/'))
+      .filter((parts) => parts.length === 2 && normaliseId(parts[0]) === phaseId)
+      .map((parts) => normaliseId(parts[1])),
+  )
+  return phase.tasks.every((t) => t.done || reported.has(normaliseId(t.id)))
+}

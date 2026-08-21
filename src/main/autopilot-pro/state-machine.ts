@@ -23,7 +23,7 @@ import {
   readArtifact, writeArtifact, markApproved, markUnapproved,
   incrementRefineCount, readState, writeState, reconcile, appendSpecUpdate,
 } from './artifacts'
-import { parsePhases, currentPhase, phaseDoneFromTasks } from './phases'
+import { parsePhases, currentPhase, phaseDoneWithProgress } from './phases'
 import { buildDoerSystemPromptPro, stage0Kickoff, stage3Kickoff, stage4Kickoff } from './prompts'
 import { runResetSequencePro } from './reset'
 import { saveRuntime, loadRuntime } from './runtime-state'
@@ -277,6 +277,7 @@ export class AutopilotProStateMachine {
       costUsd: this.cost.totalUsd,
       costCapUsd: this.cost.capUsd,
       recentLog: [],
+      completedSubgoals: [],
       escalationReason: null,
       validation: {},
       subagentRunning: false,
@@ -348,6 +349,7 @@ export class AutopilotProStateMachine {
         this.state.currentPhaseId = rt.currentPhaseId
         this.state.currentTaskId = rt.currentTaskId
         this.state.cycleCount = rt.cycleCount
+        if (rt.completedSubgoals) this.state.completedSubgoals = rt.completedSubgoals
         this.state.costUsd = rt.costUsd
         this.markerFallbackPromptCount = rt.markerFallbackPromptCount
         this.stage3KickoffSentForPhase = rt.stage3KickoffSentForPhase
@@ -537,6 +539,13 @@ export class AutopilotProStateMachine {
       subgoalId: snap.marker.subgoalId,
       status: snap.marker.status,
       receivedAt: snap.receivedAt,
+    }
+
+    // Record what the doer reported finishing. Phase completion is derived from this
+    // alongside plan.md checkboxes: nothing writes those, so on their own every phase
+    // stayed unfinished and Stage 3 never ran.
+    if (m.subgoalId && m.status === 'done' && !this.state.completedSubgoals.includes(m.subgoalId)) {
+      this.state.completedSubgoals.push(m.subgoalId)
     }
 
     this.appendActivity('doer-marker', `${m.kind}${m.shape ? ` shape=${m.shape}` : ''}${m.subgoalId ? ` ${m.subgoalId}` : ''}`)
@@ -1101,7 +1110,7 @@ On your question: ${answer}`
     // Find the first phase whose tasks are all done but whose review is missing-or-not-approved.
     const a = this.state.artifacts
     const phaseAwaitingReview = phases.find((p) =>
-      phaseDoneFromTasks(p) && a[`reviews/${p.id}.md`]?.approved !== true
+      phaseDoneWithProgress(p, this.state.completedSubgoals) && a[`reviews/${p.id}.md`]?.approved !== true
     )
 
     if (phaseAwaitingReview) {
@@ -1119,7 +1128,7 @@ On your question: ${answer}`
 
     // No phase awaits review. Either still implementing OR all reviews approved.
     const allDoneAndReviewed = phases.every((p) =>
-      phaseDoneFromTasks(p) && a[`reviews/${p.id}.md`]?.approved === true
+      phaseDoneWithProgress(p, this.state.completedSubgoals) && a[`reviews/${p.id}.md`]?.approved === true
     )
     if (allDoneAndReviewed) {
       this.state.stage = 'final-review'

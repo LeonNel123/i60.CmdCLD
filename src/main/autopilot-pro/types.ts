@@ -73,6 +73,9 @@ export interface ProState {
   costUsd: number
   costCapUsd: number
   recentLog: ActivityEntry[]
+  /** Subgoal ids the doer reported done, e.g. 'p1/t1'. Phase completion counts these as
+   *  well as plan.md checkboxes, which nothing writes. */
+  completedSubgoals: string[]
   escalationReason: string | null
   validation: ValidationCommands
   subagentRunning: boolean
