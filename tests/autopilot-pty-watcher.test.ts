@@ -757,3 +757,41 @@ describe('PtyWatcher settles on the genuine marker despite trailing noise (p1/t2
     vi.useRealTimers()
   })
 })
+
+// The orchestrator's own missing-marker nudge names all four kinds on one line. It
+// reaches the buffer as terminal echo, and once a prompt glyph or a wrap puts the first
+// token at the start of a line, both entry points read it as the doer answering — the
+// orchestrator's question coming back as its own answer.
+describe('marker-token enumerations are not markers (p2/t1)', () => {
+  // Verbatim from state-machine.ts:655 (classic) and autopilot-pro/state-machine.ts:1261,
+  // as it looks after terminal chrome puts a prompt glyph in front of it.
+  const NUDGE_WRAPPED = '> [ORCH:WAITING] (with your question), [ORCH:PROGRESS] <id> done|partial|blocked, [ORCH:GOAL_READY], or [ORCH:STUCK] (with the blocker) so the orchestrator knows where you are.'
+  const ENUMERATION = '[ORCH:GOAL_READY] or [ORCH:STUCK] if blocked'
+
+  it('findLastMarker rejects the wrapped nudge behind a prompt glyph', () => {
+    expect(findLastMarker(NUDGE_WRAPPED)).toBeNull()
+  })
+
+  it('findLastMarker rejects a two-token enumeration at column 1', () => {
+    expect(findLastMarker(ENUMERATION)).toBeNull()
+  })
+
+  it('recoverLiteralMarkerFromTail rejects the same enumeration', () => {
+    expect(recoverLiteralMarkerFromTail(ENUMERATION)).toBeNull()
+  })
+
+  it('reaches the genuine marker sitting above the wrapped nudge', () => {
+    const found = findLastMarker(['[ORCH:PROGRESS] p2/t1 done', NUDGE_WRAPPED].join('\n'))
+    expect(found?.marker.subgoalId).toBe('p2/t1')
+    expect(found?.marker.status).toBe('done')
+  })
+
+  it('leaves a single-token marker alone, tail and all', () => {
+    expect(findLastMarker('[ORCH:WAITING] shall I proceed?')?.marker.text).toBe('shall I proceed?')
+    expect(recoverLiteralMarkerFromTail('  [ORCH:PROGRESS] p2/t1 done')).toMatchObject({
+      kind: 'PROGRESS',
+      subgoalId: 'p2/t1',
+      status: 'done',
+    })
+  })
+})

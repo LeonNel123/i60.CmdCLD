@@ -45,6 +45,26 @@ function looksLikeIndentedProtocolExample(tail: string): boolean {
   return /<[^>]+>/.test(tail) || /[—–-]\s+/.test(tail)
 }
 
+const ORCH_TOKEN_RE = /\[ORCH:(?:WAITING|PROGRESS|GOAL_READY|STUCK)\]/g
+
+/**
+ * True for a line that carries more than one [ORCH:*] token.
+ *
+ * A doer emitting a marker emits exactly one per line. More than one means the protocol
+ * is being described rather than used: the orchestrator's own missing-marker nudge listing
+ * all four kinds, the doer contract's enumeration, an agent explaining itself. Those lines
+ * reach the buffer as terminal echo, and behind a prompt glyph the first token sits at the
+ * start of the line — close enough to a marker that both entry points accepted it.
+ *
+ * The cost is that a genuine marker whose tail mentions another kind is suppressed too.
+ * That text belongs on the QUESTION: line of the structured block, which is where the
+ * orchestrator reads it from anyway.
+ */
+function mentionsMultipleMarkerTokens(line: string): boolean {
+  const tokens = line.match(ORCH_TOKEN_RE)
+  return tokens !== null && tokens.length > 1
+}
+
 const STRUCTURED_KEYS = new Set([
   'STATUS', 'SUBGOAL', 'PROGRESS_STATUS', 'FILES_CHANGED', 'TESTS',
   'RED_PHASE', 'BOUNDARY_OK', 'EVIDENCE', 'BLOCKER', 'QUESTION',
@@ -170,6 +190,7 @@ export function findLastMarker(text: string): { marker: DoerMarker; before: stri
   for (let i = lines.length - 1; i >= 0; i--) {
     if (fenced.has(i)) continue
     const line = lines[i]
+    if (mentionsMultipleMarkerTokens(line)) continue
     const parsed = parseTerminalMarkerLine(line)
     if (!parsed) continue
     const { kind, tail } = parsed
@@ -221,6 +242,7 @@ export function recoverLiteralMarkerFromTail(text: string): DoerMarker | null {
   const lines = splitTerminalLines(cleaned)
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i]
+    if (mentionsMultipleMarkerTokens(line)) continue
     const token = line.match(/\[ORCH:(WAITING|PROGRESS|GOAL_READY|STUCK)\]/)
     if (!token || token.index === undefined) continue
     const before = line.slice(0, token.index)
