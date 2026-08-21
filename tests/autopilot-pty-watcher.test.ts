@@ -685,3 +685,75 @@ describe('findLastMarker fenced-code suppression (p1/t1)', () => {
     expect(found?.marker.boundaryOk).toBe(true)
   })
 })
+
+// Suppression must never cost the run its marker. Every rejection continues the reverse
+// scan, so noise below a genuine marker is skipped past rather than ending the search —
+// the failure mode being guarded against is a settle that never happens, which the buffer
+// makes sticky (only emitSettle clears it) and the missing-marker path escalates.
+describe('findLastMarker keeps scanning past suppressed lines (p1/t2)', () => {
+  it('finds a genuine marker underneath a fenced example and a prose mention', () => {
+    const found = findLastMarker([
+      '[ORCH:WAITING] ready for review?',
+      'For reference the protocol looks like this:',
+      '```',
+      '[ORCH:GOAL_READY]',
+      '```',
+      'Please emit [ORCH:WAITING] when you need a decision.',
+    ].join('\n'))
+    expect(found?.marker.kind).toBe('WAITING')
+    expect(found?.marker.text).toBe('ready for review?')
+  })
+
+  it('finds a genuine marker when the buffer ends inside suppressed noise', () => {
+    const found = findLastMarker([
+      '[ORCH:PROGRESS] p1/t2 done',
+      'TESTS: 12 passed / 0 failed',
+      'BOUNDARY_OK: yes',
+      '```',
+      '[ORCH:STUCK]',
+      '```',
+    ].join('\n'))
+    expect(found?.marker.subgoalId).toBe('p1/t2')
+    expect(found?.marker.status).toBe('done')
+    expect(found?.marker.tests).toBe('12 passed / 0 failed')
+  })
+
+  it('returns null rather than a fenced marker when the buffer holds nothing genuine', () => {
+    expect(findLastMarker([
+      'Nothing settled here.',
+      '```',
+      '[ORCH:GOAL_READY]',
+      '[ORCH:WAITING] still?',
+      '```',
+    ].join('\n'))).toBeNull()
+  })
+})
+
+describe('PtyWatcher settles on the genuine marker despite trailing noise (p1/t2)', () => {
+  // A fenced example after the marker is unstructured text, so checkSettled arms the
+  // Wave 3.3 force-settle rather than settling on idle — the fence costs the cycle that
+  // delay and nothing more. What matters for the guarantee is that the settle arrives,
+  // and that it carries the marker the doer emitted rather than the quoted one.
+  it('force-settles on the marker the doer emitted, not the fenced example', async () => {
+    vi.useFakeTimers()
+    const events: SettledSnapshot[] = []
+    const w = new PtyWatcher({ idleMs: IDLE_MS, forceSettleMs: 200, nudgeMs: NUDGE_MS, onSettle: (s) => events.push(s) })
+    w.feed([
+      'work done',
+      '[ORCH:PROGRESS] p1/t2 done',
+      'TESTS: 12 passed / 0 failed',
+      '```',
+      '[ORCH:GOAL_READY]',
+      '```',
+      '',
+    ].join('\n'))
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(events).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(200 + 5)
+    expect(events).toHaveLength(1)
+    expect(events[0].marker.kind).toBe('PROGRESS')
+    expect(events[0].marker.subgoalId).toBe('p1/t2')
+    expect(events[0].marker.tests).toBe('12 passed / 0 failed')
+    vi.useRealTimers()
+  })
+})
