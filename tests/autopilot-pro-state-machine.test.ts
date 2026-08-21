@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { AutopilotProStateMachine, enrichProMarker } from '../src/main/autopilot-pro/state-machine'
+import { buildPlannerPrompt } from '../src/main/autopilot-pro/prompts'
 import type { AutopilotProOptions, ProDecideResult } from '../src/main/autopilot-pro/types'
 import type { ApiClient, ApiUsage } from '../src/main/autopilot/types'
 import { writeArtifact, markApproved, readState } from '../src/main/autopilot-pro/artifacts'
@@ -540,6 +541,131 @@ describe('Stage 3 phase-review pipeline (Wave 3.1 G3)', () => {
   })
 })
 
+// PtyWatcher owns timers the state machine does not. Detaching from pty data leaves its
+// missing-marker fallback armed, and that path wrote a nudge into the terminal up to 30s
+// after a run had stopped or finished — the orchestrator's dead hand, observed live at the
+// end of the marker-parser run. Council already reset the watcher in stop() and pause();
+// classic and PRO did not.
+// The planner always received the doer's QUESTION — buildPlannerPrompt puts it in the
+// prompt — but transition and approve had no field to answer in, only a one-sentence
+// justification of the action. So a doer asking "should this deviation stand?" got
+// "Stage now: implementation" back, and every ruling it asked for went unmade.
+describe('planner answers the doer question', () => {
+  it('tells the planner to answer, and not to pretend it verified anything', () => {
+    for (const shape of ['transition', 'approve'] as const) {
+      const parts = buildPlannerPrompt({
+        shape, stage: 'implementation', goalSummary: 'g', artifacts: {}, validation: {}, recentLogTail: [],
+        lastSnapshot: { text: '', marker: { kind: 'PROGRESS', text: '', raw: '', question: 'should the deviation stand?' }, receivedAt: 0 },
+      } as any)
+      expect(parts.cachedSystem).toMatch(/QUESTION/)
+      expect(parts.cachedSystem).toMatch(/face value|cannot run/i)
+    }
+  })
+
+  it('carries the answer through to the doer', async () => {
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({
+      shape: 'transition', action: 'cycle', why: 'more work left',
+      answer: 'Keep the deviation — liveness beats strictness there.',
+    } as any)), writes)
+    await sm.start()
+    writes.length = 0
+    sm.feedPty(['[ORCH:PROGRESS] p1/t1 done', 'DECISION_SHAPE: transition', 'QUESTION: should the deviation stand?', ''].join('\n'))
+    await flush()
+    await new Promise((r) => setTimeout(r, 80))
+    expect(writes.join('\n')).toContain('On your question: Keep the deviation')
+  })
+
+  it('records it when a question goes unanswered instead of hiding it', async () => {
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'transition', action: 'cycle', why: 'carry on' })), writes)
+    await sm.start()
+    sm.feedPty(['[ORCH:PROGRESS] p1/t1 done', 'DECISION_SHAPE: transition', 'QUESTION: should the deviation stand?', ''].join('\n'))
+    await flush()
+    await new Promise((r) => setTimeout(r, 80))
+    expect(sm.state.recentLog.some((a) => a.summary.includes('left unanswered'))).toBe(true)
+  })
+
+  it('caps a runaway answer rather than pasting it whole into the terminal', async () => {
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({
+      shape: 'transition', action: 'cycle', why: 'w', answer: 'x'.repeat(5000),
+    } as any)), writes)
+    await sm.start()
+    writes.length = 0
+    sm.feedPty(['[ORCH:PROGRESS] p1/t1 done', 'DECISION_SHAPE: transition', 'QUESTION: q?', ''].join('\n'))
+    await flush()
+    await new Promise((r) => setTimeout(r, 80))
+    const sent = writes.join('\n')
+    expect(sent).toContain('On your question:')
+    expect(sent.match(/x+/)?.[0].length).toBe(600)
+  })
+})
+
+// Lifecycle audit: teardown has to track recoverability. pause() keeps its listener
+// because resume() will want it back. blocked does not come back — resume() refuses it and
+// the panel hides the button — yet it released only the silence timer, so an escalated run
+// held the pty listener and polled the control channel at 1 Hz for the life of the app.
+describe('an unrecoverable exit releases what the run holds', () => {
+  it('lets go of the terminal when the cost cap blocks the run', async () => {
+    let detached = false
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), [], {
+      costCapUsd: 0.0000001,
+      onPtyData: () => () => { detached = true },
+    })
+    await sm.start()
+    sm.feedPty(['[ORCH:WAITING] q', 'DECISION_SHAPE: reply', ''].join('\n'))
+    await flush()
+    await new Promise((r) => setTimeout(r, 60))
+    expect(sm.state.control).toBe('blocked')
+    sm.resume()
+    expect(sm.state.control).toBe('blocked')   // one-way, so nothing will consume the pty
+    expect(detached).toBe(true)
+  })
+
+  it('keeps the listener across a pause, which resume() does come back to', async () => {
+    let detached = false
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), [], {
+      onPtyData: () => () => { detached = true },
+    })
+    await sm.start()
+    sm.pause()
+    expect(detached).toBe(false)
+    sm.resume()
+    expect(sm.state.control).toBe('running')
+  })
+})
+
+describe('teardown cancels what the watcher owns', () => {
+  it('stop() leaves nothing armed that can write into the terminal', async () => {
+    vi.useFakeTimers()
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), writes)
+    await sm.start()
+    sm.feedPty('x'.repeat(300))            // substantive output, no marker: arms the fallback
+    await vi.advanceTimersByTimeAsync(30)
+    writes.length = 0
+    sm.stop()
+    await vi.advanceTimersByTimeAsync(31_000)
+    expect(writes).toEqual([])
+    vi.useRealTimers()
+  })
+
+  it('a paused run is not nudged by a fallback armed before the pause', async () => {
+    vi.useFakeTimers()
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), writes)
+    await sm.start()
+    sm.feedPty('x'.repeat(300))
+    await vi.advanceTimersByTimeAsync(30)
+    writes.length = 0
+    sm.pause()
+    await vi.advanceTimersByTimeAsync(31_000)
+    expect(writes).toEqual([])
+    vi.useRealTimers()
+  })
+})
+
 describe('Stage 4 final-review + auto-meta (Wave 3.1 G4 + G5)', () => {
   function setupAllReviewsApproved() {
     writeArtifact(TMP, 'spec', '# s'); markApproved(TMP, 'spec')
@@ -647,6 +773,28 @@ describe('Stage 4 final-review + auto-meta (Wave 3.1 G4 + G5)', () => {
 
     await sm.testHandleResult({ shape: 'transition', action: 'final-review', why: 'again' } as ProDecideResult)
     expect(sm.state.stage).toBe('done')
+  })
+
+  // Observed live: the doer signalled completion, the planner answered 'advance', and the
+  // orchestrator replied "Stage now: final-review" and waited for another marker.
+  // maybeAdvanceStage has no edge out of final-review, so advancing there was a no-op that
+  // asked the doer to speak again — the stage machine's own version of a loop. It took a
+  // second marker naming the terminal action to actually end the run.
+  it('reads advance at final-review as completion rather than restating the stage', async () => {
+    setupAllReviewsApproved()
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'transition', action: 'advance', why: 'all work complete' })), writes)
+    await sm.start()
+    sm.feedPty(['[ORCH:WAITING] q', 'DECISION_SHAPE: reply', ''].join('\n'))
+    await flush()
+    expect(sm.state.stage).toBe('final-review')
+    writes.length = 0
+    sm.feedPty(['[ORCH:GOAL_READY]', 'DECISION_SHAPE: transition', ''].join('\n'))
+    await flush()
+    await new Promise((r) => setTimeout(r, 100))
+    expect(sm.state.stage).toBe('done')
+    expect(sm.state.control).toBe('stopped')
+    expect(writes.join('\n')).toContain('Run complete')
   })
 
   it('auto-fires meta when stage transitions to done', async () => {

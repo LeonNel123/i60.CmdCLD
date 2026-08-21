@@ -23,7 +23,7 @@ import {
   readArtifact, writeArtifact, markApproved, markUnapproved,
   incrementRefineCount, readState, writeState, reconcile, appendSpecUpdate,
 } from './artifacts'
-import { parsePhases, currentPhase, phaseDoneFromTasks } from './phases'
+import { parsePhases, currentPhase, phaseDoneWithProgress } from './phases'
 import { buildDoerSystemPromptPro, stage0Kickoff, stage3Kickoff, stage4Kickoff } from './prompts'
 import { runResetSequencePro } from './reset'
 import { saveRuntime, loadRuntime } from './runtime-state'
@@ -277,6 +277,7 @@ export class AutopilotProStateMachine {
       costUsd: this.cost.totalUsd,
       costCapUsd: this.cost.capUsd,
       recentLog: [],
+      completedSubgoals: [],
       escalationReason: null,
       validation: {},
       subagentRunning: false,
@@ -348,6 +349,7 @@ export class AutopilotProStateMachine {
         this.state.currentPhaseId = rt.currentPhaseId
         this.state.currentTaskId = rt.currentTaskId
         this.state.cycleCount = rt.cycleCount
+        if (rt.completedSubgoals) this.state.completedSubgoals = rt.completedSubgoals
         this.state.costUsd = rt.costUsd
         this.markerFallbackPromptCount = rt.markerFallbackPromptCount
         this.stage3KickoffSentForPhase = rt.stage3KickoffSentForPhase
@@ -439,6 +441,26 @@ export class AutopilotProStateMachine {
   }
 
   /**
+   * Let go of everything this run holds: the pty listener, the control watchdog, the
+   * watcher's own timers, the silence timer, the nudge observer.
+   *
+   * Teardown tracks recoverability. pause() keeps its listener because resume() will want
+   * it back; stop, completion and escalation are states resume() refuses, so holding a
+   * terminal listener and a 1 Hz poll for the life of the app buys nothing. Idempotent —
+   * every field is null-checked, so exits that overlap are safe.
+   */
+  private releaseRunResources(): void {
+    if (this.detachPty) { this.detachPty(); this.detachPty = null }
+    this.watcher.reset()
+    this.stopControlWatchdog()
+    this.clearSilenceTimer()
+    if (this.markerNudgeObserveTimer) {
+      clearTimeout(this.markerNudgeObserveTimer)
+      this.markerNudgeObserveTimer = null
+    }
+  }
+
+  /**
    * The run reached its terminal stage and the orchestrator is finished.
    *
    * Stage 'done' on its own never ended anything: control stayed 'running', so the
@@ -453,13 +475,7 @@ export class AutopilotProStateMachine {
    */
   private finishRun(): void {
     this.state.control = 'stopped'
-    if (this.detachPty) { this.detachPty(); this.detachPty = null }
-    this.stopControlWatchdog()
-    this.clearSilenceTimer()
-    if (this.markerNudgeObserveTimer) {
-      clearTimeout(this.markerNudgeObserveTimer)
-      this.markerNudgeObserveTimer = null
-    }
+    this.releaseRunResources()
     this.state.liveStatus = null
     this.appendActivity('orchestrator-resume', 'run complete — orchestrator loop ended')
     this.notify()
@@ -467,13 +483,7 @@ export class AutopilotProStateMachine {
 
   stop(): void {
     this.state.control = 'stopped'
-    if (this.detachPty) { this.detachPty(); this.detachPty = null }
-    this.stopControlWatchdog()
-    this.clearSilenceTimer()
-    if (this.markerNudgeObserveTimer) {
-      clearTimeout(this.markerNudgeObserveTimer)
-      this.markerNudgeObserveTimer = null
-    }
+    this.releaseRunResources()
     this.state.liveStatus = null
     // Reset Wave 3.1 lifecycle flags so a subsequent start() re-fires kickoffs.
     this.phaseTrackerEscalated = false
@@ -532,6 +542,13 @@ export class AutopilotProStateMachine {
       subgoalId: snap.marker.subgoalId,
       status: snap.marker.status,
       receivedAt: snap.receivedAt,
+    }
+
+    // Record what the doer reported finishing. Phase completion is derived from this
+    // alongside plan.md checkboxes: nothing writes those, so on their own every phase
+    // stayed unfinished and Stage 3 never ran.
+    if (m.subgoalId && m.status === 'done' && !this.state.completedSubgoals.includes(m.subgoalId)) {
+      this.state.completedSubgoals.push(m.subgoalId)
     }
 
     this.appendActivity('doer-marker', `${m.kind}${m.shape ? ` shape=${m.shape}` : ''}${m.subgoalId ? ` ${m.subgoalId}` : ''}`)
@@ -791,6 +808,26 @@ export class AutopilotProStateMachine {
     return 'Continue with the current Autopilot Pro stage.'
   }
 
+  /**
+   * Appends the planner's answer to the Doer's QUESTION, and records when one went
+   * unanswered.
+   *
+   * Until this existed the transition and approve schemas had no field for it: the only
+   * free text was a one-sentence justification of the action, so a Doer asking whether a
+   * deviation should stand got "Stage now: implementation" back. The question reached the
+   * planner in the prompt and had nowhere to go in the reply.
+   */
+  private withAnswer(base: string, result: ProDecideResult, marker: ProMarker): string {
+    const answer = (result as { answer?: string }).answer
+    if (answer) return `${base}
+
+On your question: ${answer}`
+    if (marker.question && marker.question.trim().length > 0) {
+      this.appendActivity('orchestrator-reply', 'doer question left unanswered by the planner')
+    }
+    return base
+  }
+
   private async dispatch(result: ProDecideResult, marker: ProMarker, writeReason = 'planner-reply'): Promise<void> {
     switch (result.shape) {
       case 'reply': {
@@ -827,7 +864,7 @@ export class AutopilotProStateMachine {
           // on the NEXT settled cycle reads the now-approved review and decides
           // whether to re-enter Stage 3 for the next phase, return to
           // implementation, or move to final-review.
-          const reply = `Approved: ${path}. ${result.why ?? ''} Proceed.`
+          const reply = this.withAnswer(`Approved: ${path}. ${result.why ?? ''} Proceed.`, result, marker)
           this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-reply', `approved ${path}`)
           this.recordTranscript({ kind: 'approve', doerQuestion: `(approve) ${path}`, orchestratorBody: reply, shape: 'approve' })
@@ -841,7 +878,7 @@ export class AutopilotProStateMachine {
             this.sendToDoer(`Refinement bound (${REFINE_LIMIT}) exceeded for ${path}. Escalating to human.`, 'refinement-bound-exceeded')
             return
           }
-          const reply = `Refine ${path} (attempt ${newCount}/${REFINE_LIMIT}): ${result.directive}`
+          const reply = this.withAnswer(`Refine ${path} (attempt ${newCount}/${REFINE_LIMIT}): ${result.directive}`, result, marker)
           this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-reply', `refine ${path} (${newCount})`)
           this.recordTranscript({ kind: 'refine', doerQuestion: `(refine) ${path}`, orchestratorBody: reply, shape: 'approve' })
@@ -968,6 +1005,15 @@ export class AutopilotProStateMachine {
       }
 
       case 'transition': {
+        // At final-review there is nothing ahead: maybeAdvanceStage only moves
+        // discovery→planning and planning→implementation, so 'advance' here used to
+        // restate the stage and ask the doer to speak again — a stage with no forward
+        // edge, which is how a finished run kept talking. Read it as completion, which is
+        // what the planner meant by advancing past the last stage there is.
+        if (result.action === 'advance' && this.state.stage === 'final-review') {
+          this.appendActivity('orchestrator-resume', 'advance at final-review read as completion')
+          result = { ...result, action: 'final-review' }
+        }
         if (result.action === 'advance') {
           if (this.state.stage === 'research') {
             // Escape hatch: the planner can abandon research (e.g. the doer
@@ -980,12 +1026,12 @@ export class AutopilotProStateMachine {
             // Validate gates before allowing advance
             this.maybeAdvanceStage()
           }
-          const reply = `Stage now: ${this.state.stage}. ${result.why}`
+          const reply = this.withAnswer(`Stage now: ${this.state.stage}. ${result.why}`, result, marker)
           this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-resume', `stage→${this.state.stage}`)
           this.recordTranscript({ kind: 'transition', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'transition' })
         } else if (result.action === 'cycle') {
-          const reply = `Cycle current stage. ${result.why}`
+          const reply = this.withAnswer(`Cycle current stage. ${result.why}`, result, marker)
           this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-resume', 'cycle')
           this.recordTranscript({ kind: 'transition', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'transition' })
@@ -1067,7 +1113,7 @@ export class AutopilotProStateMachine {
     // Find the first phase whose tasks are all done but whose review is missing-or-not-approved.
     const a = this.state.artifacts
     const phaseAwaitingReview = phases.find((p) =>
-      phaseDoneFromTasks(p) && a[`reviews/${p.id}.md`]?.approved !== true
+      phaseDoneWithProgress(p, this.state.completedSubgoals) && a[`reviews/${p.id}.md`]?.approved !== true
     )
 
     if (phaseAwaitingReview) {
@@ -1085,7 +1131,7 @@ export class AutopilotProStateMachine {
 
     // No phase awaits review. Either still implementing OR all reviews approved.
     const allDoneAndReviewed = phases.every((p) =>
-      phaseDoneFromTasks(p) && a[`reviews/${p.id}.md`]?.approved === true
+      phaseDoneWithProgress(p, this.state.completedSubgoals) && a[`reviews/${p.id}.md`]?.approved === true
     )
     if (allDoneAndReviewed) {
       this.state.stage = 'final-review'
@@ -1178,7 +1224,10 @@ export class AutopilotProStateMachine {
     this.state.liveStatus = reason
     this.state.escalationReason = reason
     this.appendActivity(kind, reason)
-    this.clearSilenceTimer()
+    // resume() refuses a blocked run and the panel hides the button, so this is an exit,
+    // not a hold. Keeping the listener and the 1 Hz poll alive afterwards leaked both for
+    // the life of the app.
+    this.releaseRunResources()
     this.notify()
   }
 
@@ -1251,6 +1300,9 @@ export class AutopilotProStateMachine {
   }
 
   private handleMissingMarker(diagnostics?: MissingMarkerDiagnostics): void {
+    // Every other pty entry point asks this first. This one did not, so a fallback timer
+    // armed before a stop, pause or completion still wrote to the terminal afterwards.
+    if (!this.canProcessPty()) return
     if (this.markerFallbackPromptCount >= 2) {
       this.state.escalationReason = 'doer not emitting markers — manual intervention needed'
       this.appendActivity('escalation', this.state.escalationReason)

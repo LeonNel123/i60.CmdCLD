@@ -756,3 +756,40 @@ describe('permission request handling (Wave 3.6)', () => {
     expect(sm.state.permissionRequest).toBeNull()
   })
 })
+
+// Lifecycle audit: escalated, completed and stopped are one-way — resume() accepts only
+// 'paused'. They used to release the silence timer and nothing else, leaving the pty
+// listener attached and the control channel polled at 1 Hz for the life of the app, with
+// the watcher buffering output nothing would ever read.
+describe('one-way phases release what the run holds', () => {
+  it('lets go of the terminal when silence escalates the run', async () => {
+    vi.useFakeTimers()
+    let detached = false
+    const sm = new AutopilotStateMachine({
+      terminalId: 't', projectPath: TMP, freeTextIdea: 'x', costCapUsd: 1, maxIterations: 40,
+      apiProvider: 'anthropic', apiKey: 'test', plannerModel: 'claude-sonnet-4-6',
+      writeToPty: () => {}, onPtyData: () => () => { detached = true }, onUpdate: () => {},
+      runtimeJson: false, budgetTracker: false,
+    } as any, makeApi(() => ({ kind: 'reply', text: 'x' })), 10, 500)
+    await sm.start()
+    await vi.advanceTimersByTimeAsync(600)
+    expect(sm.state.phase).toBe('escalated')
+    sm.resume()
+    expect(sm.state.phase).toBe('escalated')
+    expect(detached).toBe(true)
+    vi.useRealTimers()
+  })
+
+  it('keeps the listener across a pause, which resume() does come back to', async () => {
+    let detached = false
+    const sm = new AutopilotStateMachine({
+      terminalId: 't', projectPath: TMP, freeTextIdea: 'x', costCapUsd: 1, maxIterations: 40,
+      apiProvider: 'anthropic', apiKey: 'test', plannerModel: 'claude-sonnet-4-6',
+      writeToPty: () => {}, onPtyData: () => () => { detached = true }, onUpdate: () => {},
+      runtimeJson: false, budgetTracker: false,
+    } as any, makeApi(() => ({ kind: 'reply', text: 'x' })), 10, 24 * 60 * 60 * 1000)
+    await sm.start()
+    sm.pause()
+    expect(detached).toBe(false)
+  })
+})

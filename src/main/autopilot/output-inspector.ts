@@ -28,20 +28,9 @@ function parseStructuredSegments(line: string): Array<{ key: string; val: string
   })
 }
 
-function extractStructuredFields(cleaned: string, markerLine: string | null): Record<string, string> {
-  if (!markerLine) return {}
+function extractStructuredFields(cleaned: string, markerIndex: number): Record<string, string> {
   const lines = splitTerminalLines(cleaned)
-  let markerIndex = -1
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    if (lines[i] === markerLine) {
-      markerIndex = i
-      break
-    }
-    if (markerIndex < 0 && parseTerminalMarkerLine(lines[i])) {
-      markerIndex = i
-    }
-  }
-  if (markerIndex < 0) return {}
+  if (markerIndex < 0 || markerIndex >= lines.length) return {}
 
   const fields: Record<string, string> = {}
   const markerTail = parseTerminalMarkerLine(lines[markerIndex])?.tail ?? ''
@@ -61,7 +50,10 @@ export function inspectAutopilotOutput(text: string, tailChars = DEFAULT_TAIL_CH
   const found = findLastMarker(text)
   const marker = found?.marker ?? null
   const markerLine = marker?.raw ?? null
-  const structuredFields = extractStructuredFields(cleaned, markerLine)
+  // Index rather than raw text: a quoted copy of the marker is byte-identical, so
+  // searching the buffer for the line would find the wrong one and report a fence as the
+  // structured block. findLastMarker already knows which line it took.
+  const structuredFields = found ? extractStructuredFields(cleaned, found.lineIndex) : {}
   const cleanTail = cleaned.slice(-tailChars)
 
   return {

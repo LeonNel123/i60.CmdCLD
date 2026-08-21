@@ -35,14 +35,53 @@ export function parseTerminalMarkerLine(line: string): { kind: MarkerKind; tail:
   const m = candidate.match(MARKER_LINE_RE)
   if (!m) return null
   const tail = (m[2] ?? '').trim()
-  if (line.length !== candidate.length && looksLikeIndentedProtocolExample(tail)) {
+  if (line.length !== candidate.length && looksLikeDocumentationTail(tail)) {
     return null
   }
   return { kind: m[1] as MarkerKind, tail }
 }
 
-function looksLikeIndentedProtocolExample(tail: string): boolean {
-  return /<[^>]+>/.test(tail) || /[—–-]\s+/.test(tail)
+/**
+ * True for a tail that reads as documentation of the protocol rather than an instance of
+ * it: a placeholder in angle brackets, a `done|partial|blocked` alternatives list, or an
+ * imperative telling someone to emit a marker.
+ *
+ * This replaces a hyphen test — `/[—–-]\s+/` — that was broader than it looked. It
+ * rejected any indented tail containing "- ", which suppressed genuine markers such as
+ * `[ORCH:PROGRESS] p1/t1 - done`. Narrowing it lets more lines through, which is why the
+ * fence and multi-token rules landed first.
+ */
+function looksLikeDocumentationTail(tail: string): boolean {
+  if (/<[^>]+>/.test(tail)) return true
+  if (/\b\w+\|\w+/.test(tail)) return true
+  // Only the imperative with an elided subject — "please emit", "must emit". Two broader
+  // cuts each rejected an ordinary tail: bare `please` killed `review please` (and four
+  // PRO tests with it), and `emit the` killed `should I emit the commit now?`. The
+  // intervening pronoun is what separates a question from an instruction, and word-level
+  // rules on free text do not get more reliable than this — the structural rules above
+  // are the ones carrying the weight.
+  if (/\b(please|must|should)\s+emit\b/i.test(tail)) return true
+  return false
+}
+
+const ORCH_TOKEN_RE = /\[ORCH:(?:WAITING|PROGRESS|GOAL_READY|STUCK)\]/g
+
+/**
+ * True for a line that carries more than one [ORCH:*] token.
+ *
+ * A doer emitting a marker emits exactly one per line. More than one means the protocol
+ * is being described rather than used: the orchestrator's own missing-marker nudge listing
+ * all four kinds, the doer contract's enumeration, an agent explaining itself. Those lines
+ * reach the buffer as terminal echo, and behind a prompt glyph the first token sits at the
+ * start of the line — close enough to a marker that both entry points accepted it.
+ *
+ * The cost is that a genuine marker whose tail mentions another kind is suppressed too.
+ * That text belongs on the QUESTION: line of the structured block, which is where the
+ * orchestrator reads it from anyway.
+ */
+function mentionsMultipleMarkerTokens(line: string): boolean {
+  const tokens = line.match(ORCH_TOKEN_RE)
+  return tokens !== null && tokens.length > 1
 }
 
 const STRUCTURED_KEYS = new Set([
@@ -129,13 +168,62 @@ function parseStructuredBlock(lines: string[]): StructuredFields {
   return out
 }
 
-export function findLastMarker(text: string): { marker: DoerMarker; before: string } | null {
+/**
+ * Line indices sitting inside a balanced fenced code block.
+ *
+ * A marker quoted inside a fence is documentation. The line itself is identical to the
+ * real thing — only the fence around it says otherwise, which is why this belongs here,
+ * where the whole buffer is visible, and not in the line parser.
+ *
+ * An unbalanced fence is deliberately ignored. Honouring it would suppress every line
+ * after it, the doer's own marker included, and since the buffer only clears on a settle
+ * that state is sticky: the marker never lands, the missing-marker path nudges twice and
+ * escalates. A stray ``` in prose must not be able to strand a run.
+ */
+function fencedLineIndices(lines: string[]): Set<number> {
+  const fenced = new Set<number>()
+  let openAt = -1
+  let openChar = ''
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].trim().match(/^(```+|~~~+)/)
+    if (!m) continue
+    const char = m[1][0]
+    if (openAt < 0) {
+      openAt = i
+      openChar = char
+      continue
+    }
+    // A ~~~ line inside a ``` block is content, not the closing fence.
+    if (char !== openChar) continue
+    for (let j = openAt + 1; j < i; j++) fenced.add(j)
+    openAt = -1
+    openChar = ''
+  }
+  return fenced
+}
+
+/**
+ * The last marker in the buffer, with the index of the line it came from.
+ *
+ * The index is part of the result because the line's text is not enough to find it again:
+ * a quoted copy elsewhere in the buffer is byte-identical, so a caller searching for the
+ * raw text can land on the wrong one and read someone else's lines as the structured
+ * block. output-inspector did exactly that.
+ */
+export function findLastMarker(text: string): { marker: DoerMarker; before: string; lineIndex: number } | null {
   const cleaned = stripTerminalAnsi(text)
   const lines = splitTerminalLines(cleaned)
+  const fenced = fencedLineIndices(lines)
   for (let i = lines.length - 1; i >= 0; i--) {
+    if (fenced.has(i)) continue
     const line = lines[i]
+    if (mentionsMultipleMarkerTokens(line)) continue
     const parsed = parseTerminalMarkerLine(line)
     if (!parsed) continue
+    // The line parser applies the documentation-tail rule only to indented lines, to keep
+    // the contract its unit tests pin. At buffer level there is no such constraint: a
+    // protocol line behind a prompt glyph is documentation wherever it sits.
+    if (looksLikeDocumentationTail(parsed.tail)) continue
     const { kind, tail } = parsed
     let subgoalId: string | undefined
     let status: 'done' | 'partial' | 'blocked' | undefined
@@ -175,7 +263,7 @@ export function findLastMarker(text: string): { marker: DoerMarker; before: stri
       blocker: struct.blocker,
       question: struct.question,
     }
-    return { marker, before }
+    return { marker, before, lineIndex: i }
   }
   return null
 }
@@ -185,6 +273,7 @@ export function recoverLiteralMarkerFromTail(text: string): DoerMarker | null {
   const lines = splitTerminalLines(cleaned)
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i]
+    if (mentionsMultipleMarkerTokens(line)) continue
     const token = line.match(/\[ORCH:(WAITING|PROGRESS|GOAL_READY|STUCK)\]/)
     if (!token || token.index === undefined) continue
     const before = line.slice(0, token.index)

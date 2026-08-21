@@ -73,6 +73,9 @@ export interface ProState {
   costUsd: number
   costCapUsd: number
   recentLog: ActivityEntry[]
+  /** Subgoal ids the doer reported done, e.g. 'p1/t1'. Phase completion counts these as
+   *  well as plan.md checkboxes, which nothing writes. */
+  completedSubgoals: string[]
   escalationReason: string | null
   validation: ValidationCommands
   subagentRunning: boolean
@@ -113,12 +116,12 @@ export interface ResearchTopicDecision {
 export type ProDecideResult =
   | { shape: 'reply';      text: string }
   | { shape: 'choose';     option: string; why: string }
-  | { shape: 'approve';    verdict: 'approve';  why?: string }
-  | { shape: 'approve';    verdict: 'refine';   directive: string }
+  | { shape: 'approve';    verdict: 'approve';  why?: string; answer?: string }
+  | { shape: 'approve';    verdict: 'refine';   directive: string; answer?: string }
   | { shape: 'route';      skill: string; why: string }
   | { shape: 'validate';   verdict: 'verified' }
   | { shape: 'validate';   verdict: 'research'; query: string }
-  | { shape: 'transition'; action: 'advance' | 'cycle' | 'final-review'; why: string }
+  | { shape: 'transition'; action: 'advance' | 'cycle' | 'final-review'; why: string; answer?: string }
   | { shape: 'decide-with-rationale'; recommendation: string; why: string }
   | { shape: 'research'; topics: ResearchTopicDecision[] }
 

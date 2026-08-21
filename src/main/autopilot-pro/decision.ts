@@ -41,6 +41,12 @@ function extractFirstJsonObject(text: string): string | null {
 
 // ----- per-shape JSON validators -----
 
+/** The planner's reply to the doer's QUESTION, when it wrote one. Capped, never trusted for control flow. */
+function answerOf(obj: any): string | undefined {
+  const raw = typeof obj?.answer === 'string' ? obj.answer.trim() : ''
+  return raw ? raw.slice(0, 600) : undefined
+}
+
 function validate(shape: DecisionShape, obj: any): ProDecideResult | null {
   if (!obj || typeof obj !== 'object') return null
   if (typeof obj.shape !== 'string' || obj.shape !== shape) return null
@@ -56,13 +62,14 @@ function validate(shape: DecisionShape, obj: any): ProDecideResult | null {
 
     case 'approve':
       if (obj.verdict === 'approve') {
-        return { shape: 'approve', verdict: 'approve', why: String(obj.why ?? '') }
+        return { shape: 'approve', verdict: 'approve', why: String(obj.why ?? ''), answer: answerOf(obj) }
       }
       if (obj.verdict === 'refine') {
         return {
           shape: 'approve',
           verdict: 'refine',
           directive: String(obj.directive ?? 'be more specific').slice(0, 500),
+          answer: answerOf(obj),
         }
       }
       return null
@@ -80,7 +87,7 @@ function validate(shape: DecisionShape, obj: any): ProDecideResult | null {
 
     case 'transition':
       if (obj.action !== 'advance' && obj.action !== 'cycle' && obj.action !== 'final-review') return null
-      return { shape: 'transition', action: obj.action, why: String(obj.why ?? '') }
+      return { shape: 'transition', action: obj.action, why: String(obj.why ?? ''), answer: answerOf(obj) }
 
     case 'decide-with-rationale':
       if (typeof obj.recommendation !== 'string' || !obj.recommendation) return null

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { parseTerminalMarkerLine, recoverLiteralMarkerFromTail, PtyWatcher } from '../src/main/autopilot/pty-watcher'
+import { findLastMarker, parseTerminalMarkerLine, recoverLiteralMarkerFromTail, PtyWatcher } from '../src/main/autopilot/pty-watcher'
 import type { SettledSnapshot } from '../src/main/autopilot/types'
 
 const IDLE_MS = 50  // smaller than default for fast tests
@@ -602,5 +602,228 @@ describe('PtyWatcher attach baseline', () => {
     expect(snapshots).toHaveLength(2)
     expect(snapshots[1].marker.text).toBe('second question?')
     vi.useRealTimers()
+  })
+})
+
+// A marker quoted inside a fenced code block is documentation, not a marker the doer
+// emitted. The line itself is indistinguishable from the real thing — only the fence
+// around it says otherwise, which is why this rule lives in findLastMarker, where the
+// surrounding lines are visible, rather than in the line parser.
+describe('findLastMarker fenced-code suppression (p1/t1)', () => {
+  it('ignores a marker-shaped line inside a fenced block', () => {
+    expect(findLastMarker([
+      'Here is the protocol I follow:',
+      '```',
+      '[ORCH:GOAL_READY]',
+      '```',
+      'That is all.',
+    ].join('\n'))).toBeNull()
+  })
+
+  it('ignores a marker inside a tilde-fenced block', () => {
+    expect(findLastMarker([
+      '~~~text',
+      '[ORCH:WAITING] is what I would emit',
+      '~~~',
+    ].join('\n'))).toBeNull()
+  })
+
+  it('ignores a fenced block carrying an info string', () => {
+    expect(findLastMarker([
+      '```markdown',
+      '[ORCH:STUCK]',
+      '```',
+    ].join('\n'))).toBeNull()
+  })
+
+  it('still finds a genuine marker after the fence closes', () => {
+    const found = findLastMarker([
+      '```',
+      '[ORCH:GOAL_READY]',
+      '```',
+      '[ORCH:WAITING] ready for review?',
+    ].join('\n'))
+    expect(found?.marker.kind).toBe('WAITING')
+    expect(found?.marker.text).toBe('ready for review?')
+  })
+
+  it('still finds a genuine marker before the fence opens', () => {
+    const found = findLastMarker([
+      '[ORCH:PROGRESS] p1/t1 done',
+      '```',
+      '[ORCH:GOAL_READY]',
+      '```',
+    ].join('\n'))
+    expect(found?.marker.kind).toBe('PROGRESS')
+    expect(found?.marker.subgoalId).toBe('p1/t1')
+  })
+
+  // Liveness over strictness. A fence that never closes would otherwise suppress every
+  // line after it — including the doer's real marker — and since the buffer only clears
+  // on a settle, that state is sticky: the marker never lands, the missing-marker path
+  // nudges twice and escalates. A stray ``` in prose must not be able to strand a run,
+  // so only a balanced fence suppresses.
+  it('does not suppress after an unterminated fence', () => {
+    const found = findLastMarker([
+      'wrap the block in ```',
+      '[ORCH:WAITING] continue?',
+    ].join('\n'))
+    expect(found?.marker.kind).toBe('WAITING')
+  })
+
+  it('keeps the structured block that follows a genuine post-fence marker', () => {
+    const found = findLastMarker([
+      '```',
+      '[ORCH:PROGRESS] p9/t9 done',
+      '```',
+      '[ORCH:PROGRESS] p1/t1 done',
+      'TESTS: 1074 passed / 0 failed',
+      'BOUNDARY_OK: yes',
+    ].join('\n'))
+    expect(found?.marker.subgoalId).toBe('p1/t1')
+    expect(found?.marker.tests).toBe('1074 passed / 0 failed')
+    expect(found?.marker.boundaryOk).toBe(true)
+  })
+})
+
+// Suppression must never cost the run its marker. Every rejection continues the reverse
+// scan, so noise below a genuine marker is skipped past rather than ending the search —
+// the failure mode being guarded against is a settle that never happens, which the buffer
+// makes sticky (only emitSettle clears it) and the missing-marker path escalates.
+describe('findLastMarker keeps scanning past suppressed lines (p1/t2)', () => {
+  it('finds a genuine marker underneath a fenced example and a prose mention', () => {
+    const found = findLastMarker([
+      '[ORCH:WAITING] ready for review?',
+      'For reference the protocol looks like this:',
+      '```',
+      '[ORCH:GOAL_READY]',
+      '```',
+      'Please emit [ORCH:WAITING] when you need a decision.',
+    ].join('\n'))
+    expect(found?.marker.kind).toBe('WAITING')
+    expect(found?.marker.text).toBe('ready for review?')
+  })
+
+  it('finds a genuine marker when the buffer ends inside suppressed noise', () => {
+    const found = findLastMarker([
+      '[ORCH:PROGRESS] p1/t2 done',
+      'TESTS: 12 passed / 0 failed',
+      'BOUNDARY_OK: yes',
+      '```',
+      '[ORCH:STUCK]',
+      '```',
+    ].join('\n'))
+    expect(found?.marker.subgoalId).toBe('p1/t2')
+    expect(found?.marker.status).toBe('done')
+    expect(found?.marker.tests).toBe('12 passed / 0 failed')
+  })
+
+  it('returns null rather than a fenced marker when the buffer holds nothing genuine', () => {
+    expect(findLastMarker([
+      'Nothing settled here.',
+      '```',
+      '[ORCH:GOAL_READY]',
+      '[ORCH:WAITING] still?',
+      '```',
+    ].join('\n'))).toBeNull()
+  })
+})
+
+describe('PtyWatcher settles on the genuine marker despite trailing noise (p1/t2)', () => {
+  // A fenced example after the marker is unstructured text, so checkSettled arms the
+  // Wave 3.3 force-settle rather than settling on idle — the fence costs the cycle that
+  // delay and nothing more. What matters for the guarantee is that the settle arrives,
+  // and that it carries the marker the doer emitted rather than the quoted one.
+  it('force-settles on the marker the doer emitted, not the fenced example', async () => {
+    vi.useFakeTimers()
+    const events: SettledSnapshot[] = []
+    const w = new PtyWatcher({ idleMs: IDLE_MS, forceSettleMs: 200, nudgeMs: NUDGE_MS, onSettle: (s) => events.push(s) })
+    w.feed([
+      'work done',
+      '[ORCH:PROGRESS] p1/t2 done',
+      'TESTS: 12 passed / 0 failed',
+      '```',
+      '[ORCH:GOAL_READY]',
+      '```',
+      '',
+    ].join('\n'))
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 5)
+    expect(events).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(200 + 5)
+    expect(events).toHaveLength(1)
+    expect(events[0].marker.kind).toBe('PROGRESS')
+    expect(events[0].marker.subgoalId).toBe('p1/t2')
+    expect(events[0].marker.tests).toBe('12 passed / 0 failed')
+    vi.useRealTimers()
+  })
+})
+
+// The orchestrator's own missing-marker nudge names all four kinds on one line. It
+// reaches the buffer as terminal echo, and once a prompt glyph or a wrap puts the first
+// token at the start of a line, both entry points read it as the doer answering — the
+// orchestrator's question coming back as its own answer.
+describe('marker-token enumerations are not markers (p2/t1)', () => {
+  // Verbatim from state-machine.ts:655 (classic) and autopilot-pro/state-machine.ts:1261,
+  // as it looks after terminal chrome puts a prompt glyph in front of it.
+  const NUDGE_WRAPPED = '> [ORCH:WAITING] (with your question), [ORCH:PROGRESS] <id> done|partial|blocked, [ORCH:GOAL_READY], or [ORCH:STUCK] (with the blocker) so the orchestrator knows where you are.'
+  const ENUMERATION = '[ORCH:GOAL_READY] or [ORCH:STUCK] if blocked'
+
+  it('findLastMarker rejects the wrapped nudge behind a prompt glyph', () => {
+    expect(findLastMarker(NUDGE_WRAPPED)).toBeNull()
+  })
+
+  it('findLastMarker rejects a two-token enumeration at column 1', () => {
+    expect(findLastMarker(ENUMERATION)).toBeNull()
+  })
+
+  it('recoverLiteralMarkerFromTail rejects the same enumeration', () => {
+    expect(recoverLiteralMarkerFromTail(ENUMERATION)).toBeNull()
+  })
+
+  it('reaches the genuine marker sitting above the wrapped nudge', () => {
+    const found = findLastMarker(['[ORCH:PROGRESS] p2/t1 done', NUDGE_WRAPPED].join('\n'))
+    expect(found?.marker.subgoalId).toBe('p2/t1')
+    expect(found?.marker.status).toBe('done')
+  })
+
+  it('leaves a single-token marker alone, tail and all', () => {
+    expect(findLastMarker('[ORCH:WAITING] shall I proceed?')?.marker.text).toBe('shall I proceed?')
+    expect(recoverLiteralMarkerFromTail('  [ORCH:PROGRESS] p2/t1 done')).toMatchObject({
+      kind: 'PROGRESS',
+      subgoalId: 'p2/t1',
+      status: 'done',
+    })
+  })
+})
+
+// The retired heuristic rejected any indented tail containing "- ", which suppressed
+// genuine markers like `p1/t1 - done`. The replacement asks a narrower question: does the
+// tail read as documentation of the protocol — a placeholder, an alternatives list, or an
+// instruction to emit a marker — rather than an instance of it.
+describe('documentation tails are not markers (p2/t2)', () => {
+  it('rejects a placeholder-and-alternatives tail behind a prompt glyph', () => {
+    expect(findLastMarker('> [ORCH:PROGRESS] <id> done|partial|blocked')).toBeNull()
+  })
+
+  it('rejects a tail instructing someone to emit a marker', () => {
+    expect(findLastMarker('[ORCH:WAITING] please emit this when you need a decision')).toBeNull()
+  })
+
+  it('keeps rejecting the pinned indented protocol example', () => {
+    expect(parseTerminalMarkerLine('  [ORCH:WAITING] <question> — you need a decision')).toBeNull()
+  })
+
+  it('now accepts the hyphenated progress tail the old heuristic suppressed', () => {
+    expect(parseTerminalMarkerLine('  [ORCH:PROGRESS] p1/t1 - done')).toEqual({
+      kind: 'PROGRESS',
+      tail: 'p1/t1 - done',
+    })
+  })
+
+  // A first cut matched bare "emit" and "please", which rejected this ordinary tail and
+  // broke four PRO state-machine tests. Politeness is not documentation.
+  it('leaves an ordinary polite tail alone', () => {
+    expect(findLastMarker('[ORCH:WAITING] review please')?.marker.text).toBe('review please')
+    expect(findLastMarker('[ORCH:WAITING] should I emit the commit now?')?.marker.kind).toBe('WAITING')
   })
 })

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parsePhases, currentPhase, phaseDoneFromTasks,
+  parsePhases, currentPhase, phaseDoneFromTasks, phaseDoneWithProgress,
 } from '../src/main/autopilot-pro/phases'
 
 describe('parsePhases', () => {
@@ -291,5 +291,52 @@ describe('parsePhases hyphenated IDs', () => {
     const ps = parsePhases(md)
     expect(ps[0].id).toBe('phase-v1-alpha')
     expect(ps[0].name).toBe('description with words')
+  })
+})
+
+// Stage 3 keys off phase completion, and completion was read only from `- [x]` in
+// plan.md. Nothing writes those boxes: the doer contract never asks for them and the
+// orchestrator never wrote them either. In the marker-parser run every phase therefore
+// looked unfinished for its whole length, phase-review never fired once, and Stage 4
+// never auto-triggered — a stage of the pipeline skipped in silence. The orchestrator
+// does receive `[ORCH:PROGRESS] p1/t1 done` for every task, so completion counts that too.
+describe('phaseDoneWithProgress', () => {
+  const PLAN = [
+    '## Phase p1 — Buffer-context scanning',
+    '- [ ] t1: add fenced suppression',
+    '- [ ] t2: pin the guarantee',
+    '',
+    '## Phase p2 — Protocol-mention rules',
+    '- [ ] t1: multi-token lines',
+  ].join('\n')
+
+  it('counts tasks the doer reported done, not only ticked boxes', () => {
+    const p1 = parsePhases(PLAN).find((p) => p.id.endsWith('p1'))!
+    expect(phaseDoneFromTasks(p1)).toBe(false)
+    expect(phaseDoneWithProgress(p1, ['p1/t1', 'p1/t2'])).toBe(true)
+  })
+
+  it('is not satisfied by a partially reported phase', () => {
+    const p1 = parsePhases(PLAN).find((p) => p.id.endsWith('p1'))!
+    expect(phaseDoneWithProgress(p1, ['p1/t1'])).toBe(false)
+  })
+
+  it('does not let one phase complete another', () => {
+    const p2 = parsePhases(PLAN).find((p) => p.id.endsWith('p2'))!
+    expect(phaseDoneWithProgress(p2, ['p1/t1', 'p1/t2'])).toBe(false)
+  })
+
+  // The vocabularies never lined up: phases parse as `phase-p1`, a lowercase `t1:` task
+  // gets the auto id `T1`, and the doer says `p1/t1`.
+  it('matches across the id spellings the three sides use', () => {
+    const p1 = parsePhases(PLAN).find((p) => p.id.endsWith('p1'))!
+    expect(p1.id).toBe('phase-p1')
+    expect(phaseDoneWithProgress(p1, ['P1/T1', 'phase-p1/t2'])).toBe(true)
+  })
+
+  it('still honours a ticked checkbox on its own', () => {
+    const ticked = ['## Phase p9 — done already', '- [x] t1: finished'].join('\n')
+    const p9 = parsePhases(ticked).find((p) => p.id.endsWith('p9'))!
+    expect(phaseDoneWithProgress(p9, [])).toBe(true)
   })
 })
