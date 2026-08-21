@@ -80,7 +80,7 @@ Doer emits `DoerMarker` events of kind `WAITING | PROGRESS | GOAL_READY | STUCK`
 2. **Terminal-visible (fallback, human-readable):** literal `[ORCH:KIND]` line followed by structured `KEY: value` lines (`STATUS`, `SUBGOAL`, `PROGRESS_STATUS`, `FILES_CHANGED`, `TESTS`, `RED_PHASE`, `BOUNDARY_OK`, `EVIDENCE`, `BLOCKER`, `QUESTION`, plus PRO's `DECISION_SHAPE`, `ARTIFACT`, `OPTIONS`, …).
    - Parsed by `MARKER_LINE_RE` in `pty-watcher.ts`.
    - The regex now tolerates leading shell prompt chars (`>|│┃║╎╏┆┇┊┋▌▍▎▏›❯•◦●○`).
-   - **Beware:** the indent-tolerance also matches plain space-indented lines. `looksLikeIndentedProtocolExample()` only filters tails that contain `<…>` or em-dashes — see "Known issue" below.
+   - Shape is decided per line (`parseTerminalMarkerLine`); whether a marker-shaped line is *genuine* is decided per buffer (`findLastMarker`) — see "Bridge-prompt vs marker-parser disambiguation" below.
 
 ### Reset semantics (recent change)
 
@@ -112,14 +112,26 @@ In `state-machine.ts handleMissingMarker()`:
 
 ## Bridge-prompt vs marker-parser disambiguation
 
-The doer-marker parser (`parseTerminalMarkerLine` in `pty-watcher.ts`) intentionally tolerates plain whitespace-indented marker lines (commit `d67b2a3`) — some terminal renderings inject leading spaces. That tolerance can cause false positives when the bridge prompt's own example markers, or marker-shaped user answers, appear in scrollback.
+The doer-marker parser (`parseTerminalMarkerLine` in `pty-watcher.ts`) intentionally tolerates plain whitespace-indented marker lines (commit `d67b2a3`) — some terminal renderings inject leading spaces. That tolerance means a marker-shaped line is not, on its own, evidence that the doer emitted one: the bridge prompt's examples, a marker quoted in prose, and the orchestrator's own missing-marker nudge all reach scrollback looking identical to the real thing.
 
-Two source-side conventions in `attach-session.ts` keep the prompt out of the parser's mouth:
+**The split that makes this tractable:** a single line carries enough information to decide *shape*, and not enough to decide *provenance*. So `parseTerminalMarkerLine` answers "is this marker-shaped?" and its contract is pinned by unit tests (`'  [ORCH:GOAL_READY]'`, `'  [ORCH:WAITING] continue?'` and `'> [ORCH:WAITING] ready?'` all parse). `findLastMarker` answers "did the doer emit this?", because it sees the whole buffer. Put new rules in the second one; changing the first breaks pinned tests, and it is shared with `output-inspector.ts`.
 
-1. **Example markers carry a `<example>` tail** — `looksLikeIndentedProtocolExample()` rejects indented marker lines whose tail contains `<…>` or em-dashes.
-2. **User-answer indent prefix is `# ` (not two spaces)** — the regex requires column-1 `[` or one of the explicit shell-prompt characters (`>|│┃║╎╏┆┇┊┋▌▍▎▏›❯•◦●○`); a `# ` prefix doesn't match either, so a user typing `[ORCH:GOAL_READY]` becomes `# [ORCH:GOAL_READY]` which is not a marker.
+Rules `findLastMarker` applies while scanning back, each skipping the line and continuing rather than abandoning the buffer:
+
+1. **Fenced ranges** — a marker inside a balanced ``` or `~~~` block is documentation. Unbalanced fences are deliberately ignored: only `emitSettle` clears the buffer, so an unclosed fence would hide the doer's own marker permanently and strand the run behind two nudges.
+2. **Multi-token lines** — a line carrying two or more `[ORCH:*]` tokens is the protocol being described, not used. This is what the missing-marker nudge looks like once terminal chrome puts a prompt glyph in front of it; before the rule, a genuine marker directly above it lost the reverse scan and the orchestrator read its own question back as the answer. Shared with `recoverLiteralMarkerFromTail`.
+3. **Documentation tails** — `looksLikeDocumentationTail()`: an angle-bracket placeholder, an `a|b|c` alternatives list, or an elided-subject imperative (`please emit`). Keep this clause minimal. Word-level rules on free text are where this parser keeps going wrong — a bare `please` clause rejected `[ORCH:WAITING] review please` and took four PRO state-machine tests with it; `emit the` then rejected `should I emit the commit now?`. The structural rules above are the reliable ones.
+
+`findLastMarker` returns the `lineIndex` it used. A marker's raw text cannot identify its line — a quoted copy is byte-identical — so callers that need the structured block must take the index rather than search for the text. `output-inspector.ts` did the latter and reported an empty field set for a marker that had one.
+
+Two source-side conventions in `attach-session.ts` still matter:
+
+1. **Example markers carry a `<example>` tail** — caught by the angle-bracket clause of `looksLikeDocumentationTail()`.
+2. **User-answer indent prefix is `# ` (not two spaces)** — the regex requires column-1 `[` or one of the explicit shell-prompt characters (`>|│┃║╎╏┆┇┊┋▌▍▎▏›❯•◦●○`); a `# ` prefix doesn't match either, so a user typing `[ORCH:GOAL_READY]` becomes `# [ORCH:GOAL_READY]` which is not a marker. This remains the only defence for a user typing a bare marker with no surrounding context — no in-band rule can separate that from the genuine article.
 
 When changing the bridge prompt or `indentBlock`, keep both invariants — the regression tests in `tests/autopilot-attach-session.test.ts` ("keeps visible bridge marker examples hidden…" and "delimits marker-looking user answers…") will catch breakage.
+
+Known limitation: `PtyWatcher.checkSettled` still locates the settle boundary with `cleaned.lastIndexOf(found.marker.raw)`, so a byte-identical quoted copy sends it to the wrong line. Measured consequence is that the cycle settles via the force-settle window instead of on idle — latency, not correctness.
 
 ## Skills
 
