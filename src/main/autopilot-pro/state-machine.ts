@@ -441,6 +441,26 @@ export class AutopilotProStateMachine {
   }
 
   /**
+   * Let go of everything this run holds: the pty listener, the control watchdog, the
+   * watcher's own timers, the silence timer, the nudge observer.
+   *
+   * Teardown tracks recoverability. pause() keeps its listener because resume() will want
+   * it back; stop, completion and escalation are states resume() refuses, so holding a
+   * terminal listener and a 1 Hz poll for the life of the app buys nothing. Idempotent —
+   * every field is null-checked, so exits that overlap are safe.
+   */
+  private releaseRunResources(): void {
+    if (this.detachPty) { this.detachPty(); this.detachPty = null }
+    this.watcher.reset()
+    this.stopControlWatchdog()
+    this.clearSilenceTimer()
+    if (this.markerNudgeObserveTimer) {
+      clearTimeout(this.markerNudgeObserveTimer)
+      this.markerNudgeObserveTimer = null
+    }
+  }
+
+  /**
    * The run reached its terminal stage and the orchestrator is finished.
    *
    * Stage 'done' on its own never ended anything: control stayed 'running', so the
@@ -455,17 +475,7 @@ export class AutopilotProStateMachine {
    */
   private finishRun(): void {
     this.state.control = 'stopped'
-    if (this.detachPty) { this.detachPty(); this.detachPty = null }
-    // The watcher owns timers of its own. Detaching from pty data does not cancel the
-    // missing-marker fallback, which fires up to 30s later and writes a nudge into the
-    // terminal of a run that has already finished.
-    this.watcher.reset()
-    this.stopControlWatchdog()
-    this.clearSilenceTimer()
-    if (this.markerNudgeObserveTimer) {
-      clearTimeout(this.markerNudgeObserveTimer)
-      this.markerNudgeObserveTimer = null
-    }
+    this.releaseRunResources()
     this.state.liveStatus = null
     this.appendActivity('orchestrator-resume', 'run complete — orchestrator loop ended')
     this.notify()
@@ -473,14 +483,7 @@ export class AutopilotProStateMachine {
 
   stop(): void {
     this.state.control = 'stopped'
-    if (this.detachPty) { this.detachPty(); this.detachPty = null }
-    this.watcher.reset()
-    this.stopControlWatchdog()
-    this.clearSilenceTimer()
-    if (this.markerNudgeObserveTimer) {
-      clearTimeout(this.markerNudgeObserveTimer)
-      this.markerNudgeObserveTimer = null
-    }
+    this.releaseRunResources()
     this.state.liveStatus = null
     // Reset Wave 3.1 lifecycle flags so a subsequent start() re-fires kickoffs.
     this.phaseTrackerEscalated = false
@@ -1221,7 +1224,10 @@ On your question: ${answer}`
     this.state.liveStatus = reason
     this.state.escalationReason = reason
     this.appendActivity(kind, reason)
-    this.clearSilenceTimer()
+    // resume() refuses a blocked run and the panel hides the button, so this is an exit,
+    // not a hold. Keeping the listener and the 1 Hz poll alive afterwards leaked both for
+    // the life of the app.
+    this.releaseRunResources()
     this.notify()
   }
 

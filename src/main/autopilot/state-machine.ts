@@ -163,12 +163,7 @@ export class AutopilotStateMachine {
     this.notify()
   }
   stop(): void {
-    if (this.detachPty) { this.detachPty(); this.detachPty = null }
-    // Cancels the watcher's own timers too — its missing-marker fallback outlives a
-    // detach and would nudge the terminal of a run that no longer exists.
-    this.watcher.reset()
-    this.stopControlWatchdog()
-    this.clearSilenceTimer()
+    this.releaseRunResources()
     this.state.liveStatus = null
     this.transition('stopped', 'user stopped')
   }
@@ -616,13 +611,33 @@ export class AutopilotStateMachine {
     return next?.id ?? null
   }
 
+  /**
+   * Let go of everything this run holds: the pty listener, the control watchdog, the
+   * watcher's own timers, the silence timer.
+   *
+   * Teardown tracks recoverability. pause() keeps its listener because resume() will want
+   * it back; stopped, completed and escalated are phases resume() refuses, so holding a
+   * listener and a 1 Hz poll afterwards buys nothing and keeps the buffer growing.
+   * Idempotent, so overlapping exits are safe.
+   */
+  private releaseRunResources(): void {
+    if (this.detachPty) { this.detachPty(); this.detachPty = null }
+    this.watcher.reset()
+    this.stopControlWatchdog()
+    this.clearSilenceTimer()
+  }
+
   private transition(phase: AutopilotPhase, reason: string): void {
     this.state.phase = phase
     this.markerFallbackPromptCount = 0
     // Stop the silence timer when we've reached a non-running phase. start() /
     // resume() re-arm it. pause() / stop() clear it directly already, but
     // belt-and-braces: any transition into a non-active phase clears here too.
-    if (phase === 'escalated' || phase === 'completed' || phase === 'stopped' || phase === 'paused') {
+    if (phase === 'escalated' || phase === 'completed' || phase === 'stopped') {
+      // One-way phases: resume() only accepts 'paused', so nothing will consume what is
+      // still attached. Release it all rather than only the silence timer.
+      this.releaseRunResources()
+    } else if (phase === 'paused') {
       this.clearSilenceTimer()
     }
     this.appendActivity(phase === 'paused' ? 'orchestrator-pause' : phase === 'escalated' ? 'escalation' : 'orchestrator-resume', `→ ${phase}: ${reason}`)

@@ -602,6 +602,40 @@ describe('planner answers the doer question', () => {
   })
 })
 
+// Lifecycle audit: teardown has to track recoverability. pause() keeps its listener
+// because resume() will want it back. blocked does not come back — resume() refuses it and
+// the panel hides the button — yet it released only the silence timer, so an escalated run
+// held the pty listener and polled the control channel at 1 Hz for the life of the app.
+describe('an unrecoverable exit releases what the run holds', () => {
+  it('lets go of the terminal when the cost cap blocks the run', async () => {
+    let detached = false
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), [], {
+      costCapUsd: 0.0000001,
+      onPtyData: () => () => { detached = true },
+    })
+    await sm.start()
+    sm.feedPty(['[ORCH:WAITING] q', 'DECISION_SHAPE: reply', ''].join('\n'))
+    await flush()
+    await new Promise((r) => setTimeout(r, 60))
+    expect(sm.state.control).toBe('blocked')
+    sm.resume()
+    expect(sm.state.control).toBe('blocked')   // one-way, so nothing will consume the pty
+    expect(detached).toBe(true)
+  })
+
+  it('keeps the listener across a pause, which resume() does come back to', async () => {
+    let detached = false
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), [], {
+      onPtyData: () => () => { detached = true },
+    })
+    await sm.start()
+    sm.pause()
+    expect(detached).toBe(false)
+    sm.resume()
+    expect(sm.state.control).toBe('running')
+  })
+})
+
 describe('teardown cancels what the watcher owns', () => {
   it('stop() leaves nothing armed that can write into the terminal', async () => {
     vi.useFakeTimers()

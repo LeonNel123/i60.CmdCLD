@@ -110,6 +110,48 @@ In `state-machine.ts handleMissingMarker()`:
 - When changing the marker protocol, update **all** of: `pty-watcher.ts` (parser), the relevant per-orchestrator `control-channel.ts` (JSON schema) plus `autopilot-shared/control-channel.ts` if the change is base-level, the relevant `prompts.ts` (doer contract), and `attach-session.ts` (bridge prompt examples for Classic). They drift easily.
 - Don't add backwards-compat shims for marker schema changes — bump `schemaVersion` and reject old payloads.
 
+## Lifecycle exits: teardown tracks recoverability
+
+Every orchestrator holds four things while it runs: the pty listener (`detachPty`), the
+control-channel watchdog (1 Hz), the silence timer, and `PtyWatcher`'s own timers — idle,
+force-settle and the 30 s missing-marker fallback. The watcher's timers are its own;
+detaching from pty data does not cancel them, which is why `watcher.reset()` is part of
+teardown and not an optimisation.
+
+The rule that decides what an exit must release:
+
+> **If `resume()` will not bring the run back, the exit releases everything.**
+> If it will, the exit keeps the listener and clears only the silence timer.
+
+| Exit | `resume()` accepts it? | Releases |
+|---|---|---|
+| `pause` (classic, PRO) | yes | silence timer only |
+| Council `pause` / `blocked` | yes | watcher + reviewer + watchdog; listener kept |
+| `stop` (all three) | no | everything |
+| PRO `finishRun` (stage → done) | no | everything |
+| PRO `blocked` (cost cap, silence, unsupported prompt) | **no** | everything |
+| Classic `completed` / `escalated` / `stopped` | **no** | everything |
+
+Note that Council's `blocked` is recoverable and PRO's is not — same word, opposite
+teardown. Check `resume()` before assuming.
+
+Four bugs in this family have been fixed, all with the same shape — a state the machine
+can enter and not leave:
+
+- `8762399` — stage `done` never stopped the loop; each further marker walked the run back
+  into final-review.
+- `339b005` — teardown left the watcher armed, so a finished run nudged its terminal up to
+  30 s later; `handleMissingMarker` was also the one pty entry point with no
+  `canProcessPty()` guard, and in classic that path can reach a paid LLM call.
+- `8aa67ae` — `advance` at `final-review` was a no-op, because `maybeAdvanceStage` has no
+  edge out of that stage.
+- `9f6a492` — phase completion read only `- [x]` in plan.md, which nothing writes, so
+  Stage 3 never fired at all.
+
+When adding a lifecycle exit or a timer, put it in the table above and in
+`releaseRunResources()`. Both state machines route every one-way exit through that one
+method so the list cannot drift per-exit again.
+
 ## Bridge-prompt vs marker-parser disambiguation
 
 The doer-marker parser (`parseTerminalMarkerLine` in `pty-watcher.ts`) intentionally tolerates plain whitespace-indented marker lines (commit `d67b2a3`) — some terminal renderings inject leading spaces. That tolerance means a marker-shaped line is not, on its own, evidence that the doer emitted one: the bridge prompt's examples, a marker quoted in prose, and the orchestrator's own missing-marker nudge all reach scrollback looking identical to the real thing.
