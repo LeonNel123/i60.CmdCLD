@@ -796,6 +796,26 @@ export class AutopilotProStateMachine {
     return 'Continue with the current Autopilot Pro stage.'
   }
 
+  /**
+   * Appends the planner's answer to the Doer's QUESTION, and records when one went
+   * unanswered.
+   *
+   * Until this existed the transition and approve schemas had no field for it: the only
+   * free text was a one-sentence justification of the action, so a Doer asking whether a
+   * deviation should stand got "Stage now: implementation" back. The question reached the
+   * planner in the prompt and had nowhere to go in the reply.
+   */
+  private withAnswer(base: string, result: ProDecideResult, marker: ProMarker): string {
+    const answer = (result as { answer?: string }).answer
+    if (answer) return `${base}
+
+On your question: ${answer}`
+    if (marker.question && marker.question.trim().length > 0) {
+      this.appendActivity('orchestrator-reply', 'doer question left unanswered by the planner')
+    }
+    return base
+  }
+
   private async dispatch(result: ProDecideResult, marker: ProMarker, writeReason = 'planner-reply'): Promise<void> {
     switch (result.shape) {
       case 'reply': {
@@ -832,7 +852,7 @@ export class AutopilotProStateMachine {
           // on the NEXT settled cycle reads the now-approved review and decides
           // whether to re-enter Stage 3 for the next phase, return to
           // implementation, or move to final-review.
-          const reply = `Approved: ${path}. ${result.why ?? ''} Proceed.`
+          const reply = this.withAnswer(`Approved: ${path}. ${result.why ?? ''} Proceed.`, result, marker)
           this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-reply', `approved ${path}`)
           this.recordTranscript({ kind: 'approve', doerQuestion: `(approve) ${path}`, orchestratorBody: reply, shape: 'approve' })
@@ -846,7 +866,7 @@ export class AutopilotProStateMachine {
             this.sendToDoer(`Refinement bound (${REFINE_LIMIT}) exceeded for ${path}. Escalating to human.`, 'refinement-bound-exceeded')
             return
           }
-          const reply = `Refine ${path} (attempt ${newCount}/${REFINE_LIMIT}): ${result.directive}`
+          const reply = this.withAnswer(`Refine ${path} (attempt ${newCount}/${REFINE_LIMIT}): ${result.directive}`, result, marker)
           this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-reply', `refine ${path} (${newCount})`)
           this.recordTranscript({ kind: 'refine', doerQuestion: `(refine) ${path}`, orchestratorBody: reply, shape: 'approve' })
@@ -985,12 +1005,12 @@ export class AutopilotProStateMachine {
             // Validate gates before allowing advance
             this.maybeAdvanceStage()
           }
-          const reply = `Stage now: ${this.state.stage}. ${result.why}`
+          const reply = this.withAnswer(`Stage now: ${this.state.stage}. ${result.why}`, result, marker)
           this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-resume', `stage→${this.state.stage}`)
           this.recordTranscript({ kind: 'transition', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'transition' })
         } else if (result.action === 'cycle') {
-          const reply = `Cycle current stage. ${result.why}`
+          const reply = this.withAnswer(`Cycle current stage. ${result.why}`, result, marker)
           this.sendToDoer(reply, writeReason)
           this.appendActivity('orchestrator-resume', 'cycle')
           this.recordTranscript({ kind: 'transition', doerQuestion: marker.question || marker.text, orchestratorBody: reply, shape: 'transition' })

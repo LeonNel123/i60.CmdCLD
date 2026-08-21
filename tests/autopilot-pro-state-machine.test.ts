@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { AutopilotProStateMachine, enrichProMarker } from '../src/main/autopilot-pro/state-machine'
+import { buildPlannerPrompt } from '../src/main/autopilot-pro/prompts'
 import type { AutopilotProOptions, ProDecideResult } from '../src/main/autopilot-pro/types'
 import type { ApiClient, ApiUsage } from '../src/main/autopilot/types'
 import { writeArtifact, markApproved, readState } from '../src/main/autopilot-pro/artifacts'
@@ -545,6 +546,62 @@ describe('Stage 3 phase-review pipeline (Wave 3.1 G3)', () => {
 // after a run had stopped or finished — the orchestrator's dead hand, observed live at the
 // end of the marker-parser run. Council already reset the watcher in stop() and pause();
 // classic and PRO did not.
+// The planner always received the doer's QUESTION — buildPlannerPrompt puts it in the
+// prompt — but transition and approve had no field to answer in, only a one-sentence
+// justification of the action. So a doer asking "should this deviation stand?" got
+// "Stage now: implementation" back, and every ruling it asked for went unmade.
+describe('planner answers the doer question', () => {
+  it('tells the planner to answer, and not to pretend it verified anything', () => {
+    for (const shape of ['transition', 'approve'] as const) {
+      const parts = buildPlannerPrompt({
+        shape, stage: 'implementation', goalSummary: 'g', artifacts: {}, validation: {}, recentLogTail: [],
+        lastSnapshot: { text: '', marker: { kind: 'PROGRESS', text: '', raw: '', question: 'should the deviation stand?' }, receivedAt: 0 },
+      } as any)
+      expect(parts.cachedSystem).toMatch(/QUESTION/)
+      expect(parts.cachedSystem).toMatch(/face value|cannot run/i)
+    }
+  })
+
+  it('carries the answer through to the doer', async () => {
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({
+      shape: 'transition', action: 'cycle', why: 'more work left',
+      answer: 'Keep the deviation — liveness beats strictness there.',
+    } as any)), writes)
+    await sm.start()
+    writes.length = 0
+    sm.feedPty(['[ORCH:PROGRESS] p1/t1 done', 'DECISION_SHAPE: transition', 'QUESTION: should the deviation stand?', ''].join('\n'))
+    await flush()
+    await new Promise((r) => setTimeout(r, 80))
+    expect(writes.join('\n')).toContain('On your question: Keep the deviation')
+  })
+
+  it('records it when a question goes unanswered instead of hiding it', async () => {
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'transition', action: 'cycle', why: 'carry on' })), writes)
+    await sm.start()
+    sm.feedPty(['[ORCH:PROGRESS] p1/t1 done', 'DECISION_SHAPE: transition', 'QUESTION: should the deviation stand?', ''].join('\n'))
+    await flush()
+    await new Promise((r) => setTimeout(r, 80))
+    expect(sm.state.recentLog.some((a) => a.summary.includes('left unanswered'))).toBe(true)
+  })
+
+  it('caps a runaway answer rather than pasting it whole into the terminal', async () => {
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({
+      shape: 'transition', action: 'cycle', why: 'w', answer: 'x'.repeat(5000),
+    } as any)), writes)
+    await sm.start()
+    writes.length = 0
+    sm.feedPty(['[ORCH:PROGRESS] p1/t1 done', 'DECISION_SHAPE: transition', 'QUESTION: q?', ''].join('\n'))
+    await flush()
+    await new Promise((r) => setTimeout(r, 80))
+    const sent = writes.join('\n')
+    expect(sent).toContain('On your question:')
+    expect(sent.match(/x+/)?.[0].length).toBe(600)
+  })
+})
+
 describe('teardown cancels what the watcher owns', () => {
   it('stop() leaves nothing armed that can write into the terminal', async () => {
     vi.useFakeTimers()
