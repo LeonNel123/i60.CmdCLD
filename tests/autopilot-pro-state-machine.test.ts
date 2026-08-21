@@ -540,6 +540,41 @@ describe('Stage 3 phase-review pipeline (Wave 3.1 G3)', () => {
   })
 })
 
+// PtyWatcher owns timers the state machine does not. Detaching from pty data leaves its
+// missing-marker fallback armed, and that path wrote a nudge into the terminal up to 30s
+// after a run had stopped or finished — the orchestrator's dead hand, observed live at the
+// end of the marker-parser run. Council already reset the watcher in stop() and pause();
+// classic and PRO did not.
+describe('teardown cancels what the watcher owns', () => {
+  it('stop() leaves nothing armed that can write into the terminal', async () => {
+    vi.useFakeTimers()
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), writes)
+    await sm.start()
+    sm.feedPty('x'.repeat(300))            // substantive output, no marker: arms the fallback
+    await vi.advanceTimersByTimeAsync(30)
+    writes.length = 0
+    sm.stop()
+    await vi.advanceTimersByTimeAsync(31_000)
+    expect(writes).toEqual([])
+    vi.useRealTimers()
+  })
+
+  it('a paused run is not nudged by a fallback armed before the pause', async () => {
+    vi.useFakeTimers()
+    const writes: string[] = []
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })), writes)
+    await sm.start()
+    sm.feedPty('x'.repeat(300))
+    await vi.advanceTimersByTimeAsync(30)
+    writes.length = 0
+    sm.pause()
+    await vi.advanceTimersByTimeAsync(31_000)
+    expect(writes).toEqual([])
+    vi.useRealTimers()
+  })
+})
+
 describe('Stage 4 final-review + auto-meta (Wave 3.1 G4 + G5)', () => {
   function setupAllReviewsApproved() {
     writeArtifact(TMP, 'spec', '# s'); markApproved(TMP, 'spec')

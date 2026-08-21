@@ -164,6 +164,9 @@ export class AutopilotStateMachine {
   }
   stop(): void {
     if (this.detachPty) { this.detachPty(); this.detachPty = null }
+    // Cancels the watcher's own timers too — its missing-marker fallback outlives a
+    // detach and would nudge the terminal of a run that no longer exists.
+    this.watcher.reset()
     this.stopControlWatchdog()
     this.clearSilenceTimer()
     this.state.liveStatus = null
@@ -627,6 +630,10 @@ export class AutopilotStateMachine {
   }
 
   private async handleMissingMarker(diagnostics?: MissingMarkerDiagnostics): Promise<void> {
+    // Guard first: without it a fallback armed before a stop or pause still ran, and in
+    // this orchestrator that path can reach an LLM adjudication call — a finished run
+    // spending money and writing to a terminal it no longer owns.
+    if (!this.canProcessPty()) return
     if (this.state.phase === 'wizard') {
       this.state.goal = readGoal(this.opts.projectPath)
       this.state.milestones = readMilestones(this.opts.projectPath)

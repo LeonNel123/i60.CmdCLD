@@ -454,6 +454,10 @@ export class AutopilotProStateMachine {
   private finishRun(): void {
     this.state.control = 'stopped'
     if (this.detachPty) { this.detachPty(); this.detachPty = null }
+    // The watcher owns timers of its own. Detaching from pty data does not cancel the
+    // missing-marker fallback, which fires up to 30s later and writes a nudge into the
+    // terminal of a run that has already finished.
+    this.watcher.reset()
     this.stopControlWatchdog()
     this.clearSilenceTimer()
     if (this.markerNudgeObserveTimer) {
@@ -468,6 +472,7 @@ export class AutopilotProStateMachine {
   stop(): void {
     this.state.control = 'stopped'
     if (this.detachPty) { this.detachPty(); this.detachPty = null }
+    this.watcher.reset()
     this.stopControlWatchdog()
     this.clearSilenceTimer()
     if (this.markerNudgeObserveTimer) {
@@ -1251,6 +1256,9 @@ export class AutopilotProStateMachine {
   }
 
   private handleMissingMarker(diagnostics?: MissingMarkerDiagnostics): void {
+    // Every other pty entry point asks this first. This one did not, so a fallback timer
+    // armed before a stop, pause or completion still wrote to the terminal afterwards.
+    if (!this.canProcessPty()) return
     if (this.markerFallbackPromptCount >= 2) {
       this.state.escalationReason = 'doer not emitting markers — manual intervention needed'
       this.appendActivity('escalation', this.state.escalationReason)
