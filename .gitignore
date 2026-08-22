@@ -53,3 +53,19 @@ test-mobile-help.png
 test-mobile-new-session.png
 test-mobile-wide.png
 test-mobile-console.log
+
+# Autopilot run state. The spec, plan and review artifacts are committed on purpose —
+# they are the record of what a run was asked to do and what it concluded. Everything
+# else here is per-run scratch: the control channel, the orchestrator's own bookkeeping,
+# and the transcript. The doer contract already says not to commit these; this is what
+# stops an unfinished run from leaving a dirty tree that blocks a release.
+.autopilot*/state.json
+.autopilot*/runtime.json
+.autopilot*/cost.json
+.autopilot*/transcript.md
+.autopilot*/log.md
+.autopilot*/learnings.md
+.autopilot*/final-summary.md
+.autopilot*/debug/
+.autopilot*/inbox/
+.autopilot*/outbox/
