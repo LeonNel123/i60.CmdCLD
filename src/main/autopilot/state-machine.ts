@@ -51,7 +51,7 @@ export class AutopilotStateMachine {
     this.opts = opts
     this.runtime = getAutopilotRuntime(opts.agentCli)
     this.api = apiOverride ?? makeApiClient(opts.apiProvider, opts.apiKey, opts.plannerModel)
-    this.cost = new CostTracker(opts.projectPath, opts.costCapUsd, (pct) => {
+    this.cost = new CostTracker(join(opts.projectPath, '.autopilot'), opts.costCapUsd, (pct) => {
       if (pct === 100) this.transition('paused', 'cost cap reached')
     })
     this.maxSilenceMs = maxSilenceMs

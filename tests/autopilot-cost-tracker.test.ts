@@ -19,9 +19,21 @@ describe('CostTracker', () => {
     t.add(0.05)
     t.add(0.10)
     expect(t.totalUsd).toBeCloseTo(0.15, 5)
-    expect(existsSync(join(TMP, '.autopilot/cost.json'))).toBe(true)
+    expect(existsSync(join(TMP, 'cost.json'))).toBe(true)
     const t2 = new CostTracker(TMP, 1.0)
     expect(t2.totalUsd).toBeCloseTo(0.15, 5)
+  })
+
+  // It used to take the project path and append '.autopilot' itself, which suited exactly
+  // one caller. PRO passed its own control dir like every other PRO write does, and the
+  // hidden segment produced '.autopilot-pro/.autopilot/cost.json' — a classic-named
+  // directory nested inside PRO's, and not the path the doer contract names.
+  it('writes into the directory it was given, inventing no segment of its own', () => {
+    const dir = join(TMP, '.autopilot-pro')
+    const t = new CostTracker(dir, 1.0)
+    t.add(0.02)
+    expect(existsSync(join(dir, 'cost.json'))).toBe(true)
+    expect(existsSync(join(dir, '.autopilot', 'cost.json'))).toBe(false)
   })
 
   it('fires threshold callbacks at 50/80/100 percent', () => {

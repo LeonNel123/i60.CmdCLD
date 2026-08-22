@@ -13,18 +13,28 @@ export class CostTracker {
   totalUsd = 0
   capUsd: number
   private thresholdsHit = new Set<number>()
-  private projectPath: string
+  private controlDir: string
   private cb?: ThresholdCallback
 
-  constructor(projectPath: string, capUsd: number, cb?: ThresholdCallback) {
-    this.projectPath = projectPath
+  /**
+   * @param controlDir the orchestrator's own state directory — `.autopilot`,
+   *   `.autopilot-pro` or `.autopilot-council`, not the project root.
+   *
+   * It used to take the project path and append '.autopilot' itself, which was right for
+   * exactly one caller. PRO passed its own control dir, as every other PRO write does, and
+   * the hidden segment turned that into `.autopilot-pro/.autopilot/cost.json` — a
+   * classic-named directory nested inside PRO's, and not the path the doer contract tells
+   * the doer to leave uncommitted. Taking the directory outright removes the trap.
+   */
+  constructor(controlDir: string, capUsd: number, cb?: ThresholdCallback) {
+    this.controlDir = controlDir
     this.capUsd = capUsd
     this.cb = cb
     this.load()
   }
 
   private file(): string {
-    return join(this.projectPath, '.autopilot', 'cost.json')
+    return join(this.controlDir, 'cost.json')
   }
 
   private load(): void {

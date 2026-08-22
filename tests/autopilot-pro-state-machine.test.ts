@@ -606,6 +606,23 @@ describe('planner answers the doer question', () => {
 // because resume() will want it back. blocked does not come back — resume() refuses it and
 // the panel hides the button — yet it released only the silence timer, so an escalated run
 // held the pty listener and polled the control channel at 1 Hz for the life of the app.
+// Every other PRO write lands at .autopilot-pro/<name> — state.json, log.md,
+// transcript.md. cost.json did not: CostTracker appended '.autopilot' to whatever it was
+// given, so PRO's own control dir became .autopilot-pro/.autopilot/cost.json. The doer
+// contract meanwhile tells the doer not to commit .autopilot-pro/cost.json, a file that
+// never existed.
+describe('cost.json lands where the contract says', () => {
+  it('writes to .autopilot-pro/cost.json, not a nested classic directory', async () => {
+    const sm = makeSm(fakeChatClient(() => ({ shape: 'reply', text: 'ok' })))
+    await sm.start()
+    sm.feedPty(['[ORCH:WAITING] q', 'DECISION_SHAPE: reply', ''].join('\n'))
+    await flush()
+    await new Promise((r) => setTimeout(r, 60))
+    expect(existsSync(join(TMP, '.autopilot-pro', 'cost.json'))).toBe(true)
+    expect(existsSync(join(TMP, '.autopilot-pro', '.autopilot', 'cost.json'))).toBe(false)
+  })
+})
+
 describe('an unrecoverable exit releases what the run holds', () => {
   it('lets go of the terminal when the cost cap blocks the run', async () => {
     let detached = false
