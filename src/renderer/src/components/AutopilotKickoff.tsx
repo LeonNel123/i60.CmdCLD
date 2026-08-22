@@ -26,6 +26,7 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<AutopilotMode>('classic')
+  const [showModeHelp, setShowModeHelp] = useState(false)
   const [reviewerCli, setReviewerCli] = useState<AgentCli>(firstOtherCli(agentCli))
   const [intensity, setIntensity] = useState<CouncilIntensity>('balanced')
   const [artifacts, setArtifacts] = useState<{ hasClassic: boolean; hasPro: boolean; hasCouncil: boolean }>({
@@ -170,7 +171,76 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
               ? 'Discovery → planning → impl → review with structured gates'
               : 'Drive a single goal with milestones (v1.2.4 default)'}
         </span>
+        <button
+          onClick={() => setShowModeHelp((v) => !v)}
+          aria-expanded={showModeHelp}
+          title="What the three modes do differently"
+          style={{
+            background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer',
+            fontFamily: 'inherit', fontSize: 10, padding: '2px 4px', marginLeft: 'auto',
+            textDecoration: 'underline',
+          }}
+        >{showModeHelp ? 'Hide guide' : "Which should I use?"}</button>
       </div>
+      {showModeHelp && (
+        <div style={{
+          background: '#111827',
+          border: '1px solid #2d2d2d',
+          borderRadius: 4,
+          padding: 12,
+          fontSize: 11,
+          lineHeight: 1.55,
+          color: '#aaa',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}>
+          <div>
+            All three drive the CLI agent in this terminal towards a goal, replying to it each time
+            it stops. They differ in how much structure they impose before code gets written, and in
+            how many agents are involved.
+          </div>
+
+          <div>
+            <div style={{ color: '#e0e0e0', fontWeight: 600 }}>Classic — one goal, milestone by milestone</div>
+            You describe a goal; the agent breaks it into milestones and works through them, checking
+            in as it finishes each one. Nothing is written down first, so it starts fastest and leaves
+            the least behind. Best when you already know what needs doing and it fits in one sitting.
+            State lives in <code style={{ color: '#a78bfa' }}>.autopilot/</code>.
+          </div>
+
+          <div>
+            <div style={{ color: '#e0e0e0', fontWeight: 600 }}>PRO — spec first, then plan, then code</div>
+            Runs as stages: discovery → planning → implementation → review of each phase → final
+            review. It writes a spec and a phased plan and waits for those to be approved before any
+            code is written, so you can read and correct the intent before it becomes a diff. Slower
+            to start and it makes more planner calls, which cost more. Best for work you want a
+            record of, or where getting the approach wrong is expensive. State and artifacts live in
+            <code style={{ color: '#a78bfa' }}> .autopilot-pro/</code> — spec.md and plan.md are worth
+            reading while it runs.
+          </div>
+
+          <div>
+            <div style={{ color: '#e0e0e0', fontWeight: 600 }}>Council — one agent writes, another reviews</div>
+            Uses two CLI sessions: an implementer and a separate reviewer that inspects the work at
+            fixed gates and can send it back. Costs roughly twice as much and takes longer, and you
+            need a second agent available. Best when a second opinion is worth more than speed.
+            Intensity sets how readily the reviewer blocks. State lives in
+            <code style={{ color: '#a78bfa' }}> .autopilot-council/</code>.
+          </div>
+
+          <div style={{ borderTop: '1px solid #2d2d2d', paddingTop: 8 }}>
+            <div style={{ color: '#e0e0e0', fontWeight: 600 }}>True of all three</div>
+            You can pause, resume or stop from the panel at any time, and reply by hand when the run
+            asks a question. A run stops itself if it hits the cost cap, if the agent goes silent, or
+            if it gets stuck — the panel then shows why, and that state is one-way: read what
+            happened, then stop and start again. Your files are only ever changed by the agent
+            itself, so <code style={{ color: '#a78bfa' }}>git status</code> and
+            <code style={{ color: '#a78bfa' }}> git diff</code> stay the honest record of what a run
+            did. Picking a mode you have run before offers to resume it instead of starting over.
+          </div>
+        </div>
+      )}
       {mode === 'council' && (
         <div style={{
           background: '#111827',

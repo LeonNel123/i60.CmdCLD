@@ -72,6 +72,67 @@ Open multiple project folders, each running its own Claude or Codex CLI instance
 - Cross-platform shell detection (bash/zsh on Mac/Linux)
 - Window bounds saved and restored
 
+## Autopilot
+
+Autopilot drives the CLI agent in a terminal towards a goal without you sitting on the
+Enter key. You describe what you want; an orchestrator watches the agent's output, answers
+it each time it stops, and keeps going until the work is done, the money runs out, or it
+gets stuck and says so.
+
+It comes in three flavours. They all do the same fundamental thing — the difference is how
+much gets written down before code happens, and how many agents are involved.
+
+| | Classic | PRO | Council |
+|---|---|---|---|
+| **Shape** | one goal, split into milestones | staged: spec → plan → build → review | one agent builds, a second reviews |
+| **Agents** | 1 | 1 | 2 |
+| **Starts** | immediately | after you approve a spec and plan | immediately |
+| **Cost** | lowest | higher — more planner calls | roughly double — two agents |
+| **Leaves behind** | `.autopilot/` | `.autopilot-pro/` incl. spec.md, plan.md, reviews | `.autopilot-council/` |
+| **Reach for it when** | you know what needs doing | getting the approach wrong is expensive | a second opinion beats speed |
+
+### Classic — one goal, milestone by milestone
+
+Describe a goal. The agent breaks it into milestones and works through them, checking in as
+each one lands. Nothing is specified up front, so it starts fastest and leaves the least
+behind. Good for a task you understand that fits in one sitting.
+
+### PRO — spec first, then plan, then code
+
+Runs in stages: discovery, planning, implementation, a review after each phase, then a
+final review. It writes `spec.md` and a phased `plan.md` and waits for both to be approved
+before any code is written — so you can read the intent and correct it while it is still
+cheap to change. Slower to start, and it makes a planner call per turn, so it costs more.
+Worth it when you want a record of why the code looks the way it does, or when the wrong
+approach would be expensive to unwind. Both artifacts are plain markdown in
+`.autopilot-pro/` and are worth reading while the run is going.
+
+### Council — one agent writes, another reviews
+
+Two CLI sessions: an implementer, and a separate reviewer that inspects the work at fixed
+gates and can send it back for another pass. You need a second agent available, it takes
+longer, and it costs about twice as much. The intensity setting (light / balanced / strict)
+controls how readily the reviewer blocks. Reach for it when a second opinion matters more
+than throughput.
+
+### Running one, and stopping one
+
+Start from the terminal header (the robot icon) and pick a mode — the dialog has a
+**Which should I use?** guide if you want the comparison in front of you. If you have run
+that mode in this folder before, it offers to resume rather than start over.
+
+While a run is going, the Autopilot panel shows the current stage, what the agent last
+said, and what has been spent. You can pause, resume, stop, or type a reply by hand when
+the run asks you something.
+
+A run ends by itself in four ways: it finishes, it hits the cost cap you set, the agent
+goes quiet for too long, or it gets stuck and escalates. The last three are one-way — the
+panel tells you what happened, and the next move is yours. Stopping is always safe.
+
+Autopilot never edits your files itself; only the agent does, exactly as it would if you
+were typing. `git status` and `git diff` remain the honest record of what a run actually
+did, and a branch before you start is the cheapest insurance there is.
+
 ## Download
 
 Prebuilt installers for every release are attached to the
