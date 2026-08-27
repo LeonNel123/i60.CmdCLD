@@ -526,11 +526,10 @@ export default function App() {
     }
     const newLayouts = layoutsForVisible(newTerminals, minimizedRef.current)
     setLayouts(newLayouts)
-    window.api.recentAdd(homeDir).then(() => {
-      return window.api.recentList()
-    }).then((list) => {
-      setRecentFolders(list)
-    }).catch(() => {})
+    // Deliberately NOT recorded in recents. This is a scratch shell in the
+    // home folder, not a project the user opened — recording it spent a
+    // recents slot on ~/ and pushed a real project out. The admin-shell
+    // variant below has never recorded one either.
   }, [defaultViewMode, terminals])
 
   // Windows-only. In-grid admin tile when an elevation bridge (gsudo / sudo

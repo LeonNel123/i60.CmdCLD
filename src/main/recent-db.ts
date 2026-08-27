@@ -41,6 +41,13 @@ export interface RecentFolder {
   lastOpened: number
 }
 
+// How many folders the table keeps. This is a shared budget: favorited
+// folders occupy rows here too, so a user with a long pin list used to
+// squeeze the genuinely-recent entries down to a handful. 50 leaves room for
+// both. The sidebar caps how many *recent* rows it draws separately
+// (RECENT_DISPLAY_LIMIT) — this bound is about what survives, not what shows.
+export const RECENT_LIMIT = 50
+
 export class RecentDB {
   private db: Database | null = null
   private dbPath: string
@@ -102,9 +109,9 @@ export class RecentDB {
       [folderPath, name, now]
     )
 
-    // Prune to 20 most recent
+    // Prune to the RECENT_LIMIT most recent
     this.db.run(
-      'DELETE FROM recent_folders WHERE path NOT IN (SELECT path FROM recent_folders ORDER BY last_opened DESC LIMIT 20)'
+      `DELETE FROM recent_folders WHERE path NOT IN (SELECT path FROM recent_folders ORDER BY last_opened DESC LIMIT ${RECENT_LIMIT})`
     )
 
     this.save()
@@ -122,7 +129,7 @@ export class RecentDB {
     if (!this.db) return []
 
     const result = this.db.exec(
-      'SELECT path, name, last_opened FROM recent_folders ORDER BY last_opened DESC LIMIT 20'
+      `SELECT path, name, last_opened FROM recent_folders ORDER BY last_opened DESC LIMIT ${RECENT_LIMIT}`
     )
     if (result.length === 0) return []
 

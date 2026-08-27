@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { RecentDB, getEffectiveRoot, checkPathStatus } from '../src/main/recent-db'
+import { RecentDB, getEffectiveRoot, checkPathStatus, RECENT_LIMIT } from '../src/main/recent-db'
 import { mkdirSync, rmSync, mkdtempSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -47,25 +47,33 @@ describe('RecentDB', () => {
     expect(list[1].path).toBe('C:\\older')
   })
 
-  // 25 sequential awaited writes against sql.js with disk persistence. This runs well
-  // under vitest's 5s default on an idle machine but was observed at 5273ms under
-  // load, so both prune tests get an explicit timeout — a contended CI runner should
-  // not fail a release build over machine load.
-  it('prunes to 20 entries', async () => {
-    for (let i = 0; i < 25; i++) {
+  // RECENT_LIMIT + 5 sequential awaited writes against sql.js with disk
+  // persistence. This runs well under vitest's 5s default on an idle machine
+  // but was observed at 5273ms under load, so both prune tests get an explicit
+  // timeout — a contended CI runner should not fail a release build over
+  // machine load.
+  it('prunes to RECENT_LIMIT entries', async () => {
+    for (let i = 0; i < RECENT_LIMIT + 5; i++) {
       await db.add(`C:\\folder-${i}`)
     }
-    expect(await db.list()).toHaveLength(20)
+    expect(await db.list()).toHaveLength(RECENT_LIMIT)
   }, 30_000)
 
+  // The cap is a budget shared with favorites — favorited folders occupy rows
+  // here too, so at the old cap of 20 a user pinning 20 folders was left with
+  // only a handful of genuine recents.
+  it('holds enough rows for a long favorites list plus real recents', () => {
+    expect(RECENT_LIMIT).toBeGreaterThanOrEqual(50)
+  })
+
   it('prune keeps most recent, drops oldest', async () => {
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < RECENT_LIMIT + 5; i++) {
       await db.add(`C:\\folder-${String(i).padStart(2, '0')}`)
     }
     const list = await db.list()
     const paths = list.map((f) => f.path)
     expect(paths).not.toContain('C:\\folder-00')
-    expect(paths).toContain('C:\\folder-24')
+    expect(paths).toContain(`C:\\folder-${String(RECENT_LIMIT + 4).padStart(2, '0')}`)
   }, 30_000)
 
   it('removes a folder by path', async () => {

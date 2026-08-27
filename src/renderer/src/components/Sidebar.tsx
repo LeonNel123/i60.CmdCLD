@@ -1,6 +1,7 @@
 import { useState, memo } from 'react'
 import type { RecentFolder } from '../types/api'
 import { formatRelativeTime } from '../utils/format-relative-time'
+import { partitionSidebarFolders } from '../utils/sidebar-folders'
 import {
   ChevronLeft, ChevronRight, ChevronDown, Star, X, LayoutGrid,
   FolderOpen, Sparkles, TerminalSquare, AppWindow, FolderPlus, Settings, RadioTower,
@@ -450,11 +451,8 @@ export function Sidebar({
       {/* Favorites and Recent subsections. Open projects live in the ACTIVE
           section above, so they're filtered out here and "move back" when
           their terminals close. */}
-      {!collapsed && recentFolders.length > 0 && (() => {
-        const favSet = new Set(favoriteFolders)
-        const closedFolders = recentFolders.filter((f) => !activePaths.has(f.path))
-        const favorites = closedFolders.filter((f) => favSet.has(f.path)).sort((a, b) => a.name.localeCompare(b.name))
-        const recents = closedFolders.filter((f) => !favSet.has(f.path)).sort((a, b) => b.lastOpened - a.lastOpened)
+      {!collapsed && (recentFolders.length > 0 || favoriteFolders.length > 0) && (() => {
+        const { favorites, recents } = partitionSidebarFolders(recentFolders, favoriteFolders, activePaths)
         return (
           <div>
             {favorites.length > 0 && (
