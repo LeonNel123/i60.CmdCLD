@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -168,6 +168,37 @@ export function TerminalPanel({
   const [searchQuery, setSearchQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [dragActive, setDragActive] = useState(false)
+
+  // Refit the grid to the container and push the resulting cols/rows to the
+  // PTY. Both halves are mandatory: fit() only reflows *our* xterm, and the
+  // PTY keeps whatever size it was last told until someone tells it otherwise.
+  //
+  // The ResizeObserver below used to be the only caller, which made the PTY
+  // sync an accident of geometry — it fires on container-box changes, and a
+  // font-size change doesn't move the container (termRef is `flex: 1`, sized
+  // by the panel). So every font change left the PTY at the old cols/rows: the
+  // CLI kept emitting lines for the old width, our narrower grid hard-wrapped
+  // each one, and the ragged continuation lines read as inflated line spacing.
+  // Restarting the app "fixed" it only because that built a correctly sized
+  // PTY from scratch.
+  //
+  // Stable across a mount (id is the only dep), so the mount effect can hold
+  // onto it without churning.
+  const fitAndSyncPty = useCallback(() => {
+    const fitAddon = fitAddonRef.current
+    const term = terminalRef.current
+    if (!fitAddon || !term) return
+    try { fitAddon.fit() } catch { return }
+    const { cols, rows } = term
+    // Skip the IPC round-trip if the PTY already matches (e.g. we just
+    // absorbed a remote resize that set our xterm to these dims and the
+    // container happened to fit the same size).
+    const last = ptyDimsRef.current
+    if (last && last.cols === cols && last.rows === rows) return
+    window.api.resizeTerminal(id, cols, rows)
+  }, [id])
+  const fitAndSyncPtyRef = useRef(fitAndSyncPty)
+  fitAndSyncPtyRef.current = fitAndSyncPty
 
   useEffect(() => {
     if (!termRef.current) return
@@ -480,19 +511,19 @@ export function TerminalPanel({
       if (e.type === 'keydown' && modKey(e) && (e.key === '=' || e.key === '+')) {
         const newSize = Math.min(term.options.fontSize! + 1, pointsToPixels(TERMINAL_FONT_SIZE_MAX))
         term.options.fontSize = newSize
-        fitAddon.fit()
+        fitAndSyncPtyRef.current()
         return false
       }
       if (e.type === 'keydown' && modKey(e) && e.key === '-') {
         const newSize = Math.max(term.options.fontSize! - 1, pointsToPixels(TERMINAL_FONT_SIZE_MIN))
         term.options.fontSize = newSize
-        fitAddon.fit()
+        fitAndSyncPtyRef.current()
         return false
       }
       // Mod+0: reset zoom back to the configured size (converted points -> px)
       if (e.type === 'keydown' && modKey(e) && e.key === '0') {
         term.options.fontSize = pointsToPixels(fontRef.current.size)
-        fitAddon.fit()
+        fitAndSyncPtyRef.current()
         return false
       }
       // Mod+End: scroll to bottom without sending input. Escape hatch when
@@ -538,26 +569,15 @@ export function TerminalPanel({
     })
 
     // Debounced resize observer — fires only when the container's actual
-    // pixel dimensions change (sidebar toggle, window resize, font zoom).
+    // pixel dimensions change (sidebar toggle, window resize). Font changes
+    // leave the container alone, so they call fitAndSyncPty directly instead.
     // We fit to our container and claim the PTY size, which broadcasts to
     // every other client. Remote-driven resizes come in via onTerminalResize
     // above and don't touch the container, so they don't retrigger this.
     let resizeTimer: ReturnType<typeof setTimeout>
     const resizeObserver = new ResizeObserver(() => {
       clearTimeout(resizeTimer)
-      resizeTimer = setTimeout(() => {
-        if (fitAddonRef.current && terminalRef.current) {
-          fitAddonRef.current.fit()
-          const { cols, rows } = terminalRef.current
-          // Skip the IPC round-trip if the PTY already matches (e.g. we
-          // just absorbed a remote resize that set our xterm to these dims
-          // and the container happened to fit the same size).
-          const last = ptyDimsRef.current
-          if (!last || last.cols !== cols || last.rows !== rows) {
-            window.api.resizeTerminal(id, cols, rows)
-          }
-        }
-      }, 100)
+      resizeTimer = setTimeout(() => fitAndSyncPtyRef.current(), 100)
     })
     resizeObserver.observe(termRef.current)
 
@@ -592,11 +612,11 @@ export function TerminalPanel({
     if (!term) return
     term.options.fontFamily = fontFamilyResolved
     term.options.fontSize = pointsToPixels(fontSizeResolved)
-    // Same mutate-then-fit pattern the zoom shortcuts use; fit() reflows
-    // cols/rows for the new cell size and (per the ResizeObserver above) syncs
-    // the PTY.
-    try { fitAddonRef.current?.fit() } catch {}
-  }, [fontFamilyResolved, fontSizeResolved])
+    // Same mutate-then-fit pattern the zoom shortcuts use. The PTY sync is
+    // not optional here: the container doesn't move when the font does, so
+    // nothing else would tell the PTY its grid just changed.
+    fitAndSyncPty()
+  }, [fontFamilyResolved, fontSizeResolved, fitAndSyncPty])
 
   // Load editors + the chosen default for this folder, and probe for a solution.
   useEffect(() => {
