@@ -5,6 +5,8 @@ import {
   type AgentCli,
   type AgentCliLaunchOption,
 } from '../../../shared/agent-cli'
+import { supportsOpenRouterModelArg } from '../../../shared/openrouter-model'
+import { OpenRouterModelPicker } from './OpenRouterModelPicker'
 
 interface AgentLaunchOptionsProps {
   agentCli: AgentCli
@@ -53,6 +55,9 @@ export function AgentLaunchOptions({ agentCli, args, onArgsChange }: AgentLaunch
           </div>
         </div>
       ))}
+      {supportsOpenRouterModelArg(agentCli) && (
+        <OpenRouterModelPicker agentCli={agentCli} args={args} onArgsChange={onArgsChange} />
+      )}
     </div>
   )
 }

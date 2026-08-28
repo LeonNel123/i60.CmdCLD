@@ -1,3 +1,18 @@
+/** One entry of the live OpenRouter catalogue; prices are USD per 1M tokens. */
+export interface OpenRouterCatalogueModel {
+  id: string
+  name: string
+  contextLength: number
+  supportsTools: boolean
+  rate: { input: number; cachedInput: number; cacheCreation: number; output: number }
+}
+
+export interface OpenRouterCatalogue {
+  /** Epoch ms of the last successful fetch; 0 means seed data only. */
+  fetchedAt: number
+  models: OpenRouterCatalogueModel[]
+}
+
 export interface AiUsageSite {
   id: string
   label: string
@@ -191,6 +206,7 @@ export interface ElectronAPI {
   getHomeDir: () => Promise<string>
   getVersion: () => Promise<string>
   projectCreate: (folderName: string) => Promise<string | null>
+  openrouterModels: (refresh?: boolean) => Promise<OpenRouterCatalogue>
   settingsGetAll: () => Promise<{ editor: string; defaultAgentCli: 'claude' | 'codex' | 'grok' | 'opencode'; claudeArgs: string; codexArgs: string; grokArgs: string; opencodeArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; remoteLanAccess: boolean; favoriteFolders: string[]; restoreSessionEnabled: boolean; restoreSessionResume: boolean; terminalFontFamily: string; terminalFontSize: number; appFontFamily: string; uiScalePct: number; autopilotApiProvider: 'anthropic' | 'openrouter'; autopilotPlannerModel: string; broadcastRefineModel: string; broadcastAutoRefine: boolean; broadcastRefineSystemPrompt: string; autopilotDefaultCostCap: number; autopilotDefaultMaxIterations: number }>
   settingsSet: (key: string, value: unknown) => Promise<void>
   agentCliAvailability: () => Promise<Record<'claude' | 'codex' | 'grok' | 'opencode', { available: boolean; path: string | null }>>

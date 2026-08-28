@@ -78,31 +78,6 @@ describe('agent CLI utilities', () => {
     ])
   })
 
-  it('selects one Codex model profile at a time and keeps it clear of --oss', () => {
-    expect(AGENT_CLI_OPTION_GROUPS.codex.some((g) => g.id === 'model')).toBe(true)
-
-    let args = applyAgentCliLaunchOption('codex', '--sandbox workspace-write', 'codex-model-glm')
-    expect(args).toBe('--sandbox workspace-write -p glm')
-
-    // Single-select: picking another profile replaces rather than stacks. `-p glm` must not
-    // be treated as a prefix match of `-p glm-max`, or both would linger.
-    args = applyAgentCliLaunchOption('codex', args, 'codex-model-glm-max')
-    expect(args).toBe('--sandbox workspace-write -p glm-max')
-    expect(getActiveAgentCliLaunchOptionIds('codex', args)).toContain('codex-model-glm-max')
-    expect(getActiveAgentCliLaunchOptionIds('codex', args)).not.toContain('codex-model-glm')
-
-    // The profile sets model_provider; --oss overrides it. Conflict resolves both ways.
-    args = applyAgentCliLaunchOption('codex', args, 'codex-oss')
-    expect(args).toBe('--sandbox workspace-write --oss')
-    args = applyAgentCliLaunchOption('codex', args, 'codex-model-ds-pro')
-    expect(args).toBe('--sandbox workspace-write -p ds-pro')
-  })
-
-  it('keeps the Codex model profile through resume and quick-launch rewrites', () => {
-    expect(ensureResumeArgs('codex', '-p glm')).toBe('resume --last -p glm')
-    expect(stripResumeArgsForQuickLaunch('codex', 'resume --last -p glm')).toBe('-p glm')
-  })
-
   it('treats the Codex dangerous bypass as mutually exclusive with sandbox and approval flags', () => {
     let args = '--sandbox workspace-write --ask-for-approval never --search'
     args = applyAgentCliLaunchOption('codex', args, 'codex-dangerous-bypass')
@@ -364,15 +339,6 @@ describe('opencode agent CLI', () => {
     expect(ensureResumeArgs('opencode', '')).not.toContain('resume')
   })
 
-  it('selects one OpenRouter model at a time via -m', () => {
-    let args = applyAgentCliLaunchOption('opencode', '--auto', 'opencode-model-glm')
-    expect(args).toBe('--auto -m openrouter/z-ai/glm-5.3-flash')
-
-    args = applyAgentCliLaunchOption('opencode', args, 'opencode-model-ds-pro')
-    expect(args).toBe('--auto -m openrouter/deepseek/deepseek-v4-pro')
-    expect(getActiveAgentCliLaunchOptionIds('opencode', args)).not.toContain('opencode-model-glm')
-  })
-
   // Continue and Fork are independent toggles: `--continue --fork` is valid, and a
   // compound single-select option would report both as active because option matching
   // is a token-subsequence test with no group context.
@@ -395,14 +361,4 @@ describe('opencode agent CLI', () => {
     expect(council.reason).toContain('OpenCode')
   })
 
-  // The two pickers are generated from one roster; if they ever diverge, a model would
-  // be reachable in Codex but not OpenCode (or vice versa) with no compile error.
-  it('drives the Codex and OpenCode model pickers from the same roster', () => {
-    const codex = AGENT_CLI_OPTION_GROUPS.codex.find((g) => g.id === 'model')!.options
-    const opencode = AGENT_CLI_OPTION_GROUPS.opencode.find((g) => g.id === 'model')!.options
-    expect(opencode.length).toBe(codex.length)
-    expect(opencode.map((o) => o.label)).toEqual(codex.map((o) => o.label))
-    expect(codex.every((o) => o.args.startsWith('-p '))).toBe(true)
-    expect(opencode.every((o) => o.args.startsWith('-m openrouter/'))).toBe(true)
-  })
 })

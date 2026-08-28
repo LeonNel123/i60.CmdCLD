@@ -14,6 +14,7 @@ import { PromptLog, sentTextOf } from './prompt-log'
 import { detectTerminals, openExternalTerminal } from './external-terminal'
 import { Settings } from './settings'
 import { LastSessionStore, type SavedSession } from './last-session-store'
+import { initCatalogue, getCatalogue, refreshCatalogue } from './openrouter-catalogue'
 import { detectEditors, getDefaultEditor, findProjectAnchor, type EditorInfo } from './editor-detect'
 import { RemoteServer } from './remote-server'
 import { hardenGlobalSettings, trustFolder, readClaudeConfig, writeClaudeConfig } from './claude-config'
@@ -243,6 +244,9 @@ try {
   promptLog = new PromptLog(join(app.getPath('userData'), 'prompts.db'))
   settings = new Settings(join(app.getPath('userData'), 'settings.json'))
   lastSessionStore = new LastSessionStore(join(app.getPath('userData'), 'last-session.json'))
+  // Enables the disk cache and background refresh. Not awaited: the catalogue serves
+  // cached or seed data immediately, and startup must not wait on OpenRouter.
+  initCatalogue(app.getPath('userData'))
   remoteServer = new RemoteServer({
     ptyManager,
     settings,
@@ -814,6 +818,20 @@ ipcMain.handle('shell:openPath', async (_event, target: string) => {
 // Settings
 ipcMain.handle('settings:getAll', () => {
   return settings.getAll()
+})
+
+// Returns immediately from cache/seed. `refresh` forces a network round trip so the
+// settings UI can offer an explicit "check for new models" action.
+ipcMain.handle('openrouter:models', async (_event, refresh?: boolean) => {
+  if (refresh) {
+    try {
+      return await refreshCatalogue()
+    } catch {
+      // Offline or rate-limited: fall through to whatever is cached rather than
+      // emptying the picker.
+    }
+  }
+  return getCatalogue()
 })
 
 ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {

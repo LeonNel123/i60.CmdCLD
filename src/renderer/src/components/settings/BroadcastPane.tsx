@@ -1,5 +1,6 @@
 import { BROADCAST_REFINE_SYSTEM_PROMPT } from '../../../../shared/broadcast'
 import { Field, MONO_FONT, PaneHeading, PillGroup, TextInput } from './controls'
+import { OpenRouterModelSearch } from '../OpenRouterModelSearch'
 
 export interface BroadcastPaneProps {
   autoRefine: boolean
@@ -81,6 +82,13 @@ export function BroadcastPane(p: BroadcastPaneProps) {
             ),
           }))}
         />
+        <div style={{ marginTop: 8 }}>
+          <div style={{ color: '#666', fontSize: 10, marginBottom: 4 }}>
+            Or search the live OpenRouter catalogue. The picks above carry measured
+            end-to-end times; anything you choose here is priced but untimed.
+          </div>
+          <OpenRouterModelSearch value={p.refineModel} onChange={p.onRefineModelChange} />
+        </div>
       </Field>
 
       <Field label="Refine system prompt">

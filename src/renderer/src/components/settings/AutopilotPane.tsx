@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Field, INPUT_STYLE, MONO_FONT, PaneHeading, PillGroup, TextInput } from './controls'
+import { OpenRouterModelSearch } from '../OpenRouterModelSearch'
 
 export interface AutopilotPaneProps {
   provider: 'anthropic' | 'openrouter'
@@ -165,6 +166,15 @@ export function AutopilotPane(p: AutopilotPaneProps) {
             ),
           }))}
         />
+        {p.provider === 'openrouter' && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ color: '#666', fontSize: 10, marginBottom: 4 }}>
+              Or search the live OpenRouter catalogue — the quick picks above are scored
+              recommendations, not the limit of what you can choose.
+            </div>
+            <OpenRouterModelSearch value={p.model} onChange={p.onModelChange} />
+          </div>
+        )}
       </Field>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: '16px' }}>

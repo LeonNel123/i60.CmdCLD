@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { ApiClient, ApiUsage, DecideInput, DecideResult, DebugInput, DebugResult, ApiProvider } from './types'
 import { buildDecisionPrompt } from './prompts'
+import { getCatalogueRate } from '../openrouter-catalogue'
 
 // USD per 1M tokens. cacheCreation = price to write a new cached prefix.
 // cachedInput = price to read a previously-cached prefix.
@@ -38,7 +39,7 @@ const RATES: Record<string, { input: number; cachedInput: number; cacheCreation:
   'qwen/qwen3.7-flash':                { input: 0.03, cachedInput: 0.006, cacheCreation: 0.03, output: 0.13 },
   'deepseek/deepseek-v4-flash-0731':   { input: 0.14, cachedInput: 0.028, cacheCreation: 0.14, output: 0.28 },
   'deepseek/deepseek-v4-pro-0813':     { input: 1.19, cachedInput: 0.040, cacheCreation: 1.19, output: 3.56 },
-  'deepseek/deepseek-v4-flash':        { input: 0.09, cachedInput: 0.018, cacheCreation: 0.09, output: 0.18 },
+  'deepseek/deepseek-v4-flash':        { input: 0.08, cachedInput: 0.016, cacheCreation: 0.08, output: 0.16 },
   'google/gemini-3.7-flash':           { input: 0.38, cachedInput: 0.037, cacheCreation: 0.38, output: 1.88 },
   'google/gemini-3.1-flash-lite':      { input: 0.25, cachedInput: 0.025, cacheCreation: 0.25, output: 1.50 },
   'z-ai/glm-5.2':                      { input: 0.97, cachedInput: 0.193, cacheCreation: 0.97, output: 3.04 },
@@ -57,7 +58,7 @@ const RATES: Record<string, { input: number; cachedInput: number; cacheCreation:
   'openai/gpt-5':                      { input: 1.25, cachedInput: 0.125, cacheCreation: 1.25, output: 10.00 },
   'deepseek/deepseek-v3.2-exp':        { input: 0.27, cachedInput: 0.068, cacheCreation: 0.27, output: 0.41 },
   'qwen/qwen3-coder':                  { input: 0.30, cachedInput: 0.100, cacheCreation: 0.30, output: 1.00 },
-  'deepseek/deepseek-v4-pro':          { input: 1.44, cachedInput: 0.121, cacheCreation: 1.44, output: 2.88 },
+  'deepseek/deepseek-v4-pro':          { input: 0.87, cachedInput: 0.073, cacheCreation: 0.87, output: 1.74 },
 
   // ---- Conservative fallback for any unknown OpenRouter model ----
   // Kept high so the cost cap errs on pausing too early rather than too late.
@@ -65,10 +66,16 @@ const RATES: Record<string, { input: number; cachedInput: number; cacheCreation:
 }
 
 function rateFor(model: string): typeof RATES['claude-sonnet-4-6'] {
+  // Provider-prefixed IDs route through OpenRouter, where prices change without a
+  // release of this app. The live catalogue therefore outranks the table below: a stale
+  // hardcoded row bills a run at the wrong rate silently, and the cost cap is only as
+  // honest as its prices. The table stays as the offline and first-run answer.
+  if (model.includes('/')) {
+    const live = getCatalogueRate(model)
+    if (live) return live
+  }
   if (RATES[model]) return RATES[model]
-  // Provider-prefixed IDs (e.g. "moonshotai/kimi-k2-0905") that aren't in the table
-  // route through OpenRouter — use the conservative default. Plain names fall back to
-  // Sonnet 4.6's rates.
+  // An OpenRouter id the catalogue has never listed — conservative default.
   if (model.includes('/')) return RATES['openrouter-default']
   return RATES['claude-sonnet-4-6']
 }

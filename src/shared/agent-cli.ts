@@ -54,38 +54,31 @@ export const AGENT_CLI_ARGS_PLACEHOLDERS: Record<AgentCli, string> = {
   opencode: 'e.g. --auto -m openrouter/z-ai/glm-5.3-flash',
 }
 
-// One OpenRouter roster, two ways of reaching it — kept in a single list so the two
-// pickers cannot drift apart:
+// Shortcuts shown above the live OpenRouter catalogue, not the extent of what is
+// selectable. The catalogue carries ~330 tool-capable models and changes without a
+// release, so the model is expressed directly in the launch args (see
+// shared/openrouter-model.ts) rather than as a launch-option id — an option id has to
+// exist at build time, which is exactly the constraint being removed here.
 //
-//   Codex    `-p <profile>`  reads ~/.codex/<profile>.config.toml. Codex cannot express a
-//                            base URL as a flag, so a profile file is the only route to a
-//                            non-OpenAI model.
-//   OpenCode `-m openrouter/<model>`  needs no config file at all: OpenCode discovers the
-//                            provider from OPENROUTER_API_KEY in the environment.
-//
-// Selecting nothing leaves each CLI's own configured default alone.
-export interface OpenRouterModelChoice {
-  /** Codex profile name; the basename of ~/.codex/<profile>.config.toml. */
-  profile: string
-  /** OpenRouter model id, as it appears after the `openrouter/` prefix in OpenCode. */
-  model: string
+// These are pins in the picker: a short list worth one click. Nothing breaks if an entry
+// is later withdrawn from OpenRouter; it simply stops matching a catalogue row.
+export interface PinnedOpenRouterModel {
+  id: string
   label: string
 }
 
-export const OPENROUTER_MODEL_ROSTER: OpenRouterModelChoice[] = [
-  { profile: 'glm', model: 'z-ai/glm-5.3-flash', label: 'GLM Flash' },
-  { profile: 'glm-max', model: 'z-ai/glm-5.3', label: 'GLM 5.3' },
-  { profile: 'ds-flash', model: 'deepseek/deepseek-v4-flash', label: 'DeepSeek Flash' },
-  { profile: 'ds-pro', model: 'deepseek/deepseek-v4-pro', label: 'DeepSeek Pro' },
-  { profile: 'qwen-lite', model: 'qwen/qwen3.7-flash', label: 'Qwen Lite' },
-  { profile: 'qwen-flash', model: 'qwen/qwen3.8-flash', label: 'Qwen Flash' },
-  { profile: 'qwen-max', model: 'qwen/qwen3.8-max', label: 'Qwen Max' },
-  { profile: 'kimi-code', model: 'moonshotai/kimi-k2.7-code', label: 'Kimi Code' },
-  { profile: 'kimi-k3', model: 'moonshotai/kimi-k3', label: 'Kimi K3' },
-  { profile: 'minimax', model: 'minimax/minimax-m3', label: 'MiniMax M3' },
+export const PINNED_OPENROUTER_MODELS: PinnedOpenRouterModel[] = [
+  { id: 'z-ai/glm-5.3-flash', label: 'GLM Flash' },
+  { id: 'z-ai/glm-5.3', label: 'GLM 5.3' },
+  { id: 'deepseek/deepseek-v4-flash', label: 'DeepSeek Flash' },
+  { id: 'deepseek/deepseek-v4-pro', label: 'DeepSeek Pro' },
+  { id: 'qwen/qwen3.7-flash', label: 'Qwen Lite' },
+  { id: 'qwen/qwen3.8-flash', label: 'Qwen Flash' },
+  { id: 'qwen/qwen3.8-max', label: 'Qwen Max' },
+  { id: 'moonshotai/kimi-k2.7-code', label: 'Kimi Code' },
+  { id: 'moonshotai/kimi-k3', label: 'Kimi K3' },
+  { id: 'minimax/minimax-m3', label: 'MiniMax M3' },
 ]
-
-export const CODEX_MODEL_OPTION_IDS = OPENROUTER_MODEL_ROSTER.map((entry) => `codex-model-${entry.profile}`)
 
 export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup[]> = {
   claude: [
@@ -187,18 +180,6 @@ export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup
       ],
     },
     {
-      id: 'model',
-      label: 'Model',
-      mode: 'single',
-      options: OPENROUTER_MODEL_ROSTER.map((entry) => ({
-        id: `codex-model-${entry.profile}`,
-        label: entry.label,
-        args: `-p ${entry.profile}`,
-        // --oss forces the local provider, which overrides the profile's model_provider.
-        conflictsWith: ['codex-oss'],
-      })),
-    },
-    {
       id: 'sandbox',
       label: 'Sandbox',
       mode: 'single',
@@ -226,7 +207,7 @@ export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup
       options: [
         { id: 'codex-search', label: 'Search', args: '--search' },
         { id: 'codex-no-alt-screen', label: 'Inline Scrollback', args: '--no-alt-screen' },
-        { id: 'codex-oss', label: 'OSS Provider', args: '--oss', conflictsWith: CODEX_MODEL_OPTION_IDS },
+        { id: 'codex-oss', label: 'OSS Provider', args: '--oss' },
       ],
     },
     {
@@ -311,16 +292,6 @@ export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup
         // unless --continue or --session is also present.
         { id: 'opencode-fork', label: 'Fork', args: '--fork' },
       ],
-    },
-    {
-      id: 'model',
-      label: 'Model',
-      mode: 'single',
-      options: OPENROUTER_MODEL_ROSTER.map((entry) => ({
-        id: `opencode-model-${entry.profile}`,
-        label: entry.label,
-        args: `-m openrouter/${entry.model}`,
-      })),
     },
     {
       id: 'permission',
