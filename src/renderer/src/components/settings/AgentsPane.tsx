@@ -13,12 +13,14 @@ export interface AgentsPaneProps {
   onCodexArgsChange: (v: string) => void
   grokArgs: string
   onGrokArgsChange: (v: string) => void
+  opencodeArgs: string
+  onOpencodeArgsChange: (v: string) => void
   cliAvailability: Record<AgentCli, { available: boolean; path: string | null }> | null
 }
 
 export function AgentsPane(p: AgentsPaneProps) {
-  const argsByAgent: Record<AgentCli, string> = { claude: p.claudeArgs, codex: p.codexArgs, grok: p.grokArgs }
-  const setterByAgent: Record<AgentCli, (v: string) => void> = { claude: p.onClaudeArgsChange, codex: p.onCodexArgsChange, grok: p.onGrokArgsChange }
+  const argsByAgent: Record<AgentCli, string> = { claude: p.claudeArgs, codex: p.codexArgs, grok: p.grokArgs, opencode: p.opencodeArgs }
+  const setterByAgent: Record<AgentCli, (v: string) => void> = { claude: p.onClaudeArgsChange, codex: p.onCodexArgsChange, grok: p.onGrokArgsChange, opencode: p.onOpencodeArgsChange }
   const activeArgs = argsByAgent[p.agentArgsTab]
   const setActiveArgs = setterByAgent[p.agentArgsTab]
   const activeAvailability = p.cliAvailability?.[p.agentArgsTab]

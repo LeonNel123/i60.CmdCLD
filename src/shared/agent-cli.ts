@@ -1,4 +1,4 @@
-export type AgentCli = 'claude' | 'codex' | 'grok'
+export type AgentCli = 'claude' | 'codex' | 'grok' | 'opencode'
 
 export interface AgentCliLaunchOption {
   id: string
@@ -19,6 +19,7 @@ export interface AgentArgsSettings {
   claudeArgs?: string
   codexArgs?: string
   grokArgs?: string
+  opencodeArgs?: string
 }
 
 export interface AutopilotRuntimeGuardrail {
@@ -34,6 +35,7 @@ export const AGENT_CLI_LABELS: Record<AgentCli, string> = {
   claude: 'Claude',
   codex: 'Codex',
   grok: 'Grok',
+  opencode: 'OpenCode',
 }
 
 export const AGENT_CLIS = Object.keys(AGENT_CLI_LABELS) as AgentCli[]
@@ -42,13 +44,48 @@ export const AGENT_CLI_COMMANDS: Record<AgentCli, string> = {
   claude: 'claude',
   codex: 'codex',
   grok: 'grok',
+  opencode: 'opencode',
 }
 
 export const AGENT_CLI_ARGS_PLACEHOLDERS: Record<AgentCli, string> = {
   claude: 'e.g. --dangerously-skip-permissions --continue',
   codex: 'e.g. --sandbox workspace-write',
   grok: 'e.g. --permission-mode acceptEdits --continue',
+  opencode: 'e.g. --auto -m openrouter/z-ai/glm-5.3-flash',
 }
+
+// One OpenRouter roster, two ways of reaching it — kept in a single list so the two
+// pickers cannot drift apart:
+//
+//   Codex    `-p <profile>`  reads ~/.codex/<profile>.config.toml. Codex cannot express a
+//                            base URL as a flag, so a profile file is the only route to a
+//                            non-OpenAI model.
+//   OpenCode `-m openrouter/<model>`  needs no config file at all: OpenCode discovers the
+//                            provider from OPENROUTER_API_KEY in the environment.
+//
+// Selecting nothing leaves each CLI's own configured default alone.
+export interface OpenRouterModelChoice {
+  /** Codex profile name; the basename of ~/.codex/<profile>.config.toml. */
+  profile: string
+  /** OpenRouter model id, as it appears after the `openrouter/` prefix in OpenCode. */
+  model: string
+  label: string
+}
+
+export const OPENROUTER_MODEL_ROSTER: OpenRouterModelChoice[] = [
+  { profile: 'glm', model: 'z-ai/glm-5.3-flash', label: 'GLM Flash' },
+  { profile: 'glm-max', model: 'z-ai/glm-5.3', label: 'GLM 5.3' },
+  { profile: 'ds-flash', model: 'deepseek/deepseek-v4-flash', label: 'DeepSeek Flash' },
+  { profile: 'ds-pro', model: 'deepseek/deepseek-v4-pro', label: 'DeepSeek Pro' },
+  { profile: 'qwen-lite', model: 'qwen/qwen3.7-flash', label: 'Qwen Lite' },
+  { profile: 'qwen-flash', model: 'qwen/qwen3.8-flash', label: 'Qwen Flash' },
+  { profile: 'qwen-max', model: 'qwen/qwen3.8-max', label: 'Qwen Max' },
+  { profile: 'kimi-code', model: 'moonshotai/kimi-k2.7-code', label: 'Kimi Code' },
+  { profile: 'kimi-k3', model: 'moonshotai/kimi-k3', label: 'Kimi K3' },
+  { profile: 'minimax', model: 'minimax/minimax-m3', label: 'MiniMax M3' },
+]
+
+export const CODEX_MODEL_OPTION_IDS = OPENROUTER_MODEL_ROSTER.map((entry) => `codex-model-${entry.profile}`)
 
 export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup[]> = {
   claude: [
@@ -150,6 +187,18 @@ export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup
       ],
     },
     {
+      id: 'model',
+      label: 'Model',
+      mode: 'single',
+      options: OPENROUTER_MODEL_ROSTER.map((entry) => ({
+        id: `codex-model-${entry.profile}`,
+        label: entry.label,
+        args: `-p ${entry.profile}`,
+        // --oss forces the local provider, which overrides the profile's model_provider.
+        conflictsWith: ['codex-oss'],
+      })),
+    },
+    {
       id: 'sandbox',
       label: 'Sandbox',
       mode: 'single',
@@ -177,7 +226,7 @@ export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup
       options: [
         { id: 'codex-search', label: 'Search', args: '--search' },
         { id: 'codex-no-alt-screen', label: 'Inline Scrollback', args: '--no-alt-screen' },
-        { id: 'codex-oss', label: 'OSS Provider', args: '--oss' },
+        { id: 'codex-oss', label: 'OSS Provider', args: '--oss', conflictsWith: CODEX_MODEL_OPTION_IDS },
       ],
     },
     {
@@ -248,6 +297,59 @@ export const AGENT_CLI_OPTION_GROUPS: Record<AgentCli, AgentCliLaunchOptionGroup
       ],
     },
   ],
+  opencode: [
+    {
+      id: 'session',
+      // Independent toggles, not a single-select: `--continue --fork` is a legitimate
+      // pairing, and a compound option would also report `--continue` as active because
+      // getActiveAgentCliLaunchOptionIds matches token subsequences without group context.
+      label: 'Session',
+      mode: 'multi',
+      options: [
+        { id: 'opencode-continue', label: 'Continue', args: '--continue' },
+        // Branches off the resumed session rather than appending; OpenCode ignores it
+        // unless --continue or --session is also present.
+        { id: 'opencode-fork', label: 'Fork', args: '--fork' },
+      ],
+    },
+    {
+      id: 'model',
+      label: 'Model',
+      mode: 'single',
+      options: OPENROUTER_MODEL_ROSTER.map((entry) => ({
+        id: `opencode-model-${entry.profile}`,
+        label: entry.label,
+        args: `-m openrouter/${entry.model}`,
+      })),
+    },
+    {
+      id: 'permission',
+      label: 'Permission',
+      mode: 'single',
+      options: [
+        // OpenCode's own wording is "auto-approve permissions that are not explicitly
+        // denied (dangerous!)" — deny rules in opencode.json still apply.
+        { id: 'opencode-auto', label: 'Auto Approve', args: '--auto', dangerous: true },
+      ],
+    },
+    {
+      id: 'interface',
+      label: 'Interface',
+      mode: 'single',
+      options: [
+        { id: 'opencode-mini', label: 'Mini', args: '--mini' },
+      ],
+    },
+    {
+      id: 'diagnostics',
+      label: 'Diagnostics',
+      mode: 'multi',
+      options: [
+        { id: 'opencode-pure', label: 'No Plugins', args: '--pure' },
+        { id: 'opencode-print-logs', label: 'Print Logs', args: '--print-logs' },
+      ],
+    },
+  ],
 }
 
 export function normalizeAgentCli(value: unknown): AgentCli {
@@ -258,6 +360,7 @@ const AGENT_ARGS_KEYS: Record<AgentCli, keyof AgentArgsSettings> = {
   claude: 'claudeArgs',
   codex: 'codexArgs',
   grok: 'grokArgs',
+  opencode: 'opencodeArgs',
 }
 
 export function getArgsForAgent(agentCli: AgentCli, settings: AgentArgsSettings): string {
@@ -276,6 +379,8 @@ export function buildAgentLaunchCommand(agentCli: AgentCli, args: string | undef
 const RESUME_STYLE: Record<AgentCli, 'flag' | 'subcommand'> = {
   claude: 'flag',
   grok: 'flag',
+  // OpenCode takes -c/--continue like Claude, not a `resume` subcommand like Codex.
+  opencode: 'flag',
   codex: 'subcommand',
 }
 
@@ -320,6 +425,20 @@ export function getAutopilotRuntimeGuardrail(agentCli: AgentCli, args: string): 
       warnings.push('Grok permission bypass is enabled; Autopilot will still enforce app-level pause, cost, and marker guardrails.')
     }
     return { agentCli: normalized, canStart: true, reason: null, warnings }
+  }
+
+  // OpenCode runs as a normal grid session but is not wired for Autopilot. Its approval
+  // prompt offers once/always/reject rather than Grok's numbered choices, so the runtime
+  // has no permissionReplies to send, and the doer marker contract has not been verified
+  // against its TUI. Blocking here is deliberate: a half-supported orchestrator fails as a
+  // run that stalls at a checkpoint, which is far harder to diagnose than a refusal.
+  if (normalized === 'opencode') {
+    return {
+      agentCli: normalized,
+      canStart: false,
+      reason: 'Autopilot does not support OpenCode yet. Use Claude, Codex, or Grok for Autopilot runs; OpenCode is available for normal sessions.',
+      warnings: [],
+    }
   }
 
   if (has('resume --last')) {
@@ -410,6 +529,15 @@ export function getCouncilReviewerRuntimeGuardrail(agentCli: AgentCli, args: str
       warnings.push('Grok permission bypass is enabled for a reviewer session; prefer a review-only permission mode.')
     }
     return { agentCli: normalized, canStart: true, reason: null, warnings }
+  }
+
+  if (normalized === 'opencode') {
+    return {
+      agentCli: normalized,
+      canStart: false,
+      reason: 'Council reviewers do not support OpenCode yet. Use Claude, Codex, or Grok as the reviewer CLI.',
+      warnings: [],
+    }
   }
 
   if (has('resume --last')) {

@@ -8,6 +8,7 @@ export interface SavedProject {
   claudeArgs: string
   codexArgs?: string
   grokArgs?: string
+  opencodeArgs?: string
   isPlainShell: boolean
 }
 

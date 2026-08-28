@@ -14,6 +14,7 @@ export interface AppSettings {
   claudeArgs: string
   codexArgs: string
   grokArgs: string
+  opencodeArgs: string
   askBeforeLaunch: boolean
   defaultViewMode: 'grid' | 'focused'
   notifyOnIdle: boolean
@@ -54,6 +55,7 @@ const DEFAULTS: AppSettings = {
   claudeArgs: '',
   codexArgs: '',
   grokArgs: '',
+  opencodeArgs: '',
   askBeforeLaunch: false,
   defaultViewMode: 'grid',
   notifyOnIdle: false,

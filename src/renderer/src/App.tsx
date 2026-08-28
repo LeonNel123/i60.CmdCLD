@@ -55,6 +55,7 @@ interface TerminalEntry {
   claudeArgs?: string
   codexArgs?: string
   grokArgs?: string
+  opencodeArgs?: string
   isPlainShell?: boolean
   // Admin shell via elevation bridge. Deliberately not persisted to the
   // last-session store — restoring it would fire a UAC prompt at startup.
@@ -101,6 +102,7 @@ export default function App() {
   const [claudeArgs, setClaudeArgs] = useState('--dangerously-skip-permissions')
   const [codexArgs, setCodexArgs] = useState('')
   const [grokArgs, setGrokArgs] = useState('')
+  const [opencodeArgs, setOpencodeArgs] = useState('')
   const [askBeforeLaunch, setAskBeforeLaunch] = useState(false)
   const [notifyOnIdle, setNotifyOnIdle] = useState(false)
   const [projectsRoot, setProjectsRoot] = useState('')
@@ -111,7 +113,7 @@ export default function App() {
   const [favoriteFolders, setFavoriteFolders] = useState<string[]>([])
   const [restoreSessionEnabled, setRestoreSessionEnabled] = useState(false)
   const [restoreSessionResume, setRestoreSessionResume] = useState(false)
-  const [savedSessionProjects, setSavedSessionProjects] = useState<Array<{ path: string; agentCli?: AgentCli; claudeArgs: string; codexArgs?: string; grokArgs?: string; isPlainShell: boolean; minimized?: boolean }>>([])
+  const [savedSessionProjects, setSavedSessionProjects] = useState<Array<{ path: string; agentCli?: AgentCli; claudeArgs: string; codexArgs?: string; grokArgs?: string; opencodeArgs?: string; isPlainShell: boolean; minimized?: boolean }>>([])
   const [welcomeDismissed, setWelcomeDismissed] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ path: string; x: number; y: number } | null>(null)
   const [quickShellMenu, setQuickShellMenu] = useState<{ x: number; y: number } | null>(null)
@@ -235,6 +237,7 @@ export default function App() {
         setClaudeArgs(settings.claudeArgs)
         setCodexArgs(settings.codexArgs ?? '')
         setGrokArgs(settings.grokArgs ?? '')
+        setOpencodeArgs(settings.opencodeArgs ?? '')
         setAskBeforeLaunch(settings.askBeforeLaunch)
         setNotifyOnIdle(settings.notifyOnIdle)
         setProjectsRoot(settings.projectsRoot)
@@ -293,6 +296,7 @@ export default function App() {
         claudeArgs: t.claudeArgs ?? '',
         codexArgs: t.codexArgs ?? '',
         grokArgs: t.grokArgs ?? '',
+        opencodeArgs: t.opencodeArgs ?? '',
         isPlainShell: t.isPlainShell ?? false,
         minimized: minimizedIds.has(t.id),
       }))
@@ -312,6 +316,7 @@ export default function App() {
         claudeArgs: t.claudeArgs ?? '',
         codexArgs: t.codexArgs ?? '',
         grokArgs: t.grokArgs ?? '',
+        opencodeArgs: t.opencodeArgs ?? '',
         isPlainShell: t.isPlainShell ?? false,
         minimized: minimizedIds.has(t.id),
       }))
@@ -383,6 +388,7 @@ export default function App() {
           claudeArgs: session.claudeArgs,
           codexArgs: session.codexArgs ?? '',
           grokArgs: session.grokArgs ?? '',
+          opencodeArgs: session.opencodeArgs ?? '',
         }
         const next = [...prev, newEntry]
         if (prev.length === 0 && defaultViewMode === 'focused') {
@@ -408,6 +414,7 @@ export default function App() {
       claudeArgs: normalizedAgent === 'claude' ? args : '',
       codexArgs: normalizedAgent === 'codex' ? args : '',
       grokArgs: normalizedAgent === 'grok' ? args : '',
+      opencodeArgs: normalizedAgent === 'opencode' ? args : '',
     }
 
     const newTerminals = [...terminals, newEntry]
@@ -434,14 +441,14 @@ export default function App() {
   const startAddFolder = useCallback((folderPath: string, agentOverride?: AgentCli) => {
     const name = folderPath.split(/[\\/]/).pop() || folderPath
     const agentCli = agentOverride ?? defaultAgentCli
-    const argsByAgent = { claude: claudeArgs, codex: codexArgs, grok: grokArgs }
-    const args = getArgsForAgent(agentCli, { claudeArgs, codexArgs, grokArgs })
+    const argsByAgent = { claude: claudeArgs, codex: codexArgs, grok: grokArgs, opencode: opencodeArgs }
+    const args = getArgsForAgent(agentCli, { claudeArgs, codexArgs, grokArgs, opencodeArgs })
     if (askBeforeLaunch) {
       setPendingLaunch({ path: folderPath, name, agentCli, args, argsByAgent })
     } else {
       createTerminal(folderPath, args, agentCli)
     }
-  }, [askBeforeLaunch, claudeArgs, codexArgs, grokArgs, createTerminal, defaultAgentCli])
+  }, [askBeforeLaunch, claudeArgs, codexArgs, grokArgs, opencodeArgs, createTerminal, defaultAgentCli])
 
   // Spawn a plain shell for the same folder path as an existing terminal
   const handleSpawnShell = useCallback((folderPath: string, parentColor: string) => {
@@ -493,11 +500,13 @@ export default function App() {
       claude: stripResumeArgsForQuickLaunch('claude', claudeArgs),
       codex: stripResumeArgsForQuickLaunch('codex', codexArgs),
       grok: stripResumeArgsForQuickLaunch('grok', grokArgs),
+      opencode: stripResumeArgsForQuickLaunch('opencode', opencodeArgs),
     }
     const quickArgs = getArgsForAgent(agentCli, {
       claudeArgs: argsByAgent.claude,
       codexArgs: argsByAgent.codex,
       grokArgs: argsByAgent.grok,
+      opencodeArgs: argsByAgent.opencode,
     })
     const name = homeDir.split(/[\\/]/).pop() || homeDir
     if (askBeforeLaunch) {
@@ -505,7 +514,7 @@ export default function App() {
     } else {
       createTerminal(homeDir, quickArgs, agentCli)
     }
-  }, [askBeforeLaunch, claudeArgs, codexArgs, grokArgs, createTerminal, defaultAgentCli])
+  }, [askBeforeLaunch, claudeArgs, codexArgs, grokArgs, opencodeArgs, createTerminal, defaultAgentCli])
 
   // Open a plain shell in the user's home folder — no Claude.
   const handleQuickShell = useCallback(async () => {
@@ -614,6 +623,7 @@ export default function App() {
               claudeArgs: resume ? ensureResumeArgs('claude', p.claudeArgs) : p.claudeArgs,
               codexArgs: resume ? ensureResumeArgs('codex', p.codexArgs ?? '') : (p.codexArgs ?? ''),
               grokArgs: resume ? ensureResumeArgs('grok', p.grokArgs ?? '') : (p.grokArgs ?? ''),
+              opencodeArgs: resume ? ensureResumeArgs('opencode', p.opencodeArgs ?? '') : (p.opencodeArgs ?? ''),
             }
       })
       const next = [...prev, ...newEntries]
@@ -751,6 +761,7 @@ export default function App() {
       setClaudeArgs(s.claudeArgs)
       setCodexArgs(s.codexArgs ?? '')
       setGrokArgs(s.grokArgs ?? '')
+      setOpencodeArgs(s.opencodeArgs ?? '')
       setAskBeforeLaunch(s.askBeforeLaunch)
       setNotifyOnIdle(s.notifyOnIdle)
       setProjectsRoot(s.projectsRoot)
@@ -944,6 +955,7 @@ export default function App() {
                   claudeArgs={t.claudeArgs}
                   codexArgs={t.codexArgs}
                   grokArgs={t.grokArgs}
+                  opencodeArgs={t.opencodeArgs}
                   isPlainShell={t.isPlainShell}
                   elevated={t.elevated}
                   fontFamily={terminalFontFamily}
@@ -983,6 +995,7 @@ export default function App() {
               claudeArgs={t.claudeArgs}
               codexArgs={t.codexArgs}
               grokArgs={t.grokArgs}
+              opencodeArgs={t.opencodeArgs}
               isPlainShell={t.isPlainShell}
               elevated={t.elevated}
               fontFamily={terminalFontFamily}
@@ -1194,7 +1207,7 @@ export default function App() {
                 terminalId={t.id}
                 projectPath={t.path}
                 agentCli={normalizeAgentCli(t.agentCli)}
-                launchArgs={getArgsForAgent(normalizeAgentCli(t.agentCli), { claudeArgs: t.claudeArgs, codexArgs: t.codexArgs, grokArgs: t.grokArgs })}
+                launchArgs={getArgsForAgent(normalizeAgentCli(t.agentCli), { claudeArgs: t.claudeArgs, codexArgs: t.codexArgs, grokArgs: t.grokArgs, opencodeArgs: t.opencodeArgs })}
                 defaultCostCap={autopilotDefaults.costCap}
                 defaultMaxIterations={autopilotDefaults.maxIterations}
                 onStarted={() => {

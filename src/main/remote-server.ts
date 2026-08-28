@@ -232,7 +232,7 @@ export class RemoteServer {
     })
 
     app.post('/api/sessions', (req: any, res: any) => {
-      const { path: cwd, agentCli: agentCliRaw, claudeArgs, codexArgs, grokArgs } = req.body
+      const { path: cwd, agentCli: agentCliRaw, claudeArgs, codexArgs, grokArgs, opencodeArgs } = req.body
       if (!cwd || typeof cwd !== 'string') {
         res.status(400).json({ error: 'path is required' })
         return
@@ -254,11 +254,13 @@ export class RemoteServer {
         claude: typeof claudeArgs === 'string' ? claudeArgs : this.settings.get('claudeArgs'),
         codex: typeof codexArgs === 'string' ? codexArgs : this.settings.get('codexArgs'),
         grok: typeof grokArgs === 'string' ? grokArgs : this.settings.get('grokArgs'),
+        opencode: typeof opencodeArgs === 'string' ? opencodeArgs : this.settings.get('opencodeArgs'),
       }
       const args = getArgsForAgent(agentCli, {
         claudeArgs: argsByAgent.claude,
         codexArgs: argsByAgent.codex,
         grokArgs: argsByAgent.grok,
+        opencodeArgs: argsByAgent.opencode,
       })
       const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli, launchArgs: args }
       const wc = this.getWebContents()
@@ -294,6 +296,7 @@ export class RemoteServer {
             claudeArgs: argsByAgent.claude,
             codexArgs: argsByAgent.codex,
             grokArgs: argsByAgent.grok,
+        opencodeArgs: argsByAgent.opencode,
           })
         }
       } catch {}
@@ -360,6 +363,7 @@ export class RemoteServer {
         claudeArgs: all.claudeArgs,
         codexArgs: all.codexArgs,
         grokArgs: all.grokArgs,
+        opencodeArgs: all.opencodeArgs,
         cliAvailability: detectAgentCliAvailability(),
       })
     })

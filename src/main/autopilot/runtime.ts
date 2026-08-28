@@ -27,6 +27,16 @@ const RUNTIMES: Record<AgentCli, AutopilotRuntime> = {
     clearCommand: '/clear',
     permissionReplies: { allow: '1\r', deny: '3\r' },
   },
+  // Present so the Record stays exhaustive, but Autopilot refuses to start on OpenCode —
+  // see getAutopilotRuntimeGuardrail. `/clear` is real (an alias of /new), while
+  // permissionReplies is null because OpenCode offers once/always/reject rather than
+  // Grok's numbered choices; there is no keystroke to send blind.
+  opencode: {
+    agentCli: 'opencode',
+    label: 'OpenCode CLI',
+    clearCommand: '/clear',
+    permissionReplies: null,
+  },
 }
 
 export function getAutopilotRuntime(agentCli: AgentCli = 'claude'): AutopilotRuntime {

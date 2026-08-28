@@ -78,6 +78,31 @@ describe('agent CLI utilities', () => {
     ])
   })
 
+  it('selects one Codex model profile at a time and keeps it clear of --oss', () => {
+    expect(AGENT_CLI_OPTION_GROUPS.codex.some((g) => g.id === 'model')).toBe(true)
+
+    let args = applyAgentCliLaunchOption('codex', '--sandbox workspace-write', 'codex-model-glm')
+    expect(args).toBe('--sandbox workspace-write -p glm')
+
+    // Single-select: picking another profile replaces rather than stacks. `-p glm` must not
+    // be treated as a prefix match of `-p glm-max`, or both would linger.
+    args = applyAgentCliLaunchOption('codex', args, 'codex-model-glm-max')
+    expect(args).toBe('--sandbox workspace-write -p glm-max')
+    expect(getActiveAgentCliLaunchOptionIds('codex', args)).toContain('codex-model-glm-max')
+    expect(getActiveAgentCliLaunchOptionIds('codex', args)).not.toContain('codex-model-glm')
+
+    // The profile sets model_provider; --oss overrides it. Conflict resolves both ways.
+    args = applyAgentCliLaunchOption('codex', args, 'codex-oss')
+    expect(args).toBe('--sandbox workspace-write --oss')
+    args = applyAgentCliLaunchOption('codex', args, 'codex-model-ds-pro')
+    expect(args).toBe('--sandbox workspace-write -p ds-pro')
+  })
+
+  it('keeps the Codex model profile through resume and quick-launch rewrites', () => {
+    expect(ensureResumeArgs('codex', '-p glm')).toBe('resume --last -p glm')
+    expect(stripResumeArgsForQuickLaunch('codex', 'resume --last -p glm')).toBe('-p glm')
+  })
+
   it('treats the Codex dangerous bypass as mutually exclusive with sandbox and approval flags', () => {
     let args = '--sandbox workspace-write --ask-for-approval never --search'
     args = applyAgentCliLaunchOption('codex', args, 'codex-dangerous-bypass')
@@ -218,7 +243,7 @@ describe('getCouncilReviewerRuntimeGuardrail', () => {
 
 describe('grok agent CLI', () => {
   it('is a first-class CLI in the shared tables', () => {
-    expect(AGENT_CLIS).toEqual(['claude', 'codex', 'grok'])
+    expect(AGENT_CLIS).toEqual(['claude', 'codex', 'grok', 'opencode'])
     expect(AGENT_CLI_LABELS.grok).toBe('Grok')
     expect(AGENT_CLI_COMMANDS.grok).toBe('grok')
   })
@@ -308,5 +333,76 @@ describe('grok agent CLI', () => {
   it('keeps codex council-reviewer guardrails codex-only after adding grok', () => {
     expect(getCouncilReviewerRuntimeGuardrail('grok', '').warnings).toEqual([])
     expect(getCouncilReviewerRuntimeGuardrail('codex', '').warnings.length).toBeGreaterThan(0)
+  })
+})
+
+describe('opencode agent CLI', () => {
+  it('is a first-class CLI in the shared tables', () => {
+    expect(AGENT_CLI_LABELS.opencode).toBe('OpenCode')
+    expect(AGENT_CLI_COMMANDS.opencode).toBe('opencode')
+    expect(normalizeAgentCli('opencode')).toBe('opencode')
+  })
+
+  it('resolves opencode launch args from opencodeArgs only', () => {
+    expect(getArgsForAgent('opencode', { claudeArgs: '--continue', opencodeArgs: '--auto' })).toBe('--auto')
+    expect(getArgsForAgent('opencode', { claudeArgs: '--continue' })).toBe('')
+  })
+
+  it('builds the opencode launch command', () => {
+    expect(buildAgentLaunchCommand('opencode', '')).toBe('opencode\r')
+    expect(buildAgentLaunchCommand('opencode', ' --auto ')).toBe('opencode --auto\r')
+  })
+
+  // OpenCode takes -c/--continue like Claude. Treating it codex-style would emit
+  // `resume --last`, which OpenCode parses as a project path and would silently start
+  // in the wrong directory rather than erroring.
+  it('treats opencode resume args claude-style, never codex-style', () => {
+    expect(ensureResumeArgs('opencode', '')).toBe('--continue')
+    expect(ensureResumeArgs('opencode', '--auto')).toBe('--auto --continue')
+    expect(ensureResumeArgs('opencode', '-c')).toBe('-c')
+    expect(stripResumeArgsForQuickLaunch('opencode', '--continue --auto')).toBe('--auto')
+    expect(ensureResumeArgs('opencode', '')).not.toContain('resume')
+  })
+
+  it('selects one OpenRouter model at a time via -m', () => {
+    let args = applyAgentCliLaunchOption('opencode', '--auto', 'opencode-model-glm')
+    expect(args).toBe('--auto -m openrouter/z-ai/glm-5.3-flash')
+
+    args = applyAgentCliLaunchOption('opencode', args, 'opencode-model-ds-pro')
+    expect(args).toBe('--auto -m openrouter/deepseek/deepseek-v4-pro')
+    expect(getActiveAgentCliLaunchOptionIds('opencode', args)).not.toContain('opencode-model-glm')
+  })
+
+  // Continue and Fork are independent toggles: `--continue --fork` is valid, and a
+  // compound single-select option would report both as active because option matching
+  // is a token-subsequence test with no group context.
+  it('allows continue and fork together', () => {
+    let args = applyAgentCliLaunchOption('opencode', '', 'opencode-continue')
+    args = applyAgentCliLaunchOption('opencode', args, 'opencode-fork')
+    expect(args).toBe('--continue --fork')
+    const active = getActiveAgentCliLaunchOptionIds('opencode', args)
+    expect(active).toContain('opencode-continue')
+    expect(active).toContain('opencode-fork')
+  })
+
+  it('blocks Autopilot and Council reviewers with an actionable reason', () => {
+    const autopilot = getAutopilotRuntimeGuardrail('opencode', '--auto')
+    expect(autopilot.canStart).toBe(false)
+    expect(autopilot.reason).toContain('OpenCode')
+
+    const council = getCouncilReviewerRuntimeGuardrail('opencode', '--auto')
+    expect(council.canStart).toBe(false)
+    expect(council.reason).toContain('OpenCode')
+  })
+
+  // The two pickers are generated from one roster; if they ever diverge, a model would
+  // be reachable in Codex but not OpenCode (or vice versa) with no compile error.
+  it('drives the Codex and OpenCode model pickers from the same roster', () => {
+    const codex = AGENT_CLI_OPTION_GROUPS.codex.find((g) => g.id === 'model')!.options
+    const opencode = AGENT_CLI_OPTION_GROUPS.opencode.find((g) => g.id === 'model')!.options
+    expect(opencode.length).toBe(codex.length)
+    expect(opencode.map((o) => o.label)).toEqual(codex.map((o) => o.label))
+    expect(codex.every((o) => o.args.startsWith('-p '))).toBe(true)
+    expect(opencode.every((o) => o.args.startsWith('-m openrouter/'))).toBe(true)
   })
 })

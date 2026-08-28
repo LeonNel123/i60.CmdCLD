@@ -13,6 +13,7 @@
     claudeArgs: '',
     codexArgs: '',
     grokArgs: '',
+    opencodeArgs: '',
     cliAvailability: null,
   }
   var selectedAgentCli = 'claude'
@@ -35,7 +36,7 @@
   var agentCliStatus = document.getElementById('agent-cli-status')
 
   function normalizeAgentCli(value) {
-    return value === 'codex' || value === 'grok' ? value : 'claude'
+    return value === 'codex' || value === 'grok' || value === 'opencode' ? value : 'claude'
   }
 
   function refreshRemoteSettings() {
@@ -46,6 +47,7 @@
         remoteSettings.claudeArgs = s.claudeArgs || ''
         remoteSettings.codexArgs = s.codexArgs || ''
         remoteSettings.grokArgs = s.grokArgs || ''
+        remoteSettings.opencodeArgs = s.opencodeArgs || ''
         remoteSettings.cliAvailability = s.cliAvailability || null
         selectedAgentCli = remoteSettings.defaultAgentCli
         renderAgentCliOptions()
@@ -287,6 +289,7 @@
         claudeArgs: remoteSettings.claudeArgs,
         codexArgs: remoteSettings.codexArgs,
         grokArgs: remoteSettings.grokArgs,
+        opencodeArgs: remoteSettings.opencodeArgs,
       }),
     }).then(function (r) {
       if (!r.ok) {
