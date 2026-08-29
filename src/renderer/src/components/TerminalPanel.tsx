@@ -777,7 +777,11 @@ export function TerminalPanel({
                 shell
               </span>
             )}
-            {!isPlainShell && agentCli !== 'claude' && (
+            {/* Every CLI is labelled, Claude included. The label used to be suppressed
+                for Claude as the default — redundant when it was the only alternative to
+                a plain shell. With four CLIs in the grid, an unlabelled tile is ambiguous
+                rather than implied. */}
+            {!isPlainShell && (
               <span style={{ color: '#888', fontSize: '10px', marginLeft: '6px', fontWeight: 400 }}>
                 {AGENT_CLI_LABELS[agentCli]}
               </span>
