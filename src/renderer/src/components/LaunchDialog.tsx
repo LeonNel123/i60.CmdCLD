@@ -53,9 +53,18 @@ export function LaunchDialog({ folderName, defaultAgentCli, defaultArgs, default
           border: '1px solid #333',
         }}
       >
-        <h3 style={{ color: '#e0e0e0', margin: '0 0 14px 0', fontSize: '14px', fontFamily: 'inherit', fontWeight: 600 }}>
-          Launch Agent in {folderName}
+        {/* The CLI is named in the heading rather than only implied by a selected pill:
+            this dialog is the last point at which a wrong default can be caught before a
+            session starts in the wrong agent. */}
+        <h3 style={{ color: '#e0e0e0', margin: '0 0 4px 0', fontSize: '14px', fontFamily: 'inherit', fontWeight: 600 }}>
+          Launch <span style={{ color: '#22c55e' }}>{AGENT_CLI_LABELS[agentCli]}</span> in {folderName}
         </h3>
+        <div style={{
+          color: '#666', fontSize: '10px', fontFamily: 'ui-monospace, monospace',
+          margin: '0 0 14px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {AGENT_CLI_COMMANDS[agentCli]}{args.trim() ? ` ${args.trim()}` : ''}
+        </div>
 
         <div style={{ marginBottom: '12px' }}>
           <label style={{ color: '#888', fontSize: '11px', fontFamily: 'inherit', display: 'block', marginBottom: '6px' }}>

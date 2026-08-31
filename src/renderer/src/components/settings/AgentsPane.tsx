@@ -29,16 +29,25 @@ export function AgentsPane(p: AgentsPaneProps) {
     <div>
       <PaneHeading>Agents</PaneHeading>
 
-      <Field label="Default Agent CLI">
+      {/* These two rows look alike and sit together, so the top one used to read as a
+          tab strip — it also moved the args tab below, which reinforced that. Selecting
+          it changes which CLI every new project opens with, so it no longer has that
+          side effect and says what it does. */}
+      <Field
+        label="Default Agent CLI"
+        hint="Used for folders you have not opened before. Projects you have already opened keep the CLI they last used."
+      >
         <PillGroup
           value={p.defaultAgentCli}
-          onChange={(cli) => { p.onDefaultAgentCliChange(cli); p.onAgentArgsTabChange(cli) }}
+          onChange={p.onDefaultAgentCliChange}
           options={AGENT_CLIS.map((cli) => ({
             value: cli,
             label: `${AGENT_CLI_LABELS[cli]} ${p.cliAvailability ? (p.cliAvailability[cli]?.available ? 'available' : 'missing') : ''}`,
           }))}
         />
       </Field>
+
+      <div style={{ borderTop: '1px solid #2a2a2a', margin: '4px 0 14px' }} />
 
       <Field
         label="Edit Launch Arguments For"

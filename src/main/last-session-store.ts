@@ -10,6 +10,13 @@ export interface SavedProject {
   grokArgs?: string
   opencodeArgs?: string
   isPlainShell: boolean
+  /**
+   * Tucked into the taskbar when the session was saved; restored the same way. Declared
+   * here even though this store only passes it through: read() casts the parsed JSON
+   * wholesale, so an undeclared field survives by luck rather than by contract, and would
+   * disappear the moment anything here validated or rebuilt the object field by field.
+   */
+  minimized?: boolean
 }
 
 export interface SavedSession {

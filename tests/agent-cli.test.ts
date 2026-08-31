@@ -7,6 +7,7 @@ import {
   applyAgentCliLaunchOption,
   buildAgentLaunchCommand,
   getArgsForAgent,
+  resolveProjectLaunch,
   getActiveAgentCliLaunchOptionIds,
   getAutopilotRuntimeGuardrail,
   getCouncilReviewerRuntimeGuardrail,
@@ -361,4 +362,67 @@ describe('opencode agent CLI', () => {
     expect(council.reason).toContain('OpenCode')
   })
 
+})
+
+describe('per-project launch resolution', () => {
+  const argsSettings = {
+    claudeArgs: '--continue',
+    codexArgs: '--sandbox workspace-write',
+    grokArgs: '--effort high',
+    opencodeArgs: '-m openrouter/z-ai/glm-5.3-flash',
+  }
+
+  it('uses the global default only for a folder with no history', () => {
+    const r = resolveProjectLaunch({ defaultAgentCli: 'opencode', argsSettings })
+    expect(r.agentCli).toBe('opencode')
+    expect(r.args).toBe('-m openrouter/z-ai/glm-5.3-flash')
+  })
+
+  // The reported bug: changing the global default retargeted every favourite, including
+  // projects the new CLI had never run in. What a folder last used now outranks it.
+  it('prefers what the folder last used over a changed global default', () => {
+    const r = resolveProjectLaunch({
+      remembered: { agentCli: 'claude', args: '--dangerously-skip-permissions --continue' },
+      defaultAgentCli: 'opencode',
+      argsSettings,
+    })
+    expect(r.agentCli).toBe('claude')
+    expect(r.args).toBe('--dangerously-skip-permissions --continue')
+  })
+
+  it('lets an explicit Open with X beat both', () => {
+    const r = resolveProjectLaunch({
+      remembered: { agentCli: 'claude', args: '--dangerously-skip-permissions' },
+      agentOverride: 'codex',
+      defaultAgentCli: 'opencode',
+      argsSettings,
+    })
+    expect(r.agentCli).toBe('codex')
+    // Global args for the chosen CLI, never the remembered ones from a different CLI.
+    expect(r.args).toBe('--sandbox workspace-write')
+  })
+
+  // Remembered args belong to the remembered CLI. Codex's sandbox flags handed to Claude
+  // would fail at the prompt, so they must not survive a CLI change.
+  it('never carries remembered args across a CLI change', () => {
+    const r = resolveProjectLaunch({
+      remembered: { agentCli: 'codex', args: '--sandbox workspace-write --ask-for-approval never' },
+      agentOverride: 'claude',
+      defaultAgentCli: 'claude',
+      argsSettings,
+    })
+    expect(r.agentCli).toBe('claude')
+    expect(r.args).toBe('--continue')
+    expect(r.args).not.toContain('sandbox')
+  })
+
+  it('falls back to global args when the remembered entry has none', () => {
+    const r = resolveProjectLaunch({
+      remembered: { agentCli: 'grok', args: '' },
+      defaultAgentCli: 'claude',
+      argsSettings,
+    })
+    expect(r.agentCli).toBe('grok')
+    expect(r.args).toBe('--effort high')
+  })
 })

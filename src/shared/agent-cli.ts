@@ -338,6 +338,38 @@ export function getArgsForAgent(agentCli: AgentCli, settings: AgentArgsSettings)
   return settings[AGENT_ARGS_KEYS[agentCli]] || ''
 }
 
+/** What a folder was last opened with, as stored in the `projectAgents` setting. */
+export interface RememberedProjectAgent {
+  agentCli: AgentCli
+  args: string
+}
+
+/**
+ * Which CLI and args to open a folder with.
+ *
+ * Precedence: an explicit "Open with X" beats what the folder last used, which beats the
+ * global default. The default therefore only decides folders never opened before —
+ * changing it must not retarget projects that already have a history, which is the bug
+ * this resolves: one global setting silently redirected every favourite at once.
+ *
+ * Remembered args are only reused for the remembered CLI. They are that CLI's flags, and
+ * handing Codex's `--sandbox workspace-write` to Claude would fail at the prompt.
+ */
+export function resolveProjectLaunch(input: {
+  remembered?: RememberedProjectAgent
+  agentOverride?: AgentCli
+  defaultAgentCli: AgentCli
+  argsSettings: AgentArgsSettings
+}): { agentCli: AgentCli; args: string } {
+  const { remembered, agentOverride, defaultAgentCli, argsSettings } = input
+  const agentCli = agentOverride ?? remembered?.agentCli ?? defaultAgentCli
+  const reuseRemembered = !agentOverride && remembered?.agentCli === agentCli && !!remembered.args
+  return {
+    agentCli,
+    args: reuseRemembered ? remembered!.args : getArgsForAgent(agentCli, argsSettings),
+  }
+}
+
 export function buildAgentLaunchCommand(agentCli: AgentCli, args: string | undefined): string {
   const command = AGENT_CLI_COMMANDS[agentCli]
   const trimmed = (args || '').trim()

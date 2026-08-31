@@ -10,6 +10,12 @@ export interface AppSettings {
   editor: string
   /** Per-project editor id overrides, keyed by absolute folder path. */
   editorByProject: Record<string, string>
+  /**
+   * Last agent CLI and launch args used per folder. `defaultAgentCli` then only applies
+   * to folders never opened before, so changing the global default cannot silently
+   * retarget every existing project.
+   */
+  projectAgents: Record<string, { agentCli: AgentCli; args: string }>
   defaultAgentCli: AgentCli
   claudeArgs: string
   codexArgs: string
@@ -51,6 +57,7 @@ export interface AppSettings {
 const DEFAULTS: AppSettings = {
   editor: '',
   editorByProject: {},
+  projectAgents: {},
   defaultAgentCli: DEFAULT_AGENT_CLI,
   claudeArgs: '',
   codexArgs: '',

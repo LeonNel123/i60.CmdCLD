@@ -117,7 +117,7 @@ contextBridge.exposeInMainWorld('api', {
   openrouterModels: (refresh?: boolean): Promise<{ fetchedAt: number; models: Array<{ id: string; name: string; contextLength: number; supportsTools: boolean; rate: { input: number; cachedInput: number; cacheCreation: number; output: number } }> }> =>
     ipcRenderer.invoke('openrouter:models', refresh),
 
-  settingsGetAll: (): Promise<{ editor: string; defaultAgentCli: 'claude' | 'codex' | 'grok' | 'opencode'; claudeArgs: string; codexArgs: string; grokArgs: string; opencodeArgs: string; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; favoriteFolders: string[]; terminalFontFamily: string; terminalFontSize: number; appFontFamily: string; uiScalePct: number }> =>
+  settingsGetAll: (): Promise<{ editor: string; defaultAgentCli: 'claude' | 'codex' | 'grok' | 'opencode'; claudeArgs: string; codexArgs: string; grokArgs: string; opencodeArgs: string; projectAgents: Record<string, { agentCli: 'claude' | 'codex' | 'grok' | 'opencode'; args: string }>; askBeforeLaunch: boolean; defaultViewMode: 'grid' | 'focused'; notifyOnIdle: boolean; projectsRoot: string; remoteAccess: boolean; remotePort: number; favoriteFolders: string[]; terminalFontFamily: string; terminalFontSize: number; appFontFamily: string; uiScalePct: number }> =>
     ipcRenderer.invoke('settings:getAll'),
 
   settingsSet: (key: string, value: unknown): Promise<void> =>
