@@ -741,8 +741,14 @@ export default function App() {
   }, [closingId, terminals])
 
   const handleLayoutChange = useCallback((layout: Layout[]) => {
+    // The grid stays mounted in focused mode now, but every item is CSS-overridden to
+    // fill the area there, so the layout RGL computes describes nothing on screen.
+    // Accepting it would let time spent in focused mode quietly rearrange the grid you
+    // come back to. Drag and resize are already disabled there; this covers the layout
+    // events RGL raises on its own (mount, width changes, compaction).
+    if (viewMode.type === 'focused') return
     setLayouts(layout)
-  }, [])
+  }, [viewMode])
 
   const handleMinimize = useCallback((id: string) => {
     if (minimizedIds.has(id)) return
@@ -970,9 +976,14 @@ export default function App() {
           </div>
         )}
 
-        {/* Grid mode */}
-        {visibleTerminals.length > 0 && !isFocused && (
+        {/* Grid and focused render from the SAME tree — the difference is CSS, not
+            JSX. Two branches meant React unmounted every tile on each toggle and
+            rebuilt it: new xterm, new WebGL context, and a replayed scrollback of up
+            to 200 KB written in one go. Keeping the tree stable removes all of that
+            from the switch, and keeps the renderer's pty bookkeeping intact with it. */}
+        {visibleTerminals.length > 0 && (
           <ResponsiveGridLayout
+            className={isFocused ? 'cmdcld-focused' : undefined}
             layouts={{ lg: layouts }}
             breakpoints={{ lg: 0 }}
             cols={{ lg: 12 }}
@@ -981,9 +992,15 @@ export default function App() {
             onLayoutChange={handleLayoutChange}
             compactType="vertical"
             margin={[2, 2]}
+            // Layout is meaningless while one tile fills the area, and a drag there
+            // would write a bogus layout back through onLayoutChange.
+            isDraggable={!isFocused}
+            isResizable={!isFocused}
           >
             {visibleTerminals.map((t) => (
-              <div key={t.id}>
+              // RGL merges a child's className into its own, which is what lets the
+              // focused item be singled out without leaving the grid.
+              <div key={t.id} className={isFocused && viewMode.terminalId === t.id ? 'cmdcld-focused-item' : undefined}>
                 <TerminalPanel
                   id={t.id}
                   folderPath={t.path}
@@ -1001,7 +1018,7 @@ export default function App() {
                   onClose={() => handleRequestClose(t.id)}
                   onMinimize={() => handleMinimize(t.id)}
                   onToggleMaximize={() => handleSelectTerminal(t.id)}
-                  isMaximized={false}
+                  isMaximized={isFocused && viewMode.terminalId === t.id}
                   onSpawnShell={() => handleSpawnShell(t.path, t.color)}
                   onOpenMarkdown={setMarkdownFile}
                   onStartAutopilot={() => setAutopilotKickoffFor(t.id)}
@@ -1014,43 +1031,6 @@ export default function App() {
           </ResponsiveGridLayout>
         )}
 
-        {/* Focused mode — visible terminals rendered, only focused one shown */}
-        {isFocused && visibleTerminals.map((t) => (
-          <div
-            key={t.id}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: viewMode.terminalId === t.id ? 'block' : 'none',
-            }}
-          >
-            <TerminalPanel
-              id={t.id}
-              folderPath={t.path}
-              folderName={t.name}
-              color={t.color}
-              agentCli={t.agentCli}
-              claudeArgs={t.claudeArgs}
-              codexArgs={t.codexArgs}
-              grokArgs={t.grokArgs}
-              opencodeArgs={t.opencodeArgs}
-              isPlainShell={t.isPlainShell}
-              elevated={t.elevated}
-              fontFamily={terminalFontFamily}
-              fontSize={terminalFontSize}
-              onClose={() => handleRequestClose(t.id)}
-              onMinimize={() => handleMinimize(t.id)}
-              onToggleMaximize={() => handleSelectTerminal(t.id)}
-              isMaximized={viewMode.terminalId === t.id}
-              onSpawnShell={() => handleSpawnShell(t.path, t.color)}
-              onOpenMarkdown={setMarkdownFile}
-              onStartAutopilot={() => setAutopilotKickoffFor(t.id)}
-              isAutopilotRunning={autopilotRunning.has(t.id)}
-              onShowAutopilotPanel={() => setAutopilotPanelFor(t.id)}
-              onNotify={showToast}
-            />
-          </div>
-        ))}
         </ErrorBoundary>
       </div>
       <TaskBar

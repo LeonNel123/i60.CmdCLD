@@ -145,6 +145,30 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.4; }
     }
+
+    /* Focused mode.
+       Grid and focused used to be two separate JSX branches, so every toggle
+       unmounted each tile and rebuilt it: a new xterm, a new WebGL context, and a
+       replay of up to 200 KB of scrollback through one blocking write. That storm
+       is also what desynchronised the renderer's pty bookkeeping.
+
+       Both modes now render from the same tree and differ only here, so terminals
+       are never torn down. react-grid-layout positions items with inline
+       transform/width/height, which is why these overrides need !important — they
+       are neutralising inline styles, not competing with another rule. */
+    .cmdcld-focused { height: 100% !important; }
+    .cmdcld-focused .react-grid-item {
+      position: absolute !important;
+      transform: none !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      /* RGL animates position changes; without this the switch visibly slides. */
+      transition: none !important;
+    }
+    .cmdcld-focused .react-grid-item:not(.cmdcld-focused-item) { display: none !important; }
+    /* Drag/resize affordances are meaningless when one tile fills the area. */
+    .cmdcld-focused .react-resizable-handle { display: none !important; }
   </style>
 </head>
 <body>
