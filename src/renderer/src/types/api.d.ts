@@ -177,6 +177,9 @@ export interface ElectronAPI {
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>
   killTerminal: (id: string) => Promise<void>
   getScrollback: (id: string) => Promise<string>
+  /** Whether main still has a live pty for this id. Authoritative; the renderer's own
+   *  activePtys set is only a cache and misses ptys created main-side. */
+  terminalExists: (id: string) => Promise<boolean>
   onTerminalData: (id: string, callback: (data: string) => void) => () => void
   onTerminalExit: (id: string, callback: (exitCode: number) => void) => () => void
   onTerminalResize: (id: string, callback: (size: { cols: number; rows: number }) => void) => () => void

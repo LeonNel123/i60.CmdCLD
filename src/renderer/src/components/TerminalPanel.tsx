@@ -375,6 +375,10 @@ export function TerminalPanel({
     searchAddonRef.current = searchAddon
 
     let claudeLaunched = false
+    // The launch write is deferred, so an unmount inside that window must cancel it —
+    // otherwise it lands in whatever occupies the pty by the time it fires.
+    let launchTimer: ReturnType<typeof setTimeout> | undefined
+    let disposed = false
 
     const removeData = window.api.onTerminalData(id, (data) => {
       // Sniff bracketed-paste mode toggles. The escape sequences are 7 bytes
@@ -540,34 +544,63 @@ export function TerminalPanel({
 
     // Fit and create PTY after layout is ready
     requestAnimationFrame(() => {
+      // The frame is not cancellable from cleanup, so it can land after the terminal has
+      // been disposed — fit() then reaches through a torn-down element and throws inside
+      // a rAF callback, where nothing catches it.
+      if (disposed) return
       fitAddon.fit()
 
-      if (!activePtys.has(id)) {
-        // First mount — create PTY and launch the selected agent CLI.
-        activePtys.add(id)
-        const launchArgs = { claude: claudeArgs, codex: codexArgs, grok: grokArgs, opencode: opencodeArgs }[agentCli]
-        window.api.createTerminal(id, folderPath, agentCli, launchArgs, elevated).catch((err) => {
-          // Surface the real reason — a bare failure banner is undebuggable.
-          const raw = err instanceof Error ? err.message : String(err)
-          const msg = raw.replace(/^Error invoking remote method 'pty:create': (Error: )?/, '')
-          term.write(`\r\n\x1b[31m[Failed to create terminal]\x1b[0m\r\n${msg}\r\n`)
-          activePtys.delete(id)
-        })
-
-        if (!isPlainShell) {
-          const launchCmd = buildAgentLaunchCommand(agentCli, launchArgs)
-          setTimeout(() => {
-            window.api.writeTerminal(id, launchCmd)
-            claudeLaunched = true
-          }, 1000)
+      // `activePtys` is renderer-module state while PTY lifetime belongs to main, so it
+      // is a cache, not the truth. Anything that creates a pty main-side (a remote
+      // session, an Autopilot reviewer terminal) or resets this module leaves the two
+      // disagreeing, and the disagreement used to be resolved the dangerous way: by
+      // relaunching into a session that was already running. Ask main when the local
+      // cache says "new".
+      void (async () => {
+        let alreadyRunning = activePtys.has(id)
+        if (!alreadyRunning) {
+          try {
+            alreadyRunning = await window.api.terminalExists(id)
+          } catch {
+            // Main unreachable — fall through to the create path. That is safe only
+            // because the launch write below is chained to a successful create: if the
+            // pty does exist, pty:create is refused and nothing is typed into it.
+          }
         }
-      } else {
-        // Remount — PTY exists, replay scrollback to restore terminal content
-        window.api.getScrollback(id).then((data) => {
-          if (data) term.write(data)
-        }).catch(() => {})
-        claudeLaunched = true
-      }
+        if (disposed) return
+
+        if (!alreadyRunning) {
+          // First mount — create PTY and launch the selected agent CLI.
+          activePtys.add(id)
+          const launchArgs = { claude: claudeArgs, codex: codexArgs, grok: grokArgs, opencode: opencodeArgs }[agentCli]
+          window.api.createTerminal(id, folderPath, agentCli, launchArgs, elevated).then(() => {
+            if (isPlainShell || disposed) return
+            // Chained to a *successful* create, never fired on a bare timer. When
+            // pty:create is refused it is because the id is already in use — that is,
+            // precisely when an agent is running in it — so an unconditional write typed
+            // the launch command into the live session as a chat message.
+            const launchCmd = buildAgentLaunchCommand(agentCli, launchArgs)
+            launchTimer = setTimeout(() => {
+              window.api.writeTerminal(id, launchCmd)
+              claudeLaunched = true
+            }, 1000)
+          }).catch((err) => {
+            // Surface the real reason — a bare failure banner is undebuggable.
+            const raw = err instanceof Error ? err.message : String(err)
+            const msg = raw.replace(/^Error invoking remote method 'pty:create': (Error: )?/, '')
+            term.write(`\r\n\x1b[31m[Failed to create terminal]\x1b[0m\r\n${msg}\r\n`)
+            activePtys.delete(id)
+          })
+        } else {
+          // Remount — PTY exists, replay scrollback to restore terminal content. Re-seed
+          // the cache so a renderer that had lost this id stops re-asking main.
+          activePtys.add(id)
+          window.api.getScrollback(id).then((data) => {
+            if (!disposed && data) term.write(data)
+          }).catch(() => {})
+          claudeLaunched = true
+        }
+      })()
     })
 
     // Debounced resize observer — fires only when the container's actual
@@ -584,6 +617,8 @@ export function TerminalPanel({
     resizeObserver.observe(termRef.current)
 
     return () => {
+      disposed = true
+      clearTimeout(launchTimer)
       clearTimeout(resizeTimer)
       resizeObserver.disconnect()
       if (cleanupRef.current) {

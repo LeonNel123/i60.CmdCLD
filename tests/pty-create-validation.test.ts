@@ -41,4 +41,16 @@ describe('validatePtyCreate', () => {
   it('rejects a blank cwd', () => {
     expect(validatePtyCreate({ id: 't1', cwd: '', hasWindow: true, idInUse: false })).toBeTruthy()
   })
+
+  // This refusal is load-bearing beyond its error message. TerminalPanel chains the
+  // agent launch write to a *successful* create, so 'already exists' is what stops the
+  // launch command being typed into a session that is already running — the injection
+  // bug where 'claude --dangerously-skip-permissions --continue' arrived as a chat
+  // message in a live Claude tile.
+  it('refuses an id already in use, whatever else is valid', () => {
+    const err = validatePtyCreate({ id: 't1', cwd: TMP, hasWindow: true, idInUse: true })
+    expect(err).toBeTruthy()
+    expect(err).toContain('already exists')
+    expect(err).toContain('t1')
+  })
 })

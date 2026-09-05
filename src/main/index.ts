@@ -460,6 +460,12 @@ function getWindowIdFromEvent(event: Electron.IpcMainInvokeEvent): string | unde
 }
 
 // PTY IPC handlers
+// Whether a pty is live, asked by a renderer whose own bookkeeping may be stale — it is
+// module state, and ptys created main-side (remote sessions, reviewer terminals) never
+// appear in it. Answering this before a mount decides create-vs-replay is what stops a
+// relaunch being fired into a session that is already running.
+ipcMain.handle('pty:exists', (_event, id: string) => ptyManager.has(id))
+
 ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: AgentCli, launchArgsRaw?: string, elevatedRaw?: unknown) => {
   const windowId = getWindowIdFromEvent(event)
   const wc = windowId ? registry.getWebContents(windowId) : null
