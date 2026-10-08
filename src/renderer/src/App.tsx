@@ -411,6 +411,16 @@ export default function App() {
     return () => { cancelled = true }
   }, [showCloseAll, showCloseWindow, terminals])
 
+  // While a browser runs the desktop layout page (/desktop), the person is at
+  // that device: this window mirrors PTY sizes instead of fitting and claiming
+  // them, or every tile it adds would win "last fit" over the remote's layout.
+  const [remoteOwnsSize, setRemoteOwnsSize] = useState(false)
+  useEffect(() => {
+    if (window.api.remote) return
+    window.api.remoteStatus().then((s) => setRemoteOwnsSize((s.desktopClients ?? 0) > 0)).catch(() => {})
+    return window.api.onRemoteSizeOwner(({ remote }) => setRemoteOwnsSize(remote))
+  }, [])
+
   // Listen for sessions created remotely
   useEffect(() => {
     const unsub = window.api.onRemoteSessionCreated((session) => {
@@ -907,7 +917,7 @@ export default function App() {
       // Mod+B: toggle the broadcast bar
       if (mod && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) {
         e.preventDefault()
-        setBroadcastOpen((v) => !v)
+        if (!window.api.remote) setBroadcastOpen((v) => !v)
         return
       }
     }
@@ -962,7 +972,7 @@ export default function App() {
         onNewWindow={handleNewWindow}
         onNewProject={() => setShowNewProject(true)}
         onOpenSettings={() => setShowSettings(true)}
-        onToggleBroadcast={() => setBroadcastOpen((v) => !v)}
+        onToggleBroadcast={() => { if (!window.api.remote) setBroadcastOpen((v) => !v) }}
         broadcastActive={broadcastOpen}
         hasProjectsRoot={Boolean(projectsRoot)}
         uiScale={chromeScale(uiScalePct)}
@@ -1044,6 +1054,7 @@ export default function App() {
                   isAutopilotRunning={autopilotRunning.has(t.id)}
                   onShowAutopilotPanel={() => setAutopilotPanelFor(t.id)}
                   onNotify={showToast}
+                  followPtySize={remoteOwnsSize}
                 />
               </div>
             ))}
@@ -1194,29 +1205,35 @@ export default function App() {
                 icon: TerminalSquare,
                 onClick: () => startAddFolder(path, cli),
               })),
-              { label: 'Open in new window', icon: AppWindow, onClick: () => { window.api.windowCreate().catch(() => {}) } },
-              { label: 'Start with Autopilot', icon: Sparkles, onClick: () => {
-                // Open the project (this creates a terminal), then trigger kickoff for that terminal.
-                handleOpenRecent(path)
-                // Defer until terminal is created; pick up via the most recent terminal of this path.
-                setTimeout(() => {
-                  const t = terminals.find((tt) => tt.path === path)
-                  if (t) setAutopilotKickoffFor(t.id)
-                }, 200)
-              }},
+              // Desktop-only: new windows, autopilot, external terminals, Finder and
+              // editors do not exist on the /desktop browser page.
+              ...(window.api.remote ? [] : [
+                { label: 'Open in new window', icon: AppWindow, onClick: () => { window.api.windowCreate().catch(() => {}) } },
+                { label: 'Start with Autopilot', icon: Sparkles, onClick: () => {
+                  // Open the project (this creates a terminal), then trigger kickoff for that terminal.
+                  handleOpenRecent(path)
+                  // Defer until terminal is created; pick up via the most recent terminal of this path.
+                  setTimeout(() => {
+                    const t = terminals.find((tt) => tt.path === path)
+                    if (t) setAutopilotKickoffFor(t.id)
+                  }, 200)
+                }},
+              ]),
               { label: '', divider: true, onClick: () => {} },
               { label: isFav ? 'Remove from favorites' : 'Add to favorites', icon: Star, onClick: () => handleToggleFavorite(path) },
-              // One entry per detected terminal: on Windows that is typically Windows
-              // Terminal, PowerShell and Command Prompt, so the choice is explicit
-              // rather than whatever the app decides is best.
-              ...externalTerminals.map((t) => ({
-                label: `Open in ${t.name}`,
-                icon: TerminalSquare,
-                onClick: () => openExternalTerminalAt(path, t.id),
-              })),
-              { label: 'Open in Explorer', icon: FolderSearch, onClick: () => { window.api.openInExplorer(path).catch(() => {}) } },
-              { label: 'Open in Editor', icon: Code, onClick: () => { window.api.openInEditor(path).then((res) => { if (!res.ok) showToast(res.error || 'Could not open in editor', 'warn') }).catch(() => showToast('Could not open in editor', 'warn')) } },
-              { label: 'Copy path', icon: Copy, onClick: () => { navigator.clipboard.writeText(path).catch(() => {}) } },
+              ...(window.api.remote ? [] : [
+                // One entry per detected terminal: on Windows that is typically Windows
+                // Terminal, PowerShell and Command Prompt, so the choice is explicit
+                // rather than whatever the app decides is best.
+                ...externalTerminals.map((t) => ({
+                  label: `Open in ${t.name}`,
+                  icon: TerminalSquare,
+                  onClick: () => openExternalTerminalAt(path, t.id),
+                })),
+                { label: 'Open in Explorer', icon: FolderSearch, onClick: () => { window.api.openInExplorer(path).catch(() => {}) } },
+                { label: 'Open in Editor', icon: Code, onClick: () => { window.api.openInEditor(path).then((res) => { if (!res.ok) showToast(res.error || 'Could not open in editor', 'warn') }).catch(() => showToast('Could not open in editor', 'warn')) } },
+              ]),
+              { label: 'Copy path', icon: Copy, onClick: () => { window.api.clipboardWriteText(path).catch(() => {}) } },
               { label: '', divider: true, onClick: () => {} },
               { label: 'Remove from recents', icon: Trash2, onClick: () => handleRemoveRecent(path), destructive: true },
             ]}

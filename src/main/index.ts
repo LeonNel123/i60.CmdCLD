@@ -1542,6 +1542,7 @@ ipcMain.handle('remote:status', () => {
     running,
     port,
     urls: running ? remoteServer.getUrls(port) : [],
+    desktopClients: running ? remoteServer.desktopClientCount() : 0,
   }
 })
 

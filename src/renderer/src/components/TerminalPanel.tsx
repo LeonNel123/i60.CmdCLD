@@ -10,6 +10,7 @@ import { livePtyCache } from '../utils/live-pty-cache'
 import { logicalLineBounds } from '../utils/logical-line'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatPaths } from '../utils/format-paths'
+import { pastePolicy, resolveInputPlatform } from '../remote/input-policy'
 import { extractDroppedPaths } from '../utils/dropped-paths'
 import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
 import { findTerminalPaths, resolveTerminalPath } from '../../../shared/terminal-link'
@@ -97,6 +98,10 @@ interface TerminalPanelProps {
   isAutopilotRunning?: boolean
   onShowAutopilotPanel?: () => void
   onNotify?: (message: string, kind?: 'info' | 'warn') => void
+  // True while another device owns PTY size (a /desktop browser client is
+  // connected): mirror the PTY's cols/rows, never fit-and-claim. Flipping back
+  // to false refits once so this window takes the size over again.
+  followPtySize?: boolean
 }
 
 export function TerminalPanel({
@@ -123,6 +128,7 @@ export function TerminalPanel({
   isAutopilotRunning,
   onShowAutopilotPanel,
   onNotify,
+  followPtySize = false,
 }: TerminalPanelProps) {
   const termRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -187,7 +193,12 @@ export function TerminalPanel({
   //
   // Stable across a mount (id is the only dep), so the mount effect can hold
   // onto it without churning.
+  const followPtySizeRef = useRef(followPtySize)
+  followPtySizeRef.current = followPtySize
   const fitAndSyncPty = useCallback(() => {
+    // Passive while the remote device owns the size: onTerminalResize keeps
+    // our xterm at the PTY's dims, and fitting here would claim them back.
+    if (followPtySizeRef.current) return
     const fitAddon = fitAddonRef.current
     const term = terminalRef.current
     if (!fitAddon || !term) return
@@ -458,18 +469,26 @@ export function TerminalPanel({
       window.api.writeTerminal(id, data)
     })
 
-    // Block xterm's internal paste handler
+    // Block xterm's internal paste handler — Electron only. The browser page
+    // has no OS-clipboard access for images/files, and xterm's own DOM paste
+    // handler is the one path that works in an insecure (plain http) context.
+    const paste = pastePolicy(Boolean(window.api.remote))
     const xtermTextarea = termRef.current!.querySelector('textarea')
     const blockNativePaste = (e: Event) => {
       e.preventDefault()
       e.stopPropagation()
     }
-    if (xtermTextarea) {
+    if (xtermTextarea && paste.interceptNativePaste) {
       xtermTextarea.addEventListener('paste', blockNativePaste, true)
     }
 
-    // Use Cmd on macOS, Ctrl on Windows/Linux for terminal shortcuts
-    const isMac = window.api.platform === 'darwin'
+    // Use Cmd on macOS, Ctrl on Windows/Linux for terminal shortcuts — the
+    // keyboard's OS, which on the browser page is the client's, not the host's.
+    const isMac = resolveInputPlatform({
+      remote: Boolean(window.api.remote),
+      hostPlatform: window.api.platform,
+      navigatorPlatform: typeof navigator !== 'undefined' ? navigator.platform : '',
+    }) === 'darwin'
     const modKey = (e: KeyboardEvent) => isMac ? e.metaKey : e.ctrlKey
 
     term.attachCustomKeyEventHandler((e) => {
@@ -477,7 +496,7 @@ export function TerminalPanel({
         window.api.clipboardWriteText(term.getSelection())
         return false
       }
-      if (e.type === 'keydown' && modKey(e) && e.key === 'v') {
+      if (e.type === 'keydown' && modKey(e) && e.key === 'v' && paste.interceptModV) {
         window.api.clipboardSaveImage(folderPath).then((imgPath) => {
           if (imgPath) {
             window.api.writeTerminal(id, imgPath)
@@ -499,7 +518,7 @@ export function TerminalPanel({
         }).catch(() => {})
         return false
       }
-      if (e.type === 'keyup' && modKey(e) && e.key === 'v') {
+      if (e.type === 'keyup' && modKey(e) && e.key === 'v' && paste.interceptModV) {
         return false
       }
       // Mod+F: open search
@@ -652,6 +671,13 @@ export function TerminalPanel({
   // with the current font and fits it after layout (via requestAnimationFrame).
   // Fitting here before that initial layout would compute a bogus size.
   const fontApplyDoneRef = useRef(false)
+  // Ownership came back to this window: fit once and claim the PTY size.
+  const followApplyDoneRef = useRef(false)
+  useEffect(() => {
+    if (!followApplyDoneRef.current) { followApplyDoneRef.current = true; return }
+    if (!followPtySize) fitAndSyncPty()
+  }, [followPtySize, fitAndSyncPty])
+
   useEffect(() => {
     if (!fontApplyDoneRef.current) { fontApplyDoneRef.current = true; return }
     const term = terminalRef.current
@@ -851,6 +877,7 @@ export function TerminalPanel({
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3l5 4-5 4V3zm6 8h6v1H8v-1z"/></svg>
             </button>
           )}
+          {!window.api.remote && (
           <button
             onClick={(e) => {
               if (editorDefaults.resolvedId) { openResolvedEditor(); return }
@@ -872,13 +899,16 @@ export function TerminalPanel({
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/></svg>
             </button>
+          )}
+          {!window.api.remote && (
           <button onClick={() => window.api.openInExplorer(folderPath)} onMouseDown={(e) => e.stopPropagation()} title={window.api.platform === 'darwin' ? 'Open in Finder' : 'Open in Explorer'} style={actionBtnStyle}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 1h5l1 2H14.5l.5.5v10l-.5.5h-13l-.5-.5v-12l.5-.5zM2 13h12V4H7.06l-1-2H2v11z"/></svg>
           </button>
+          )}
         </div>
 
         {/* Col 3: Autopilot */}
-        {!isPlainShell && onStartAutopilot && !isAutopilotRunning && (
+        {!isPlainShell && onStartAutopilot && !isAutopilotRunning && !window.api.remote && (
           <button
             onClick={onStartAutopilot}
             title="Start Autopilot"
@@ -887,7 +917,7 @@ export function TerminalPanel({
             🤖 Autopilot
           </button>
         )}
-        {!isPlainShell && isAutopilotRunning && onShowAutopilotPanel && (
+        {!isPlainShell && isAutopilotRunning && onShowAutopilotPanel && !window.api.remote && (
           <button
             onClick={onShowAutopilotPanel}
             title="Show autopilot panel"

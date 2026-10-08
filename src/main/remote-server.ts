@@ -3,12 +3,12 @@ import { createServer, Server as HttpServer } from 'http'
 import { Server as SocketServer } from 'socket.io'
 import { join } from 'path'
 import { existsSync, statSync, mkdirSync, writeFileSync } from 'fs'
-import { networkInterfaces } from 'os'
+import { networkInterfaces, homedir, release } from 'os'
 import type { AddressInfo } from 'net'
 import type { PtyManager, TerminalMeta } from './pty-manager'
 import { isRequestAllowed } from './remote-guard'
 import { QueuedPtyWriter } from './autopilot/pty-input-queue'
-import { Settings } from './settings'
+import { Settings, SETTINGS_DEFAULTS } from './settings'
 import { RecentDB } from './recent-db'
 import { trustFolder } from './claude-config'
 import {
@@ -18,6 +18,9 @@ import {
   type AgentCli,
 } from '../shared/agent-cli'
 import { detectAgentCliAvailability } from './agent-cli-detect'
+import { resolvePtySpawnSize } from './pty-create-validation'
+import { getGitStatus, clearGitStatusCache } from './git-status'
+import { RemoteSizeOwner, type SizeOwner } from './remote-size-owner'
 
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024 // 10MB
 
@@ -36,6 +39,27 @@ export function normalizeSubmitText(raw: string): string | null {
   return trimmed ? trimmed : null
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+/** A terminal id the browser renderer chose for itself (crypto.randomUUID). */
+export function isClientTerminalId(v: unknown): v is string {
+  return typeof v === 'string' && UUID_RE.test(v)
+}
+
+/** Does `value` have the same shape as the setting's default? Arrays must be
+ *  arrays, objects objects (not null), numbers finite, and primitives match. */
+export function matchesSettingShape(def: unknown, value: unknown): boolean {
+  if (Array.isArray(def)) return Array.isArray(value)
+  if (def === null || def === undefined) return true
+  if (typeof def === 'object') return typeof value === 'object' && value !== null && !Array.isArray(value)
+  if (typeof def === 'number') return typeof value === 'number' && Number.isFinite(value)
+  return typeof value === typeof def
+}
+
+/** Settings a remote client may read but never write: they decide who can
+ *  reach this server, so only the desktop user changes them. */
+const REMOTE_READONLY_SETTINGS: ReadonlySet<string> = new Set(['remoteAccess', 'remoteLanAccess', 'remotePort'])
+
 export class RemoteServer {
   private app: ReturnType<typeof express> | null = null
   private httpServer: HttpServer | null = null
@@ -49,12 +73,16 @@ export class RemoteServer {
   // Composed messages only. Raw keystrokes must never go through this — the
   // submit delay and chunking would break interactive typing.
   private submitWriter: QueuedPtyWriter
+  private desktopUiPath: string
+  private sizeOwner = new RemoteSizeOwner({ announce: (owner) => this.announceSizeOwner(owner) })
 
   constructor(opts: {
     ptyManager: PtyManager
     settings: Settings
     recentDB: RecentDB
     getWebContents: () => Electron.WebContents | null
+    /** Where the browser build of the React renderer lives (out/renderer). */
+    desktopUiPath?: string
   }) {
     this.ptyManager = opts.ptyManager
     this.submitWriter = new QueuedPtyWriter(
@@ -64,6 +92,7 @@ export class RemoteServer {
     this.settings = opts.settings
     this.recentDB = opts.recentDB
     this.getWebContents = opts.getWebContents
+    this.desktopUiPath = opts.desktopUiPath ?? join(__dirname, '../renderer')
   }
 
   start(port: number): Promise<{ port: number; urls: string[] }> {
@@ -128,6 +157,19 @@ export class RemoteServer {
     return this.httpServer !== null && this.httpServer.listening
   }
 
+  /** Connected /desktop browser clients. While > 0 the desktop window follows
+   *  PTY sizes instead of claiming them (see remote-size-owner.ts). */
+  desktopClientCount(): number {
+    return this.sizeOwner.count
+  }
+
+  private announceSizeOwner(owner: SizeOwner): void {
+    try {
+      const wc = this.getWebContents()
+      if (wc && !wc.isDestroyed()) wc.send('remote:size-owner', { remote: owner === 'remote' })
+    } catch {}
+  }
+
   getUrls(port: number): string[] {
     return this.getLocalUrls(port)
   }
@@ -142,6 +184,7 @@ export class RemoteServer {
       this.httpServer = null
     }
     this.app = null
+    this.sizeOwner.reset()
     for (const { event, fn } of this.boundListeners) {
       this.ptyManager.off(event, fn)
     }
@@ -204,6 +247,25 @@ export class RemoteServer {
       })
     }
 
+    // The desktop layout page: the React renderer built for the browser.
+    // Served in dev and prod from out/renderer; dev needs `npm run build` once.
+    if (existsSync(join(this.desktopUiPath, 'remote.html'))) {
+      // Relative asset URLs need the trailing slash; `/desktop` alone would
+      // resolve ./assets against the site root.
+      // Non-strict routing: this one route matches both `/desktop` and `/desktop/`.
+      this.app.get('/desktop', (req: any, res: any) => {
+        if (!String(req.path).endsWith('/')) { res.redirect('/desktop/'); return }
+        res.sendFile(join(this.desktopUiPath, 'remote.html'))
+      })
+      this.app.use('/desktop', express.static(this.desktopUiPath))
+    } else {
+      this.app.use('/desktop', (_req: any, res: any) => {
+        res.status(503).type('text/plain').send(
+          'Remote desktop page is not built. Run `npm run build`, then restart remote access.',
+        )
+      })
+    }
+
     this.app.use(express.static(uiPath))
     this.app.get('/', (_req: any, res: any) => {
       res.sendFile(join(uiPath, 'index.html'))
@@ -222,6 +284,16 @@ export class RemoteServer {
         version,
         uptime: Date.now() - this.startTime,
         sessions: this.ptyManager.listAll().length,
+        desktopClients: this.sizeOwner.count,
+        platform: process.platform,
+        homeDir: homedir(),
+        buildInfo: {
+          electron: process.versions.electron ?? '',
+          chrome: process.versions.chrome ?? '',
+          node: process.versions.node,
+          platform: process.platform,
+          release: release(),
+        },
       })
     })
 
@@ -232,7 +304,10 @@ export class RemoteServer {
     })
 
     app.post('/api/sessions', (req: any, res: any) => {
-      const { path: cwd, agentCli: agentCliRaw, claudeArgs, codexArgs, grokArgs, opencodeArgs } = req.body
+      const {
+        path: cwd, agentCli: agentCliRaw, claudeArgs, codexArgs, grokArgs, opencodeArgs,
+        id: clientId, size: sizeRaw, launchArgs: launchArgsRaw,
+      } = req.body
       if (!cwd || typeof cwd !== 'string') {
         res.status(400).json({ error: 'path is required' })
         return
@@ -247,7 +322,22 @@ export class RemoteServer {
         return
       }
 
-      const id = crypto.randomUUID()
+      // Renderer-driven create: the /desktop React page chose the id and will
+      // write the launch command itself once this resolves (same contract as
+      // pty:create). The phone UI sends no id and relies on the server to launch.
+      const rendererDriven = clientId !== undefined
+      if (rendererDriven) {
+        if (!isClientTerminalId(clientId)) {
+          res.status(400).json({ error: 'id must be a UUID' })
+          return
+        }
+        if (this.ptyManager.has(clientId)) {
+          res.status(409).json({ error: `Terminal "${clientId}" already exists.` })
+          return
+        }
+      }
+
+      const id = rendererDriven ? clientId : crypto.randomUUID()
       const name = cwd.split(/[\\/]/).pop() || cwd
       const agentCli = normalizeAgentCli(agentCliRaw)
       const argsByAgent: Record<AgentCli, string> = {
@@ -256,12 +346,14 @@ export class RemoteServer {
         grok: typeof grokArgs === 'string' ? grokArgs : this.settings.get('grokArgs'),
         opencode: typeof opencodeArgs === 'string' ? opencodeArgs : this.settings.get('opencodeArgs'),
       }
-      const args = getArgsForAgent(agentCli, {
-        claudeArgs: argsByAgent.claude,
-        codexArgs: argsByAgent.codex,
-        grokArgs: argsByAgent.grok,
-        opencodeArgs: argsByAgent.opencode,
-      })
+      const args = rendererDriven && typeof launchArgsRaw === 'string'
+        ? launchArgsRaw
+        : getArgsForAgent(agentCli, {
+            claudeArgs: argsByAgent.claude,
+            codexArgs: argsByAgent.codex,
+            grokArgs: argsByAgent.grok,
+            opencodeArgs: argsByAgent.opencode,
+          })
       const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli, launchArgs: args }
       const wc = this.getWebContents()
 
@@ -271,32 +363,37 @@ export class RemoteServer {
       }
 
       if (agentCli === 'claude') trustFolder(cwd)
-      this.ptyManager.create(id, cwd, wc, meta)
+      const size = resolvePtySpawnSize(rendererDriven ? sizeRaw : undefined)
+      try {
+        this.ptyManager.create(id, cwd, wc, meta, undefined, size)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        res.status(500).json({ error: `PTY spawn failed: ${msg}` })
+        return
+      }
 
       // Track in recent folders (idempotent upsert — same behaviour as the
       // desktop createTerminal path). Swallow errors so a DB issue never
       // breaks session creation.
       this.recentDB.add(cwd).catch(() => {})
 
-      // Launch the selected agent CLI in the PTY.
-      const launchCmd = buildAgentLaunchCommand(agentCli, args)
-      setTimeout(() => {
-        this.ptyManager.write(id, launchCmd)
-      }, 1000)
+      if (!rendererDriven) {
+        const launchCmd = buildAgentLaunchCommand(agentCli, args)
+        setTimeout(() => {
+          this.ptyManager.write(id, launchCmd)
+        }, 1000)
+      }
 
-      // Notify renderer to add this session to its UI
+      // Notify the desktop renderer so it adds a tile under this same id. Its
+      // TerminalPanel sees pty:exists → replays scrollback → launches nothing.
       try {
         if (!wc.isDestroyed()) {
           wc.send('remote:session-created', {
-            id,
-            path: cwd,
-            name,
-            color: '',
-            agentCli,
+            id, path: cwd, name, color: '', agentCli,
             claudeArgs: argsByAgent.claude,
             codexArgs: argsByAgent.codex,
             grokArgs: argsByAgent.grok,
-        opencodeArgs: argsByAgent.opencode,
+            opencodeArgs: argsByAgent.opencode,
           })
         }
       } catch {}
@@ -341,6 +438,44 @@ export class RemoteServer {
       }
     })
 
+    app.post('/api/folders/recent', async (req: any, res: any) => {
+      const { path: folderPath } = req.body ?? {}
+      if (!folderPath || typeof folderPath !== 'string') {
+        res.status(400).json({ error: 'path is required' })
+        return
+      }
+      try {
+        if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
+          res.status(400).json({ error: 'Invalid directory path' })
+          return
+        }
+        await this.recentDB.add(folderPath)
+        res.json({ ok: true })
+      } catch {
+        res.status(500).json({ error: 'failed to add' })
+      }
+    })
+
+    app.get('/api/folders/check', async (req: any, res: any) => {
+      const p = req.query?.path
+      if (typeof p !== 'string' || !p) {
+        res.status(400).json({ error: 'path is required' })
+        return
+      }
+      const status = await Promise.resolve(this.recentDB.checkPath(p))
+      res.json({ status })
+    })
+
+    app.get('/api/git/status', async (req: any, res: any) => {
+      const p = req.query?.path
+      if (typeof p !== 'string' || !p) {
+        res.json({ isRepo: false, branch: null, dirty: false, ahead: 0 })
+        return
+      }
+      if (req.query?.fresh === '1') clearGitStatusCache(p)
+      res.json(await getGitStatus(p))
+    })
+
     app.get('/api/folders/favorites', (_req: any, res: any) => {
       res.json(this.settings.get('favoriteFolders'))
     })
@@ -357,15 +492,32 @@ export class RemoteServer {
 
     // Settings
     app.get('/api/settings', (_req: any, res: any) => {
-      const all = this.settings.getAll()
-      res.json({
-        defaultAgentCli: all.defaultAgentCli,
-        claudeArgs: all.claudeArgs,
-        codexArgs: all.codexArgs,
-        grokArgs: all.grokArgs,
-        opencodeArgs: all.opencodeArgs,
-        cliAvailability: detectAgentCliAvailability(),
-      })
+      res.json({ ...this.settings.getAll(), cliAvailability: detectAgentCliAvailability() })
+    })
+
+    // Mirrors ipc 'settings:set'. Key must be one the settings store already
+    // knows — this is what stops a remote page planting arbitrary fields — and
+    // must not be one that governs this server's own exposure: a remote page
+    // flipping LAN access or the port would widen who can reach it next start.
+    app.post('/api/settings', (req: any, res: any) => {
+      const { key, value } = req.body ?? {}
+      if (typeof key === 'string' && REMOTE_READONLY_SETTINGS.has(key)) {
+        res.status(403).json({ error: 'setting is not writable remotely' })
+        return
+      }
+      const known = Object.keys(SETTINGS_DEFAULTS)
+      if (typeof key !== 'string' || !known.includes(key)) {
+        res.status(400).json({ error: 'unknown setting' })
+        return
+      }
+      // Shape check against the default of the same key: the desktop reads
+      // these back with `?? []` / `?? {}`, which a wrong-typed value sails past.
+      if (!matchesSettingShape((SETTINGS_DEFAULTS as Record<string, unknown>)[key], value)) {
+        res.status(400).json({ error: 'invalid value' })
+        return
+      }
+      this.settings.set(key as any, value as any)
+      res.json({ ok: true })
     })
 
     // Image upload
@@ -410,6 +562,11 @@ export class RemoteServer {
 
     this.io.on('connection', (socket) => {
       socket.emit('sessions:changed', this.ptyManager.listAll())
+
+      // The /desktop page identifies itself in the handshake; the phone UI does not.
+      const isDesktopClient = socket.handshake.query?.client === 'desktop'
+      this.sizeOwner.connect(isDesktopClient)
+      socket.on('disconnect', () => { this.sizeOwner.disconnect(isDesktopClient) })
 
       // Raw keystroke stream from xterm — must stay unbuffered and unwrapped so
       // control sequences and interactive editing behave normally.

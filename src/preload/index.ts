@@ -249,6 +249,15 @@ contextBridge.exposeInMainWorld('api', {
   tailscaleServeStop: (): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('tailscale:serveStop'),
 
+  // Fires when a /desktop browser client connects or the last one leaves.
+  // While `remote` is true this window follows PTY sizes instead of fitting
+  // and claiming them — the person is at the other device.
+  onRemoteSizeOwner: (callback: (owner: { remote: boolean }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, owner: { remote: boolean }): void => callback(owner)
+    ipcRenderer.on('remote:size-owner', listener)
+    return () => { ipcRenderer.removeListener('remote:size-owner', listener) }
+  },
+
   onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string; codexArgs?: string; grokArgs?: string; opencodeArgs?: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode' }) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, session: any): void => callback(session)
     ipcRenderer.on('remote:session-created', listener)
