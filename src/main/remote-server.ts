@@ -3,7 +3,7 @@ import { createServer, Server as HttpServer } from 'http'
 import { Server as SocketServer } from 'socket.io'
 import { join } from 'path'
 import { existsSync, statSync, mkdirSync, writeFileSync } from 'fs'
-import { networkInterfaces } from 'os'
+import { networkInterfaces, homedir, release } from 'os'
 import type { AddressInfo } from 'net'
 import type { PtyManager, TerminalMeta } from './pty-manager'
 import { isRequestAllowed } from './remote-guard'
@@ -19,6 +19,7 @@ import {
 } from '../shared/agent-cli'
 import { detectAgentCliAvailability } from './agent-cli-detect'
 import { resolvePtySpawnSize } from './pty-create-validation'
+import { getGitStatus, clearGitStatusCache } from './git-status'
 
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024 // 10MB
 
@@ -230,6 +231,15 @@ export class RemoteServer {
         version,
         uptime: Date.now() - this.startTime,
         sessions: this.ptyManager.listAll().length,
+        platform: process.platform,
+        homeDir: homedir(),
+        buildInfo: {
+          electron: process.versions.electron ?? '',
+          chrome: process.versions.chrome ?? '',
+          node: process.versions.node,
+          platform: process.platform,
+          release: release(),
+        },
       })
     })
 
@@ -374,6 +384,44 @@ export class RemoteServer {
       }
     })
 
+    app.post('/api/folders/recent', async (req: any, res: any) => {
+      const { path: folderPath } = req.body ?? {}
+      if (!folderPath || typeof folderPath !== 'string') {
+        res.status(400).json({ error: 'path is required' })
+        return
+      }
+      try {
+        if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
+          res.status(400).json({ error: 'Invalid directory path' })
+          return
+        }
+        await this.recentDB.add(folderPath)
+        res.json({ ok: true })
+      } catch {
+        res.status(500).json({ error: 'failed to add' })
+      }
+    })
+
+    app.get('/api/folders/check', async (req: any, res: any) => {
+      const p = req.query?.path
+      if (typeof p !== 'string' || !p) {
+        res.status(400).json({ error: 'path is required' })
+        return
+      }
+      const status = await Promise.resolve(this.recentDB.checkPath(p))
+      res.json({ status })
+    })
+
+    app.get('/api/git/status', async (req: any, res: any) => {
+      const p = req.query?.path
+      if (typeof p !== 'string' || !p) {
+        res.json({ isRepo: false, branch: null, dirty: false, ahead: 0 })
+        return
+      }
+      if (req.query?.fresh === '1') clearGitStatusCache(p)
+      res.json(await getGitStatus(p))
+    })
+
     app.get('/api/folders/favorites', (_req: any, res: any) => {
       res.json(this.settings.get('favoriteFolders'))
     })
@@ -390,15 +438,20 @@ export class RemoteServer {
 
     // Settings
     app.get('/api/settings', (_req: any, res: any) => {
-      const all = this.settings.getAll()
-      res.json({
-        defaultAgentCli: all.defaultAgentCli,
-        claudeArgs: all.claudeArgs,
-        codexArgs: all.codexArgs,
-        grokArgs: all.grokArgs,
-        opencodeArgs: all.opencodeArgs,
-        cliAvailability: detectAgentCliAvailability(),
-      })
+      res.json({ ...this.settings.getAll(), cliAvailability: detectAgentCliAvailability() })
+    })
+
+    // Mirrors ipc 'settings:set'. Key must be one the settings store already
+    // knows — this is what stops a remote page planting arbitrary fields.
+    app.post('/api/settings', (req: any, res: any) => {
+      const { key, value } = req.body ?? {}
+      const known = Object.keys(this.settings.getAll())
+      if (typeof key !== 'string' || !known.includes(key)) {
+        res.status(400).json({ error: 'unknown setting' })
+        return
+      }
+      this.settings.set(key as any, value as any)
+      res.json({ ok: true })
     })
 
     // Image upload

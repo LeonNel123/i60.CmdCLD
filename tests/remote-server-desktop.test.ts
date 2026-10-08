@@ -15,6 +15,8 @@ function fakeDeps(opts: { existingIds?: string[]; settings?: Record<string, unkn
     remoteLanAccess: false,
     claudeArgs: '', codexArgs: '', grokArgs: '', opencodeArgs: '',
     defaultAgentCli: 'claude',
+    defaultViewMode: 'grid',
+    terminalFontSize: 14,
     favoriteFolders: [],
     ...(opts.settings ?? {}),
   }
@@ -144,5 +146,80 @@ describe('POST /api/sessions with a renderer-chosen id', () => {
     const { port, created } = await start()
     await request(port, 'POST', '/api/sessions', { id: VALID_ID, path: dir, size: { cols: -1, rows: 'x' } })
     expect(created[0].size).toEqual({ cols: 80, rows: 24 })
+  })
+})
+
+describe('desktop-page support routes', () => {
+  let servers: RemoteServer[] = []
+  afterEach(() => { for (const s of servers) s.stop(); servers = [] })
+
+  async function start(opts: Parameters<typeof fakeDeps>[0] = {}) {
+    const f = fakeDeps(opts)
+    const server = new RemoteServer(f.deps)
+    servers.push(server)
+    const { port } = await server.start(0)
+    return { port, ...f }
+  }
+
+  it('GET /api/status carries platform, home dir and build info', async () => {
+    const { port } = await start()
+    const res = await request(port, 'GET', '/api/status')
+    expect(res.status).toBe(200)
+    expect(['win32', 'darwin', 'linux']).toContain(res.json.platform)
+    expect(typeof res.json.homeDir).toBe('string')
+    expect(res.json.homeDir.length).toBeGreaterThan(0)
+    expect(res.json.buildInfo).toMatchObject({ node: process.versions.node, platform: process.platform })
+  })
+
+  it('GET /api/settings returns every setting plus cliAvailability', async () => {
+    const { port } = await start({ settings: { defaultViewMode: 'focused', terminalFontSize: 13 } })
+    const res = await request(port, 'GET', '/api/settings')
+    expect(res.status).toBe(200)
+    expect(res.json.defaultViewMode).toBe('focused')
+    expect(res.json.terminalFontSize).toBe(13)
+    expect(res.json.favoriteFolders).toEqual([])
+    expect(res.json.cliAvailability).toBeTypeOf('object')
+  })
+
+  it('POST /api/settings writes a known key and rejects an unknown one', async () => {
+    const { port, setCalls } = await start()
+    const ok = await request(port, 'POST', '/api/settings', { key: 'defaultViewMode', value: 'focused' })
+    expect(ok.status).toBe(200)
+    expect(setCalls).toEqual([{ key: 'defaultViewMode', value: 'focused' }])
+    const bad = await request(port, 'POST', '/api/settings', { key: '__proto__', value: 1 })
+    expect(bad.status).toBe(400)
+    expect(bad.json.error).toBe('unknown setting')
+    expect(setCalls).toHaveLength(1)
+  })
+
+  it('POST /api/folders/recent adds an existing directory and rejects a missing one', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cmdcld-'))
+    const { port, recentAdds } = await start()
+    const ok = await request(port, 'POST', '/api/folders/recent', { path: dir })
+    expect(ok.status).toBe(200)
+    expect(recentAdds).toEqual([dir])
+    const bad = await request(port, 'POST', '/api/folders/recent', { path: join(dir, 'nope') })
+    expect(bad.status).toBe(400)
+    expect(recentAdds).toHaveLength(1)
+  })
+
+  it('GET /api/folders/check relays recentDB.checkPath', async () => {
+    const { port } = await start()
+    const ok = await request(port, 'GET', '/api/folders/check?path=' + encodeURIComponent('/tmp'))
+    expect(ok.json).toEqual({ status: 'ok' })
+    const missing = await request(port, 'GET', '/api/folders/check?path=' + encodeURIComponent('/nope'))
+    expect(missing.json).toEqual({ status: 'missing' })
+    const none = await request(port, 'GET', '/api/folders/check')
+    expect(none.status).toBe(400)
+  })
+
+  it('GET /api/git/status reports a non-repo directory', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cmdcld-'))
+    const { port } = await start()
+    const res = await request(port, 'GET', '/api/git/status?path=' + encodeURIComponent(dir))
+    expect(res.status).toBe(200)
+    expect(res.json).toMatchObject({ isRepo: false, branch: null, dirty: false, ahead: 0 })
+    const none = await request(port, 'GET', '/api/git/status')
+    expect(none.json).toMatchObject({ isRepo: false })
   })
 })
