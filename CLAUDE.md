@@ -36,6 +36,28 @@ src/
 tests/                   # vitest unit tests
 ```
 
+## Remote desktop page
+
+`src/renderer/remote.html` + `src/renderer/src/remote-main.tsx` build the **same React App** for the browser;
+the remote server serves it at `/desktop/` from `out/renderer` (dev needs `npm run build` once; the server
+answers 503 with that hint until then). `src/renderer/src/remote/remote-api.ts` is the `window.api`
+implementation over Socket.IO + REST; `window.api.remote === true` there, and components hide desktop-only
+controls on it (new window, broadcast, autopilot, Finder/editor, external terminals).
+`src/remote-ui/` stays the phone UI at `/`; `page-select.js` redirects by width (769 px) with
+`?mobile` / `?desktop` overrides remembered in localStorage.
+
+**PTY size ownership** (`src/main/remote-size-owner.ts`): every client fits its xterm and claims the PTY
+size, "last fit wins". The desktop window never closes and adds a tile for every remote-created session, so
+it would always win. While a `/desktop` browser client is connected (handshake `client=desktop`) the server
+sends `remote:size-owner {remote:true}` and the desktop renderer passes `followPtySize` to every
+`TerminalPanel`, which then mirrors PTY dims instead of fitting. When the last such client leaves, the
+desktop refits once and takes over. Consequence: a `/desktop` tab left open keeps the desktop window
+passive — close the tab when you return to the desktop.
+
+`POST /api/sessions` with an `id` (UUID the renderer chose) spawns under that id, at the given `size`, and
+does **not** write the launch command — the renderer does, as with `pty:create`. Without `id` (phone UI) the
+server launches as before. `POST /api/settings` refuses `remoteAccess` / `remoteLanAccess` / `remotePort`.
+
 ## Autopilot architecture
 
 There are **two independent orchestrators** that share marker types but not state machines:
