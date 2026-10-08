@@ -97,6 +97,10 @@ interface TerminalPanelProps {
   isAutopilotRunning?: boolean
   onShowAutopilotPanel?: () => void
   onNotify?: (message: string, kind?: 'info' | 'warn') => void
+  // True while another device owns PTY size (a /desktop browser client is
+  // connected): mirror the PTY's cols/rows, never fit-and-claim. Flipping back
+  // to false refits once so this window takes the size over again.
+  followPtySize?: boolean
 }
 
 export function TerminalPanel({
@@ -123,6 +127,7 @@ export function TerminalPanel({
   isAutopilotRunning,
   onShowAutopilotPanel,
   onNotify,
+  followPtySize = false,
 }: TerminalPanelProps) {
   const termRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -187,7 +192,12 @@ export function TerminalPanel({
   //
   // Stable across a mount (id is the only dep), so the mount effect can hold
   // onto it without churning.
+  const followPtySizeRef = useRef(followPtySize)
+  followPtySizeRef.current = followPtySize
   const fitAndSyncPty = useCallback(() => {
+    // Passive while the remote device owns the size: onTerminalResize keeps
+    // our xterm at the PTY's dims, and fitting here would claim them back.
+    if (followPtySizeRef.current) return
     const fitAddon = fitAddonRef.current
     const term = terminalRef.current
     if (!fitAddon || !term) return
@@ -652,6 +662,13 @@ export function TerminalPanel({
   // with the current font and fits it after layout (via requestAnimationFrame).
   // Fitting here before that initial layout would compute a bogus size.
   const fontApplyDoneRef = useRef(false)
+  // Ownership came back to this window: fit once and claim the PTY size.
+  const followApplyDoneRef = useRef(false)
+  useEffect(() => {
+    if (!followApplyDoneRef.current) { followApplyDoneRef.current = true; return }
+    if (!followPtySize) fitAndSyncPty()
+  }, [followPtySize, fitAndSyncPty])
+
   useEffect(() => {
     if (!fontApplyDoneRef.current) { fontApplyDoneRef.current = true; return }
     const term = terminalRef.current

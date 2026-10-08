@@ -143,7 +143,8 @@ export function createRemoteApi(deps: RemoteApiDeps): ElectronAPI & { remote: tr
     claudeConfigRead: async () => ({ global: {}, local: {} }),
     claudeConfigWrite: noop,
     remoteToggle: async () => ({ ok: false, error: 'Not available remotely' }),
-    remoteStatus: async () => ({ running: true, port: 0, urls: [] }),
+    remoteStatus: async () => ({ running: true, port: 0, urls: [], desktopClients: 1 }),
+    onRemoteSizeOwner: unsub,
     tailscaleStatus: async () => ({
       installed: false, loggedIn: false, online: false, httpsEnabled: false,
       httpsHost: null, error: null, serveActive: false, serveUrl: null,

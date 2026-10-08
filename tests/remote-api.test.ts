@@ -170,7 +170,7 @@ describe('createRemoteApi — every ElectronAPI member exists and stubs resolve'
     'editorGetDefaults','editorSetDefault','onWindowListUpdated','recentCheckPath','claudeConfigRead',
     'claudeConfigWrite','sessionSaveLast','sessionLoadLast','sessionClearLast','gitStatus','getBuildInfo',
     'remoteToggle','remoteStatus','tailscaleStatus','tailscaleServeStart','tailscaleServeStop',
-    'onRemoteSessionCreated','autopilotKeyExists','autopilotKeySet','autopilotKeyClear','autopilotStart',
+    'onRemoteSessionCreated','onRemoteSizeOwner','autopilotKeyExists','autopilotKeySet','autopilotKeyClear','autopilotStart',
     'autopilotProStart','autopilotCouncilStart','autopilotProRunMeta','autopilotPause','autopilotResume',
     'autopilotStop','autopilotApproveGoal','autopilotReplyToWaiting','autopilotPermissionAllow',
     'autopilotPermissionDeny','autopilotGetStatus','autopilotInspectOutput','autopilotProbeArtifacts',

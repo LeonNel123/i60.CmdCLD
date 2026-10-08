@@ -20,6 +20,7 @@ import {
 import { detectAgentCliAvailability } from './agent-cli-detect'
 import { resolvePtySpawnSize } from './pty-create-validation'
 import { getGitStatus, clearGitStatusCache } from './git-status'
+import { RemoteSizeOwner, type SizeOwner } from './remote-size-owner'
 
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024 // 10MB
 
@@ -63,6 +64,7 @@ export class RemoteServer {
   // submit delay and chunking would break interactive typing.
   private submitWriter: QueuedPtyWriter
   private desktopUiPath: string
+  private sizeOwner = new RemoteSizeOwner()
 
   constructor(opts: {
     ptyManager: PtyManager
@@ -145,6 +147,19 @@ export class RemoteServer {
     return this.httpServer !== null && this.httpServer.listening
   }
 
+  /** Connected /desktop browser clients. While > 0 the desktop window follows
+   *  PTY sizes instead of claiming them (see remote-size-owner.ts). */
+  desktopClientCount(): number {
+    return this.sizeOwner.count
+  }
+
+  private announceSizeOwner(owner: SizeOwner): void {
+    try {
+      const wc = this.getWebContents()
+      if (wc && !wc.isDestroyed()) wc.send('remote:size-owner', { remote: owner === 'remote' })
+    } catch {}
+  }
+
   getUrls(port: number): string[] {
     return this.getLocalUrls(port)
   }
@@ -159,6 +174,10 @@ export class RemoteServer {
       this.httpServer = null
     }
     this.app = null
+    if (this.sizeOwner.count > 0) {
+      this.sizeOwner = new RemoteSizeOwner()
+      this.announceSizeOwner('local')
+    }
     for (const { event, fn } of this.boundListeners) {
       this.ptyManager.off(event, fn)
     }
@@ -224,7 +243,14 @@ export class RemoteServer {
     // The desktop layout page: the React renderer built for the browser.
     // Served in dev and prod from out/renderer; dev needs `npm run build` once.
     if (existsSync(join(this.desktopUiPath, 'remote.html'))) {
-      this.app.use('/desktop', express.static(this.desktopUiPath, { index: 'remote.html' }))
+      // Relative asset URLs need the trailing slash; `/desktop` alone would
+      // resolve ./assets against the site root.
+      // Non-strict routing: this one route matches both `/desktop` and `/desktop/`.
+      this.app.get('/desktop', (req: any, res: any) => {
+        if (!String(req.path).endsWith('/')) { res.redirect('/desktop/'); return }
+        res.sendFile(join(this.desktopUiPath, 'remote.html'))
+      })
+      this.app.use('/desktop', express.static(this.desktopUiPath))
     } else {
       this.app.use('/desktop', (_req: any, res: any) => {
         res.status(503).type('text/plain').send(
@@ -251,6 +277,7 @@ export class RemoteServer {
         version,
         uptime: Date.now() - this.startTime,
         sessions: this.ptyManager.listAll().length,
+        desktopClients: this.sizeOwner.count,
         platform: process.platform,
         homeDir: homedir(),
         buildInfo: {
@@ -522,6 +549,15 @@ export class RemoteServer {
 
     this.io.on('connection', (socket) => {
       socket.emit('sessions:changed', this.ptyManager.listAll())
+
+      // The /desktop page identifies itself in the handshake; the phone UI does not.
+      const isDesktopClient = socket.handshake.query?.client === 'desktop'
+      const gained = this.sizeOwner.connect(isDesktopClient)
+      if (gained) this.announceSizeOwner(gained)
+      socket.on('disconnect', () => {
+        const lost = this.sizeOwner.disconnect(isDesktopClient)
+        if (lost) this.announceSizeOwner(lost)
+      })
 
       // Raw keystroke stream from xterm — must stay unbuffered and unwrapped so
       // control sequences and interactive editing behave normally.

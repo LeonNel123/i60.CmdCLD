@@ -245,7 +245,9 @@ export interface ElectronAPI {
   claudeConfigRead: () => Promise<{ global: Record<string, unknown>; local: Record<string, unknown> }>
   claudeConfigWrite: (scope: 'global' | 'local', data: Record<string, unknown>) => Promise<void>
   remoteToggle: (enabled: boolean) => Promise<{ ok: boolean; urls?: string[]; port?: number; error?: string }>
-  remoteStatus: () => Promise<{ running: boolean; port: number; urls?: string[] }>
+  remoteStatus: () => Promise<{ running: boolean; port: number; urls?: string[]; desktopClients?: number }>
+  /** A /desktop browser client connected (remote: true) or the last one left. */
+  onRemoteSizeOwner: (callback: (owner: { remote: boolean }) => void) => () => void
   tailscaleStatus: () => Promise<{
     installed: boolean
     loggedIn: boolean

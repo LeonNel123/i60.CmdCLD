@@ -169,6 +169,7 @@ describe('desktop-page support routes', () => {
     expect(typeof res.json.homeDir).toBe('string')
     expect(res.json.homeDir.length).toBeGreaterThan(0)
     expect(res.json.buildInfo).toMatchObject({ node: process.versions.node, platform: process.platform })
+    expect(res.json.desktopClients).toBe(0)
   })
 
   it('GET /api/settings returns every setting plus cliAvailability', async () => {
@@ -252,6 +253,9 @@ describe('/desktop page serving', () => {
     expect(String(page.json)).toContain('<title>R</title>')
     const asset = await request(port, 'GET', '/desktop/assets/a.js')
     expect(asset.status).toBe(200)
+    // No trailing slash → redirect, so the page's relative asset URLs resolve under /desktop/.
+    const bare = await request(port, 'GET', '/desktop')
+    expect(bare.status).toBe(302)
   })
 
   it('answers 503 with a build hint when the bundle is missing', async () => {

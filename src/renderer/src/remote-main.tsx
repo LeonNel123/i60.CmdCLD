@@ -17,7 +17,8 @@ declare const io: (opts?: Record<string, unknown>) => SocketLike & {
 async function boot(): Promise<void> {
   installRandomUuidPolyfill(globalThis.crypto as any)
   const status = await fetchJson<RemoteStatus>('/api/status')
-  const socket = io({ reconnection: true, reconnectionDelay: 1000 })
+  // `client=desktop` tells the server this page owns PTY size while connected.
+  const socket = io({ reconnection: true, reconnectionDelay: 1000, query: { client: 'desktop' } })
   window.api = createRemoteApi({ socket, fetchJson, status, promptForPath, copyText })
 
   // Reconnect = the desktop's own recovery path: reload, and App rebuilds the

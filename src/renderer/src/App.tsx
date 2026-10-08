@@ -411,6 +411,16 @@ export default function App() {
     return () => { cancelled = true }
   }, [showCloseAll, showCloseWindow, terminals])
 
+  // While a browser runs the desktop layout page (/desktop), the person is at
+  // that device: this window mirrors PTY sizes instead of fitting and claiming
+  // them, or every tile it adds would win "last fit" over the remote's layout.
+  const [remoteOwnsSize, setRemoteOwnsSize] = useState(false)
+  useEffect(() => {
+    if (window.api.remote) return
+    window.api.remoteStatus().then((s) => setRemoteOwnsSize((s.desktopClients ?? 0) > 0)).catch(() => {})
+    return window.api.onRemoteSizeOwner(({ remote }) => setRemoteOwnsSize(remote))
+  }, [])
+
   // Listen for sessions created remotely
   useEffect(() => {
     const unsub = window.api.onRemoteSessionCreated((session) => {
@@ -1044,6 +1054,7 @@ export default function App() {
                   isAutopilotRunning={autopilotRunning.has(t.id)}
                   onShowAutopilotPanel={() => setAutopilotPanelFor(t.id)}
                   onNotify={showToast}
+                  followPtySize={remoteOwnsSize}
                 />
               </div>
             ))}
