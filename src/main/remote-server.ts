@@ -18,6 +18,7 @@ import {
   type AgentCli,
 } from '../shared/agent-cli'
 import { detectAgentCliAvailability } from './agent-cli-detect'
+import { resolvePtySpawnSize } from './pty-create-validation'
 
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024 // 10MB
 
@@ -34,6 +35,13 @@ export function normalizeSubmitText(raw: string): string | null {
   const normalised = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   const trimmed = normalised.replace(/^[\s]+|[\s]+$/g, '')
   return trimmed ? trimmed : null
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+/** A terminal id the browser renderer chose for itself (crypto.randomUUID). */
+export function isClientTerminalId(v: unknown): v is string {
+  return typeof v === 'string' && UUID_RE.test(v)
 }
 
 export class RemoteServer {
@@ -232,7 +240,10 @@ export class RemoteServer {
     })
 
     app.post('/api/sessions', (req: any, res: any) => {
-      const { path: cwd, agentCli: agentCliRaw, claudeArgs, codexArgs, grokArgs, opencodeArgs } = req.body
+      const {
+        path: cwd, agentCli: agentCliRaw, claudeArgs, codexArgs, grokArgs, opencodeArgs,
+        id: clientId, size: sizeRaw, launchArgs: launchArgsRaw,
+      } = req.body
       if (!cwd || typeof cwd !== 'string') {
         res.status(400).json({ error: 'path is required' })
         return
@@ -247,7 +258,22 @@ export class RemoteServer {
         return
       }
 
-      const id = crypto.randomUUID()
+      // Renderer-driven create: the /desktop React page chose the id and will
+      // write the launch command itself once this resolves (same contract as
+      // pty:create). The phone UI sends no id and relies on the server to launch.
+      const rendererDriven = clientId !== undefined
+      if (rendererDriven) {
+        if (!isClientTerminalId(clientId)) {
+          res.status(400).json({ error: 'id must be a UUID' })
+          return
+        }
+        if (this.ptyManager.has(clientId)) {
+          res.status(409).json({ error: `Terminal "${clientId}" already exists.` })
+          return
+        }
+      }
+
+      const id = rendererDriven ? clientId : crypto.randomUUID()
       const name = cwd.split(/[\\/]/).pop() || cwd
       const agentCli = normalizeAgentCli(agentCliRaw)
       const argsByAgent: Record<AgentCli, string> = {
@@ -256,12 +282,14 @@ export class RemoteServer {
         grok: typeof grokArgs === 'string' ? grokArgs : this.settings.get('grokArgs'),
         opencode: typeof opencodeArgs === 'string' ? opencodeArgs : this.settings.get('opencodeArgs'),
       }
-      const args = getArgsForAgent(agentCli, {
-        claudeArgs: argsByAgent.claude,
-        codexArgs: argsByAgent.codex,
-        grokArgs: argsByAgent.grok,
-        opencodeArgs: argsByAgent.opencode,
-      })
+      const args = rendererDriven && typeof launchArgsRaw === 'string'
+        ? launchArgsRaw
+        : getArgsForAgent(agentCli, {
+            claudeArgs: argsByAgent.claude,
+            codexArgs: argsByAgent.codex,
+            grokArgs: argsByAgent.grok,
+            opencodeArgs: argsByAgent.opencode,
+          })
       const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli, launchArgs: args }
       const wc = this.getWebContents()
 
@@ -271,32 +299,37 @@ export class RemoteServer {
       }
 
       if (agentCli === 'claude') trustFolder(cwd)
-      this.ptyManager.create(id, cwd, wc, meta)
+      const size = resolvePtySpawnSize(rendererDriven ? sizeRaw : undefined)
+      try {
+        this.ptyManager.create(id, cwd, wc, meta, undefined, size)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        res.status(500).json({ error: `PTY spawn failed: ${msg}` })
+        return
+      }
 
       // Track in recent folders (idempotent upsert — same behaviour as the
       // desktop createTerminal path). Swallow errors so a DB issue never
       // breaks session creation.
       this.recentDB.add(cwd).catch(() => {})
 
-      // Launch the selected agent CLI in the PTY.
-      const launchCmd = buildAgentLaunchCommand(agentCli, args)
-      setTimeout(() => {
-        this.ptyManager.write(id, launchCmd)
-      }, 1000)
+      if (!rendererDriven) {
+        const launchCmd = buildAgentLaunchCommand(agentCli, args)
+        setTimeout(() => {
+          this.ptyManager.write(id, launchCmd)
+        }, 1000)
+      }
 
-      // Notify renderer to add this session to its UI
+      // Notify the desktop renderer so it adds a tile under this same id. Its
+      // TerminalPanel sees pty:exists → replays scrollback → launches nothing.
       try {
         if (!wc.isDestroyed()) {
           wc.send('remote:session-created', {
-            id,
-            path: cwd,
-            name,
-            color: '',
-            agentCli,
+            id, path: cwd, name, color: '', agentCli,
             claudeArgs: argsByAgent.claude,
             codexArgs: argsByAgent.codex,
             grokArgs: argsByAgent.grok,
-        opencodeArgs: argsByAgent.opencode,
+            opencodeArgs: argsByAgent.opencode,
           })
         }
       } catch {}
