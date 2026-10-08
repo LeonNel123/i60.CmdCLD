@@ -360,19 +360,23 @@ export function Sidebar({
           <span style={{ color: '#94a3b8', display: 'flex', flexShrink: 0 }}><TerminalSquare width={14} height={14} /></span>
           {!collapsed && <span>Quick Shell</span>}
         </button>
-        <button
-          onClick={onToggleBroadcast}
-          style={btnStyle(broadcastActive)}
-          className="sidebar-btn"
-          title="Broadcast — send one prompt to every agent console (Ctrl+B)"
-        >
-          <span style={{ color: '#22c55e', display: 'flex', flexShrink: 0 }}><RadioTower width={14} height={14} /></span>
-          {!collapsed && <span>Broadcast</span>}
-        </button>
-        <button onClick={onNewWindow} style={btnStyle()} className="sidebar-btn" title="New Window">
-          <span style={{ color: '#aaa', display: 'flex', flexShrink: 0 }}><AppWindow width={14} height={14} /></span>
-          {!collapsed && <span>New Window</span>}
-        </button>
+        {!window.api.remote && (
+          <button
+            onClick={onToggleBroadcast}
+            style={btnStyle(broadcastActive)}
+            className="sidebar-btn"
+            title="Broadcast — send one prompt to every agent console (Ctrl+B)"
+          >
+            <span style={{ color: '#22c55e', display: 'flex', flexShrink: 0 }}><RadioTower width={14} height={14} /></span>
+            {!collapsed && <span>Broadcast</span>}
+          </button>
+        )}
+        {!window.api.remote && (
+          <button onClick={onNewWindow} style={btnStyle()} className="sidebar-btn" title="New Window">
+            <span style={{ color: '#aaa', display: 'flex', flexShrink: 0 }}><AppWindow width={14} height={14} /></span>
+            {!collapsed && <span>New Window</span>}
+          </button>
+        )}
         {hasProjectsRoot && (
           <button onClick={onNewProject} style={btnStyle()} className="sidebar-btn" title="New Project">
             <span style={{ color: '#38bdf8', display: 'flex', flexShrink: 0 }}><FolderPlus width={14} height={14} /></span>
