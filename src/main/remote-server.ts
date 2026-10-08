@@ -8,7 +8,7 @@ import type { AddressInfo } from 'net'
 import type { PtyManager, TerminalMeta } from './pty-manager'
 import { isRequestAllowed } from './remote-guard'
 import { QueuedPtyWriter } from './autopilot/pty-input-queue'
-import { Settings } from './settings'
+import { Settings, SETTINGS_DEFAULTS } from './settings'
 import { RecentDB } from './recent-db'
 import { trustFolder } from './claude-config'
 import {
@@ -46,6 +46,16 @@ export function isClientTerminalId(v: unknown): v is string {
   return typeof v === 'string' && UUID_RE.test(v)
 }
 
+/** Does `value` have the same shape as the setting's default? Arrays must be
+ *  arrays, objects objects (not null), numbers finite, and primitives match. */
+export function matchesSettingShape(def: unknown, value: unknown): boolean {
+  if (Array.isArray(def)) return Array.isArray(value)
+  if (def === null || def === undefined) return true
+  if (typeof def === 'object') return typeof value === 'object' && value !== null && !Array.isArray(value)
+  if (typeof def === 'number') return typeof value === 'number' && Number.isFinite(value)
+  return typeof value === typeof def
+}
+
 /** Settings a remote client may read but never write: they decide who can
  *  reach this server, so only the desktop user changes them. */
 const REMOTE_READONLY_SETTINGS: ReadonlySet<string> = new Set(['remoteAccess', 'remoteLanAccess', 'remotePort'])
@@ -64,7 +74,7 @@ export class RemoteServer {
   // submit delay and chunking would break interactive typing.
   private submitWriter: QueuedPtyWriter
   private desktopUiPath: string
-  private sizeOwner = new RemoteSizeOwner()
+  private sizeOwner = new RemoteSizeOwner({ announce: (owner) => this.announceSizeOwner(owner) })
 
   constructor(opts: {
     ptyManager: PtyManager
@@ -174,10 +184,7 @@ export class RemoteServer {
       this.httpServer = null
     }
     this.app = null
-    if (this.sizeOwner.count > 0) {
-      this.sizeOwner = new RemoteSizeOwner()
-      this.announceSizeOwner('local')
-    }
+    this.sizeOwner.reset()
     for (const { event, fn } of this.boundListeners) {
       this.ptyManager.off(event, fn)
     }
@@ -498,9 +505,15 @@ export class RemoteServer {
         res.status(403).json({ error: 'setting is not writable remotely' })
         return
       }
-      const known = Object.keys(this.settings.getAll())
+      const known = Object.keys(SETTINGS_DEFAULTS)
       if (typeof key !== 'string' || !known.includes(key)) {
         res.status(400).json({ error: 'unknown setting' })
+        return
+      }
+      // Shape check against the default of the same key: the desktop reads
+      // these back with `?? []` / `?? {}`, which a wrong-typed value sails past.
+      if (!matchesSettingShape((SETTINGS_DEFAULTS as Record<string, unknown>)[key], value)) {
+        res.status(400).json({ error: 'invalid value' })
         return
       }
       this.settings.set(key as any, value as any)
@@ -552,12 +565,8 @@ export class RemoteServer {
 
       // The /desktop page identifies itself in the handshake; the phone UI does not.
       const isDesktopClient = socket.handshake.query?.client === 'desktop'
-      const gained = this.sizeOwner.connect(isDesktopClient)
-      if (gained) this.announceSizeOwner(gained)
-      socket.on('disconnect', () => {
-        const lost = this.sizeOwner.disconnect(isDesktopClient)
-        if (lost) this.announceSizeOwner(lost)
-      })
+      this.sizeOwner.connect(isDesktopClient)
+      socket.on('disconnect', () => { this.sizeOwner.disconnect(isDesktopClient) })
 
       // Raw keystroke stream from xterm — must stay unbuffered and unwrapped so
       // control sequences and interactive editing behave normally.

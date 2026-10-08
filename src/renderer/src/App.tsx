@@ -1233,7 +1233,7 @@ export default function App() {
                 { label: 'Open in Explorer', icon: FolderSearch, onClick: () => { window.api.openInExplorer(path).catch(() => {}) } },
                 { label: 'Open in Editor', icon: Code, onClick: () => { window.api.openInEditor(path).then((res) => { if (!res.ok) showToast(res.error || 'Could not open in editor', 'warn') }).catch(() => showToast('Could not open in editor', 'warn')) } },
               ]),
-              { label: 'Copy path', icon: Copy, onClick: () => { navigator.clipboard.writeText(path).catch(() => {}) } },
+              { label: 'Copy path', icon: Copy, onClick: () => { window.api.clipboardWriteText(path).catch(() => {}) } },
               { label: '', divider: true, onClick: () => {} },
               { label: 'Remove from recents', icon: Trash2, onClick: () => handleRemoveRecent(path), destructive: true },
             ]}

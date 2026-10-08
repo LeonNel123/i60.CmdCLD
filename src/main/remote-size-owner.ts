@@ -11,27 +11,65 @@
  * So while at least one /desktop browser client is connected, the desktop
  * window goes passive: it mirrors PTY sizes instead of claiming them. Phone
  * clients (the single-terminal UI) never take ownership.
+ *
+ * Handing ownership back waits a grace period: a browser reload is a
+ * disconnect followed by a reconnect within a second, and announcing `local`
+ * in between would have the desktop resize every PTY to its own layout and
+ * the browser resize them all back — two SIGWINCH per agent per F5.
  */
 export type SizeOwner = 'remote' | 'local'
 
 export class RemoteSizeOwner {
   private desktopClients = 0
+  private owner: SizeOwner = 'local'
+  private pendingLocal: ReturnType<typeof setTimeout> | null = null
+  private readonly announce: (owner: SizeOwner) => void
+  private readonly graceMs: number
+
+  constructor(opts: { announce: (owner: SizeOwner) => void; graceMs?: number }) {
+    this.announce = opts.announce
+    this.graceMs = opts.graceMs ?? 1500
+  }
 
   get count(): number {
     return this.desktopClients
   }
 
-  /** Returns the new owner when ownership changed, else null. */
-  connect(isDesktopClient: boolean): SizeOwner | null {
-    if (!isDesktopClient) return null
+  connect(isDesktopClient: boolean): void {
+    if (!isDesktopClient) return
     this.desktopClients += 1
-    return this.desktopClients === 1 ? 'remote' : null
+    this.cancelPending()
+    if (this.owner !== 'remote') {
+      this.owner = 'remote'
+      this.announce('remote')
+    }
   }
 
-  /** Returns the new owner when ownership changed, else null. */
-  disconnect(isDesktopClient: boolean): SizeOwner | null {
-    if (!isDesktopClient || this.desktopClients === 0) return null
+  disconnect(isDesktopClient: boolean): void {
+    if (!isDesktopClient || this.desktopClients === 0) return
     this.desktopClients -= 1
-    return this.desktopClients === 0 ? 'local' : null
+    if (this.desktopClients > 0 || this.owner !== 'remote') return
+    this.cancelPending()
+    this.pendingLocal = setTimeout(() => {
+      this.pendingLocal = null
+      if (this.desktopClients === 0 && this.owner === 'remote') {
+        this.owner = 'local'
+        this.announce('local')
+      }
+    }, this.graceMs)
+  }
+
+  /** The server is stopping: every client is gone now, no grace. */
+  reset(): void {
+    this.cancelPending()
+    this.desktopClients = 0
+    if (this.owner === 'remote') {
+      this.owner = 'local'
+      this.announce('local')
+    }
+  }
+
+  private cancelPending(): void {
+    if (this.pendingLocal) { clearTimeout(this.pendingLocal); this.pendingLocal = null }
   }
 }

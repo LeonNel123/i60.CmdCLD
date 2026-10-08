@@ -10,6 +10,7 @@ import { livePtyCache } from '../utils/live-pty-cache'
 import { logicalLineBounds } from '../utils/logical-line'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatPaths } from '../utils/format-paths'
+import { pastePolicy, resolveInputPlatform } from '../remote/input-policy'
 import { extractDroppedPaths } from '../utils/dropped-paths'
 import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
 import { findTerminalPaths, resolveTerminalPath } from '../../../shared/terminal-link'
@@ -468,18 +469,26 @@ export function TerminalPanel({
       window.api.writeTerminal(id, data)
     })
 
-    // Block xterm's internal paste handler
+    // Block xterm's internal paste handler — Electron only. The browser page
+    // has no OS-clipboard access for images/files, and xterm's own DOM paste
+    // handler is the one path that works in an insecure (plain http) context.
+    const paste = pastePolicy(Boolean(window.api.remote))
     const xtermTextarea = termRef.current!.querySelector('textarea')
     const blockNativePaste = (e: Event) => {
       e.preventDefault()
       e.stopPropagation()
     }
-    if (xtermTextarea) {
+    if (xtermTextarea && paste.interceptNativePaste) {
       xtermTextarea.addEventListener('paste', blockNativePaste, true)
     }
 
-    // Use Cmd on macOS, Ctrl on Windows/Linux for terminal shortcuts
-    const isMac = window.api.platform === 'darwin'
+    // Use Cmd on macOS, Ctrl on Windows/Linux for terminal shortcuts — the
+    // keyboard's OS, which on the browser page is the client's, not the host's.
+    const isMac = resolveInputPlatform({
+      remote: Boolean(window.api.remote),
+      hostPlatform: window.api.platform,
+      navigatorPlatform: typeof navigator !== 'undefined' ? navigator.platform : '',
+    }) === 'darwin'
     const modKey = (e: KeyboardEvent) => isMac ? e.metaKey : e.ctrlKey
 
     term.attachCustomKeyEventHandler((e) => {
@@ -487,7 +496,7 @@ export function TerminalPanel({
         window.api.clipboardWriteText(term.getSelection())
         return false
       }
-      if (e.type === 'keydown' && modKey(e) && e.key === 'v') {
+      if (e.type === 'keydown' && modKey(e) && e.key === 'v' && paste.interceptModV) {
         window.api.clipboardSaveImage(folderPath).then((imgPath) => {
           if (imgPath) {
             window.api.writeTerminal(id, imgPath)
@@ -509,7 +518,7 @@ export function TerminalPanel({
         }).catch(() => {})
         return false
       }
-      if (e.type === 'keyup' && modKey(e) && e.key === 'v') {
+      if (e.type === 'keyup' && modKey(e) && e.key === 'v' && paste.interceptModV) {
         return false
       }
       // Mod+F: open search

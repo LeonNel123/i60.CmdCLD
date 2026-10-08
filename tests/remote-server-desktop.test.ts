@@ -193,6 +193,38 @@ describe('desktop-page support routes', () => {
     expect(setCalls).toHaveLength(1)
   })
 
+  it('POST /api/settings rejects a value whose type does not match the setting', async () => {
+    const { port, setCalls } = await start()
+    const cases: Array<[string, unknown]> = [
+      ['favoriteFolders', 'not-an-array'],
+      ['projectAgents', null],
+      ['terminalFontSize', 'big'],
+      ['terminalFontSize', Number.NaN],
+      ['askBeforeLaunch', 'yes'],
+      ['defaultViewMode', 42],
+    ]
+    for (const [key, value] of cases) {
+      const res = await request(port, 'POST', '/api/settings', { key, value })
+      expect(res.status, `${key}=${String(value)}`).toBe(400)
+      expect(res.json.error, key).toBe('invalid value')
+    }
+    expect(setCalls).toHaveLength(0)
+    const ok = await request(port, 'POST', '/api/settings', { key: 'favoriteFolders', value: ['/a'] })
+    expect(ok.status).toBe(200)
+    expect(setCalls).toEqual([{ key: 'favoriteFolders', value: ['/a'] }])
+  })
+
+  it('the Host/Origin gate covers the new routes too', async () => {
+    const { port } = await start()
+    const hostile = (path: string, method = 'GET') => new Promise<number>((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, method, path, headers: { Host: 'evil.example.com' } }, (res) => { res.resume(); resolve(res.statusCode ?? 0) })
+      req.on('error', reject); req.end()
+    })
+    for (const [path, method] of [['/api/settings', 'POST'], ['/api/folders/check?path=/tmp', 'GET'], ['/api/git/status?path=/tmp', 'GET'], ['/desktop/', 'GET']] as const) {
+      expect(await hostile(path, method), path).toBe(403)
+    }
+  })
+
   it('POST /api/settings refuses the remote-access keys so a remote page cannot widen its own exposure', async () => {
     const { port, setCalls } = await start()
     for (const key of ['remoteAccess', 'remoteLanAccess', 'remotePort']) {

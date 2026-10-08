@@ -86,6 +86,9 @@ const DEFAULTS: AppSettings = {
   autopilotDefaultMaxIterations: 40,
 }
 
+/** The default value of every setting; also the authoritative key set. */
+export const SETTINGS_DEFAULTS: Readonly<AppSettings> = DEFAULTS
+
 export class Settings {
   private settings: AppSettings
   private filePath: string
