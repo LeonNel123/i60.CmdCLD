@@ -192,6 +192,16 @@ describe('desktop-page support routes', () => {
     expect(setCalls).toHaveLength(1)
   })
 
+  it('POST /api/settings refuses the remote-access keys so a remote page cannot widen its own exposure', async () => {
+    const { port, setCalls } = await start()
+    for (const key of ['remoteAccess', 'remoteLanAccess', 'remotePort']) {
+      const res = await request(port, 'POST', '/api/settings', { key, value: true })
+      expect(res.status, key).toBe(403)
+      expect(res.json.error, key).toBe('setting is not writable remotely')
+    }
+    expect(setCalls).toHaveLength(0)
+  })
+
   it('POST /api/folders/recent adds an existing directory and rejects a missing one', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'cmdcld-'))
     const { port, recentAdds } = await start()
@@ -221,5 +231,37 @@ describe('desktop-page support routes', () => {
     expect(res.json).toMatchObject({ isRepo: false, branch: null, dirty: false, ahead: 0 })
     const none = await request(port, 'GET', '/api/git/status')
     expect(none.json).toMatchObject({ isRepo: false })
+  })
+})
+
+describe('/desktop page serving', () => {
+  let servers: RemoteServer[] = []
+  afterEach(() => { for (const s of servers) s.stop(); servers = [] })
+
+  it('serves remote.html and its assets from the configured bundle dir', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cmdcld-ui-'))
+    writeFileSync(join(dir, 'remote.html'), '<!doctype html><title>R</title>')
+    mkdirSync(join(dir, 'assets'))
+    writeFileSync(join(dir, 'assets', 'a.js'), 'console.log(1)')
+    const f = fakeDeps({ desktopUiPath: dir })
+    const server = new RemoteServer(f.deps)
+    servers.push(server)
+    const { port } = await server.start(0)
+    const page = await request(port, 'GET', '/desktop/')
+    expect(page.status).toBe(200)
+    expect(String(page.json)).toContain('<title>R</title>')
+    const asset = await request(port, 'GET', '/desktop/assets/a.js')
+    expect(asset.status).toBe(200)
+  })
+
+  it('answers 503 with a build hint when the bundle is missing', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cmdcld-empty-'))
+    const f = fakeDeps({ desktopUiPath: dir })
+    const server = new RemoteServer(f.deps)
+    servers.push(server)
+    const { port } = await server.start(0)
+    const page = await request(port, 'GET', '/desktop/')
+    expect(page.status).toBe(503)
+    expect(String(page.json)).toContain('npm run build')
   })
 })

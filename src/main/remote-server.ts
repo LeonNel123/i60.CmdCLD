@@ -45,6 +45,10 @@ export function isClientTerminalId(v: unknown): v is string {
   return typeof v === 'string' && UUID_RE.test(v)
 }
 
+/** Settings a remote client may read but never write: they decide who can
+ *  reach this server, so only the desktop user changes them. */
+const REMOTE_READONLY_SETTINGS: ReadonlySet<string> = new Set(['remoteAccess', 'remoteLanAccess', 'remotePort'])
+
 export class RemoteServer {
   private app: ReturnType<typeof express> | null = null
   private httpServer: HttpServer | null = null
@@ -58,12 +62,15 @@ export class RemoteServer {
   // Composed messages only. Raw keystrokes must never go through this — the
   // submit delay and chunking would break interactive typing.
   private submitWriter: QueuedPtyWriter
+  private desktopUiPath: string
 
   constructor(opts: {
     ptyManager: PtyManager
     settings: Settings
     recentDB: RecentDB
     getWebContents: () => Electron.WebContents | null
+    /** Where the browser build of the React renderer lives (out/renderer). */
+    desktopUiPath?: string
   }) {
     this.ptyManager = opts.ptyManager
     this.submitWriter = new QueuedPtyWriter(
@@ -73,6 +80,7 @@ export class RemoteServer {
     this.settings = opts.settings
     this.recentDB = opts.recentDB
     this.getWebContents = opts.getWebContents
+    this.desktopUiPath = opts.desktopUiPath ?? join(__dirname, '../renderer')
   }
 
   start(port: number): Promise<{ port: number; urls: string[] }> {
@@ -210,6 +218,18 @@ export class RemoteServer {
       // Map xterm-addon-fit.js -> addon-fit.js (package renamed the file)
       this.app.get('/vendor/xterm-addon-fit/lib/xterm-addon-fit.js', (_req: any, res: any) => {
         res.sendFile(join(nmPath, '@xterm/addon-fit/lib/addon-fit.js'))
+      })
+    }
+
+    // The desktop layout page: the React renderer built for the browser.
+    // Served in dev and prod from out/renderer; dev needs `npm run build` once.
+    if (existsSync(join(this.desktopUiPath, 'remote.html'))) {
+      this.app.use('/desktop', express.static(this.desktopUiPath, { index: 'remote.html' }))
+    } else {
+      this.app.use('/desktop', (_req: any, res: any) => {
+        res.status(503).type('text/plain').send(
+          'Remote desktop page is not built. Run `npm run build`, then restart remote access.',
+        )
       })
     }
 
@@ -442,9 +462,15 @@ export class RemoteServer {
     })
 
     // Mirrors ipc 'settings:set'. Key must be one the settings store already
-    // knows — this is what stops a remote page planting arbitrary fields.
+    // knows — this is what stops a remote page planting arbitrary fields — and
+    // must not be one that governs this server's own exposure: a remote page
+    // flipping LAN access or the port would widen who can reach it next start.
     app.post('/api/settings', (req: any, res: any) => {
       const { key, value } = req.body ?? {}
+      if (typeof key === 'string' && REMOTE_READONLY_SETTINGS.has(key)) {
+        res.status(403).json({ error: 'setting is not writable remotely' })
+        return
+      }
       const known = Object.keys(this.settings.getAll())
       if (typeof key !== 'string' || !known.includes(key)) {
         res.status(400).json({ error: 'unknown setting' })
