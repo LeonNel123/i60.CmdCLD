@@ -169,6 +169,9 @@ export interface AttachSessionStatus {
 }
 
 export interface ElectronAPI {
+  /** True on the browser (/desktop) page, where window.api is the transport
+   *  adapter. Absent in Electron. Components use it to hide desktop-only controls. */
+  remote?: boolean
   platform: 'win32' | 'darwin' | 'linux'
   /** Absolute path of a dropped File (Electron's webUtils; File.path is gone). */
   getPathForFile: (file: File) => string
