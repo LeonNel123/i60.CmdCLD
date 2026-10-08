@@ -26,3 +26,14 @@ describe('remote.html (the /desktop page)', () => {
     expect(remote).toContain('<title>CmdCLD Remote</title>')
   })
 })
+
+describe('page-select wiring', () => {
+  const mobile = readFileSync(join(__dirname, '..', 'src', 'remote-ui', 'index.html'), 'utf-8')
+  it('both pages load page-select.js and run it before their own scripts', () => {
+    for (const [html, page] of [[mobile, 'mobile'], [remote, 'desktop']] as const) {
+      const lib = html.indexOf('<script src="/page-select.js"></script>')
+      expect(lib, page).toBeGreaterThan(-1)
+      expect(html.indexOf(`CmdCLD_PageSelect.apply('${page}')`), page).toBeGreaterThan(lib)
+    }
+  })
+})
