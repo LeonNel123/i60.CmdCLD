@@ -28,7 +28,9 @@ import notificationSound from './assets/notification.wav'
 import type { RecentFolder } from './types/api'
 import {
   getArgsForAgent,
+  rememberLaunch,
   resolveProjectLaunch,
+  type RememberedProjectAgent,
   normalizeAgentCli,
   stripResumeArgsForQuickLaunch,
   ensureResumeArgs,
@@ -107,17 +109,21 @@ export default function App() {
   const [codexArgs, setCodexArgs] = useState('')
   const [grokArgs, setGrokArgs] = useState('')
   const [opencodeArgs, setOpencodeArgs] = useState('')
+  // The current agent settings, for the remote-session listener: it subscribes once, and
+  // reading them from its closure would compare every remote launch with the settings at mount.
+  const argsSettingsRef = useRef({ claudeArgs, codexArgs, grokArgs, opencodeArgs })
+  argsSettingsRef.current = { claudeArgs, codexArgs, grokArgs, opencodeArgs }
   // Last CLI + args per folder. Without this, defaultAgentCli silently retargets every
   // project at once: change the default while inspecting a CLI and every favourite
   // opens with it, including projects that CLI has never run in.
-  const [projectAgents, setProjectAgents] = useState<Record<string, { agentCli: AgentCli; args: string }>>({})
+  const [projectAgents, setProjectAgents] = useState<Record<string, RememberedProjectAgent>>({})
   // Functional update so this never reads a stale map from a closure; the write is
   // fire-and-forget because failing to remember a choice must not block the launch.
-  const rememberProjectAgent = useCallback((folderPath: string, agentCli: AgentCli, args: string) => {
+  const rememberProjectAgent = useCallback((folderPath: string, entry: RememberedProjectAgent) => {
     setProjectAgents((prev) => {
       const existing = prev[folderPath]
-      if (existing && existing.agentCli === agentCli && existing.args === args) return prev
-      const next = { ...prev, [folderPath]: { agentCli, args } }
+      if (existing && existing.agentCli === entry.agentCli && existing.customArgs === entry.customArgs && !('args' in existing)) return prev
+      const next = { ...prev, [folderPath]: entry }
       window.api.settingsSet('projectAgents', next).catch(() => {})
       return next
     })
@@ -428,12 +434,12 @@ export default function App() {
       // and this writes to disk. A session started from the phone is still a choice for
       // that folder, so opening it later on the desktop should reuse it.
       const remoteCli = normalizeAgentCli(session.agentCli)
-      rememberProjectAgent(session.path, remoteCli, getArgsForAgent(remoteCli, {
+      rememberProjectAgent(session.path, rememberLaunch(remoteCli, getArgsForAgent(remoteCli, {
         claudeArgs: session.claudeArgs,
         codexArgs: session.codexArgs ?? '',
         grokArgs: session.grokArgs ?? '',
         opencodeArgs: session.opencodeArgs ?? '',
-      }))
+      }), argsSettingsRef.current))
       setTerminals((prev) => {
         if (prev.find((t) => t.id === session.id)) return prev
         const usedColors = prev.map((t) => t.color)
@@ -462,7 +468,7 @@ export default function App() {
   // Actually create a terminal with a specific agent CLI + args.
   const createTerminal = useCallback((folderPath: string, args: string, agentCli: AgentCli = defaultAgentCli) => {
     const normalizedAgent = normalizeAgentCli(agentCli)
-    rememberProjectAgent(folderPath, normalizedAgent, args)
+    rememberProjectAgent(folderPath, rememberLaunch(normalizedAgent, args, { claudeArgs, codexArgs, grokArgs, opencodeArgs }))
     const usedColors = terminals.map((t) => t.color)
     const newEntry: TerminalEntry = {
       id: crypto.randomUUID(),
@@ -491,7 +497,7 @@ export default function App() {
       setRecentFolders(list)
     }).catch(() => {})
 
-  }, [defaultAgentCli, defaultViewMode, terminals, showToast, rememberProjectAgent])
+  }, [defaultAgentCli, defaultViewMode, terminals, showToast, rememberProjectAgent, claudeArgs, codexArgs, grokArgs, opencodeArgs])
 
   // Start the folder-open flow (may show dialog or launch directly).
   // Pass agentOverride to force a specific CLI — used by the right-click
@@ -660,6 +666,7 @@ export default function App() {
 
   const handleReopenSavedSession = useCallback((resumeOverride?: boolean) => {
     const resume = resumeOverride ?? restoreSessionResume
+    const argsSettings = { claudeArgs, codexArgs, grokArgs, opencodeArgs }
     if (savedSessionProjects.length === 0) {
       setWelcomeDismissed(true)
       return
@@ -674,7 +681,7 @@ export default function App() {
         const folderName = p.path.split(/[\\/]/).pop() || p.path
         const color = assignColor(usedColors)
         usedColors.push(color)
-        const { agentCli, argsByAgent } = resolveRestoredSession(p, resume)
+        const { agentCli, argsByAgent } = resolveRestoredSession(p, resume, { argsSettings, remembered: projectAgents[p.path] })
         return p.isPlainShell
           ? { id: crypto.randomUUID(), path: p.path, name: `${folderName} (shell)`, color, isPlainShell: true }
           : {
@@ -706,12 +713,11 @@ export default function App() {
       // the resume flags `ensureResumeArgs` adds for this launch — those belong to the
       // restore, not to the project, and would otherwise accumulate on every open.
       if (!p.isPlainShell) {
-        const { agentCli, rememberArgs } = resolveRestoredSession(p, resume)
-        rememberProjectAgent(p.path, agentCli, rememberArgs)
+        rememberProjectAgent(p.path, resolveRestoredSession(p, resume, { argsSettings, remembered: projectAgents[p.path] }).remember)
       }
     }
     setWelcomeDismissed(true)
-  }, [savedSessionProjects, defaultViewMode, restoreSessionResume, rememberProjectAgent])
+  }, [savedSessionProjects, defaultViewMode, restoreSessionResume, rememberProjectAgent, projectAgents, claudeArgs, codexArgs, grokArgs, opencodeArgs])
 
   const handleOpenRecent = useCallback(async (folderPath: string) => {
     let status: 'ok' | 'missing' | 'unmounted' = 'ok'

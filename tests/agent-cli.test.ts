@@ -7,7 +7,9 @@ import {
   applyAgentCliLaunchOption,
   buildAgentLaunchCommand,
   getArgsForAgent,
+  rememberLaunch,
   resolveProjectLaunch,
+  type RememberedProjectAgent,
   getActiveAgentCliLaunchOptionIds,
   getAutopilotRuntimeGuardrail,
   getCouncilReviewerRuntimeGuardrail,
@@ -378,21 +380,49 @@ describe('per-project launch resolution', () => {
     expect(r.args).toBe('-m openrouter/z-ai/glm-5.3-flash')
   })
 
-  // The reported bug: changing the global default retargeted every favourite, including
-  // projects the new CLI had never run in. What a folder last used now outranks it.
-  it('prefers what the folder last used over a changed global default', () => {
+  // Changing the global default retargeted every favourite, including projects the new
+  // CLI had never run in. What a folder last used now outranks it.
+  it('prefers the CLI the folder last used over a changed global default', () => {
     const r = resolveProjectLaunch({
-      remembered: { agentCli: 'claude', args: '--dangerously-skip-permissions --continue' },
+      remembered: { agentCli: 'claude' },
       defaultAgentCli: 'opencode',
       argsSettings,
     })
     expect(r.agentCli).toBe('claude')
+    expect(r.args).toBe('--continue')
+  })
+
+  // The reported bug: a folder opened once kept a snapshot of the global args from that
+  // day, so adding --continue to the agent settings never reached it.
+  it('gives a previously opened folder the current global args', () => {
+    const before = { ...argsSettings, claudeArgs: '--dangerously-skip-permissions' }
+    const remembered = rememberLaunch('claude', '--dangerously-skip-permissions', before)
+    const after = { ...argsSettings, claudeArgs: '--dangerously-skip-permissions --continue' }
+    const r = resolveProjectLaunch({ remembered, defaultAgentCli: 'claude', argsSettings: after })
     expect(r.args).toBe('--dangerously-skip-permissions --continue')
+  })
+
+  // Entries written before customArgs existed hold that same snapshot under `args`, and
+  // nothing can tell a snapshot from a choice. They follow the settings.
+  it('ignores args stored in the old snapshot format', () => {
+    const legacy = { agentCli: 'claude', args: '--dangerously-skip-permissions' } as unknown as RememberedProjectAgent
+    const r = resolveProjectLaunch({ remembered: legacy, defaultAgentCli: 'codex', argsSettings })
+    expect(r.agentCli).toBe('claude')
+    expect(r.args).toBe('--continue')
+  })
+
+  it('keeps args the user edited for this folder', () => {
+    const r = resolveProjectLaunch({
+      remembered: { agentCli: 'claude', customArgs: '--model opus' },
+      defaultAgentCli: 'claude',
+      argsSettings,
+    })
+    expect(r.args).toBe('--model opus')
   })
 
   it('lets an explicit Open with X beat both', () => {
     const r = resolveProjectLaunch({
-      remembered: { agentCli: 'claude', args: '--dangerously-skip-permissions' },
+      remembered: { agentCli: 'claude', customArgs: '--model opus' },
       agentOverride: 'codex',
       defaultAgentCli: 'opencode',
       argsSettings,
@@ -406,7 +436,7 @@ describe('per-project launch resolution', () => {
   // would fail at the prompt, so they must not survive a CLI change.
   it('never carries remembered args across a CLI change', () => {
     const r = resolveProjectLaunch({
-      remembered: { agentCli: 'codex', args: '--sandbox workspace-write --ask-for-approval never' },
+      remembered: { agentCli: 'codex', customArgs: '--sandbox workspace-write --ask-for-approval never' },
       agentOverride: 'claude',
       defaultAgentCli: 'claude',
       argsSettings,
@@ -415,14 +445,23 @@ describe('per-project launch resolution', () => {
     expect(r.args).toBe('--continue')
     expect(r.args).not.toContain('sandbox')
   })
+})
 
-  it('falls back to global args when the remembered entry has none', () => {
-    const r = resolveProjectLaunch({
-      remembered: { agentCli: 'grok', args: '' },
-      defaultAgentCli: 'claude',
-      argsSettings,
-    })
-    expect(r.agentCli).toBe('grok')
-    expect(r.args).toBe('--effort high')
+describe('what a launch records for its folder', () => {
+  const argsSettings = { claudeArgs: '--dangerously-skip-permissions --continue', codexArgs: '' }
+
+  it('records no args when the launch used the global ones', () => {
+    expect(rememberLaunch('claude', ' --dangerously-skip-permissions  --continue ', argsSettings)).toEqual({ agentCli: 'claude' })
+  })
+
+  // Quick agent strips resume flags, and restore adds them. Neither is a choice about the
+  // folder; recording one would pin it to that variant of the settings for good.
+  it('treats a difference only in resume flags as following the settings', () => {
+    expect(rememberLaunch('claude', '--dangerously-skip-permissions', argsSettings)).toEqual({ agentCli: 'claude' })
+    expect(rememberLaunch('codex', 'resume --last', argsSettings)).toEqual({ agentCli: 'codex' })
+  })
+
+  it('records args the user changed', () => {
+    expect(rememberLaunch('claude', '--model opus', argsSettings)).toEqual({ agentCli: 'claude', customArgs: '--model opus' })
   })
 })

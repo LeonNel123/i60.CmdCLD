@@ -9,10 +9,13 @@
  */
 import {
   AGENT_CLIS,
+  customArgsFor,
   ensureResumeArgs,
   getArgsForAgent,
   normalizeAgentCli,
+  type AgentArgsSettings,
   type AgentCli,
+  type RememberedProjectAgent,
 } from './agent-cli'
 
 /** A project as persisted by the last-session store. */
@@ -32,32 +35,38 @@ export interface RestoredSession {
   /** Per-CLI args for the restored terminal; carries resume flags when resuming. */
   argsByAgent: Record<AgentCli, string>
   /**
-   * What to record as the folder's remembered launch — the project's own args, never the
-   * resume flags. `--continue` belongs to this restore, not to the project: remembering
-   * it would make every later open resume, and the flag would compound.
+   * What to record for the folder — its CLI, plus its customised args if they are that
+   * CLI's. Never the resume flags: `--continue` belongs to this restore, not to the
+   * project, and remembering it would make every later open resume.
    */
-  rememberArgs: string
+  remember: RememberedProjectAgent
 }
 
-export function resolveRestoredSession(saved: SavedSessionProject, resume: boolean): RestoredSession {
+/**
+ * Args come from the current settings, not from the saved session. The saved args are a
+ * snapshot taken when the session was saved, and relaunching with them is how a change
+ * to the agent settings (adding --continue, say) failed to reach every project that was
+ * open at the time. A folder's own customised args, held in `projectAgents`, still win
+ * for the CLI they were made for.
+ */
+export function resolveRestoredSession(
+  saved: SavedSessionProject,
+  resume: boolean,
+  current: { argsSettings: AgentArgsSettings; remembered?: RememberedProjectAgent },
+): RestoredSession {
   const agentCli = normalizeAgentCli(saved.agentCli)
-  const base = {
-    claudeArgs: saved.claudeArgs ?? '',
-    codexArgs: saved.codexArgs ?? '',
-    grokArgs: saved.grokArgs ?? '',
-    opencodeArgs: saved.opencodeArgs ?? '',
-  }
+  const custom = customArgsFor(current.remembered, agentCli)
 
   const argsByAgent = Object.fromEntries(
     AGENT_CLIS.map((cli) => {
-      const value = getArgsForAgent(cli, base)
+      const value = (cli === agentCli ? custom : undefined) ?? getArgsForAgent(cli, current.argsSettings)
       // Resume flags are per-CLI: Claude takes --continue, Codex takes a `resume`
       // subcommand. ensureResumeArgs owns that difference.
       return [cli, resume ? ensureResumeArgs(cli, value) : value]
     }),
   ) as Record<AgentCli, string>
 
-  return { agentCli, argsByAgent, rememberArgs: getArgsForAgent(agentCli, base) }
+  return { agentCli, argsByAgent, remember: custom ? { agentCli, customArgs: custom } : { agentCli } }
 }
 
 /**

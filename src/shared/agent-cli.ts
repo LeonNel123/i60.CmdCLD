@@ -338,10 +338,41 @@ export function getArgsForAgent(agentCli: AgentCli, settings: AgentArgsSettings)
   return settings[AGENT_ARGS_KEYS[agentCli]] || ''
 }
 
-/** What a folder was last opened with, as stored in the `projectAgents` setting. */
+/**
+ * What a folder was last opened with, as stored in the `projectAgents` setting.
+ *
+ * `customArgs` is present only when the folder was launched with args other than the
+ * global ones for that CLI — i.e. edited in the launch dialog. A folder that followed the
+ * settings stores none, so it keeps following them. An earlier format stored every
+ * launch's args under `args`; that was a snapshot of the settings on the day, which is
+ * why a settings change never reached a folder opened before it. Those entries are read
+ * as CLI-only.
+ */
 export interface RememberedProjectAgent {
   agentCli: AgentCli
-  args: string
+  customArgs?: string
+}
+
+/**
+ * The entry a launch records for its folder. Args that differ from the settings only in
+ * resume flags still count as following them: Quick agent strips those flags and restore
+ * adds them, and neither is a choice about the folder.
+ */
+export function rememberLaunch(
+  agentCli: AgentCli,
+  launchedArgs: string,
+  argsSettings: AgentArgsSettings,
+): RememberedProjectAgent {
+  const launched = normalizeArgs(launchedArgs)
+  const global = normalizeArgs(getArgsForAgent(agentCli, argsSettings))
+  const followsSettings =
+    stripResumeArgsForQuickLaunch(agentCli, launched) === stripResumeArgsForQuickLaunch(agentCli, global)
+  return followsSettings ? { agentCli } : { agentCli, customArgs: launched }
+}
+
+/** The folder's customised args, if it has some for this CLI. */
+export function customArgsFor(remembered: RememberedProjectAgent | undefined, agentCli: AgentCli): string | undefined {
+  return remembered?.agentCli === agentCli && remembered.customArgs ? remembered.customArgs : undefined
 }
 
 /**
@@ -352,8 +383,9 @@ export interface RememberedProjectAgent {
  * changing it must not retarget projects that already have a history, which is the bug
  * this resolves: one global setting silently redirected every favourite at once.
  *
- * Remembered args are only reused for the remembered CLI. They are that CLI's flags, and
- * handing Codex's `--sandbox workspace-write` to Claude would fail at the prompt.
+ * Args come from the current settings unless the folder has customised ones for the
+ * resolved CLI. Those belong to that CLI only: handing Codex's `--sandbox
+ * workspace-write` to Claude would fail at the prompt.
  */
 export function resolveProjectLaunch(input: {
   remembered?: RememberedProjectAgent
@@ -363,11 +395,8 @@ export function resolveProjectLaunch(input: {
 }): { agentCli: AgentCli; args: string } {
   const { remembered, agentOverride, defaultAgentCli, argsSettings } = input
   const agentCli = agentOverride ?? remembered?.agentCli ?? defaultAgentCli
-  const reuseRemembered = !agentOverride && remembered?.agentCli === agentCli && !!remembered.args
-  return {
-    agentCli,
-    args: reuseRemembered ? remembered!.args : getArgsForAgent(agentCli, argsSettings),
-  }
+  const custom = agentOverride ? undefined : customArgsFor(remembered, agentCli)
+  return { agentCli, args: custom ?? getArgsForAgent(agentCli, argsSettings) }
 }
 
 export function buildAgentLaunchCommand(agentCli: AgentCli, args: string | undefined): string {

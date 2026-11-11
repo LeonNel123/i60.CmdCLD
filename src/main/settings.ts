@@ -15,7 +15,7 @@ export interface AppSettings {
    * to folders never opened before, so changing the global default cannot silently
    * retarget every existing project.
    */
-  projectAgents: Record<string, { agentCli: AgentCli; args: string }>
+  projectAgents: Record<string, { agentCli: AgentCli; customArgs?: string }>
   defaultAgentCli: AgentCli
   claudeArgs: string
   codexArgs: string
