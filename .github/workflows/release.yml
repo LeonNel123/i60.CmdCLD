@@ -37,7 +37,7 @@ jobs:
           - name: macOS disk images
             os: macos-latest
             target: --mac
-          - name: Linux AppImage
+          - name: Linux AppImage and deb
             os: ubuntu-latest
             target: --linux
 
@@ -101,4 +101,5 @@ jobs:
             dist/*.exe
             dist/*.dmg
             dist/*.AppImage
+            dist/*.deb
             dist/*.yml

@@ -18,7 +18,7 @@
     "package": "electron-vite build && electron-builder",
     "package:win": "pwsh -NoProfile -File scripts/package-win.ps1",
     "package:mac": "electron-vite build && electron-builder --mac dmg",
-    "package:linux": "electron-vite build && electron-builder --linux AppImage",
+    "package:linux": "electron-vite build && electron-builder --linux",
     "release:win": "npm version patch --no-git-tag-version && npm run package:win && npm run version:check",
     "release:tag": "npm version patch -m \"chore(release): v%s\" && git push --follow-tags"
   },
@@ -50,9 +50,19 @@
       "artifactName": "CmdCLD-${version}-${arch}.dmg"
     },
     "linux": {
-      "target": "AppImage",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "build/icon.png",
+      "category": "Development",
+      "maintainer": "CmdCLD <noreply@localhost>"
+    },
+    "appImage": {
       "artifactName": "CmdCLD-${version}.AppImage"
+    },
+    "deb": {
+      "artifactName": "CmdCLD-${version}-amd64.deb"
     },
     "nsis": {
       "oneClick": true,

@@ -189,7 +189,7 @@ npm run dev
 ```bash
 npm run package:win      # Windows (NSIS installer)
 npm run package:mac      # macOS (DMG)
-npm run package:linux    # Linux (AppImage)
+npm run package:linux    # Linux (AppImage + .deb)
 ```
 
 ### Cut a Release
