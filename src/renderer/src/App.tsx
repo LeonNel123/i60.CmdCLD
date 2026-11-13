@@ -434,12 +434,15 @@ export default function App() {
       // and this writes to disk. A session started from the phone is still a choice for
       // that folder, so opening it later on the desktop should reuse it.
       const remoteCli = normalizeAgentCli(session.agentCli)
-      rememberProjectAgent(session.path, rememberLaunch(remoteCli, getArgsForAgent(remoteCli, {
+      const launched = session.launchArgs ?? getArgsForAgent(remoteCli, {
         claudeArgs: session.claudeArgs,
         codexArgs: session.codexArgs ?? '',
         grokArgs: session.grokArgs ?? '',
         opencodeArgs: session.opencodeArgs ?? '',
-      }), argsSettingsRef.current))
+      })
+      // Compare against main's settings, not this window's copy: a browser may
+      // have just changed them, and a stale copy would pin the folder.
+      rememberProjectAgent(session.path, rememberLaunch(remoteCli, launched, session.settingsArgs ?? argsSettingsRef.current))
       setTerminals((prev) => {
         if (prev.find((t) => t.id === session.id)) return prev
         const usedColors = prev.map((t) => t.color)
@@ -448,11 +451,11 @@ export default function App() {
           path: session.path,
           name: session.name,
           color: session.color || assignColor(usedColors),
-          agentCli: normalizeAgentCli(session.agentCli),
-          claudeArgs: session.claudeArgs,
-          codexArgs: session.codexArgs ?? '',
-          grokArgs: session.grokArgs ?? '',
-          opencodeArgs: session.opencodeArgs ?? '',
+          agentCli: remoteCli,
+          claudeArgs: remoteCli === 'claude' ? launched : session.claudeArgs,
+          codexArgs: remoteCli === 'codex' ? launched : session.codexArgs ?? '',
+          grokArgs: remoteCli === 'grok' ? launched : session.grokArgs ?? '',
+          opencodeArgs: remoteCli === 'opencode' ? launched : session.opencodeArgs ?? '',
         }
         const next = [...prev, newEntry]
         if (prev.length === 0 && defaultViewMode === 'focused') {

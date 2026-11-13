@@ -6,7 +6,7 @@ import { existsSync, statSync, mkdirSync, writeFileSync } from 'fs'
 import { networkInterfaces, homedir, release } from 'os'
 import type { AddressInfo } from 'net'
 import type { PtyManager, TerminalMeta } from './pty-manager'
-import { isRequestAllowed } from './remote-guard'
+import { isRequestAllowed, namesTailscaleHost, type RequestGuardOptions } from './remote-guard'
 import { QueuedPtyWriter } from './autopilot/pty-input-queue'
 import { Settings, SETTINGS_DEFAULTS } from './settings'
 import { RecentDB } from './recent-db'
@@ -23,6 +23,16 @@ import { getGitStatus, clearGitStatusCache } from './git-status'
 import { RemoteSizeOwner, type SizeOwner } from './remote-size-owner'
 
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024 // 10MB
+
+/** File extension for an uploaded image from its Content-Type; png when unknown. */
+export function imageExtension(contentType: string | undefined): string {
+  const type = (contentType || '').split(';')[0].trim().toLowerCase()
+  const byType: Record<string, string> = {
+    'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/gif': 'gif',
+    'image/webp': 'webp', 'image/heic': 'heic', 'image/heif': 'heif', 'image/bmp': 'bmp',
+  }
+  return byType[type] ?? 'png'
+}
 
 /**
  * Normalise a composed message for submission.
@@ -68,6 +78,9 @@ export class RemoteServer {
   private settings: Settings
   private recentDB: RecentDB
   private getWebContents: () => Electron.WebContents | null
+  private getAllWebContents: () => Electron.WebContents[]
+  private resolveTailscaleHost: () => Promise<string | null>
+  private tailscaleLookupAt = 0
   private startTime: number = 0
   private boundListeners: { event: string; fn: (...args: any[]) => void }[] = []
   // Composed messages only. Raw keystrokes must never go through this — the
@@ -81,6 +94,12 @@ export class RemoteServer {
     settings: Settings
     recentDB: RecentDB
     getWebContents: () => Electron.WebContents | null
+    /** Every desktop window. The size-owner announcement goes to all of them —
+     *  /desktop lists every session, so any window could be fighting it. */
+    getAllWebContents?: () => Electron.WebContents[]
+    /** This machine's Tailscale MagicDNS name, if any. Without it no `.ts.net`
+     *  Host/Origin is accepted (see remote-guard.ts). */
+    resolveTailscaleHost?: () => Promise<string | null>
     /** Where the browser build of the React renderer lives (out/renderer). */
     desktopUiPath?: string
   }) {
@@ -92,6 +111,11 @@ export class RemoteServer {
     this.settings = opts.settings
     this.recentDB = opts.recentDB
     this.getWebContents = opts.getWebContents
+    this.resolveTailscaleHost = opts.resolveTailscaleHost ?? (async () => null)
+    this.getAllWebContents = opts.getAllWebContents ?? (() => {
+      const wc = opts.getWebContents()
+      return wc ? [wc] : []
+    })
     this.desktopUiPath = opts.desktopUiPath ?? join(__dirname, '../renderer')
   }
 
@@ -104,22 +128,41 @@ export class RemoteServer {
 
       this.startTime = Date.now()
       const lanAccess = this.settings.get('remoteLanAccess')
-      const guardOpts = {
+      const guardOpts: RequestGuardOptions = {
         lanAccess,
         lanAddresses: lanAccess ? this.getLanAddresses() : [],
+        tailscaleHosts: [],
+      }
+      // Learn this machine's Tailscale name now, and again (at most every 10 s)
+      // when a request names a .ts.net host we do not know yet — Tailscale may
+      // have come up, or been renamed, after this server started.
+      const learnTailscaleHost = (): void => {
+        if (Date.now() - this.tailscaleLookupAt < 10_000) return
+        this.tailscaleLookupAt = Date.now()
+        this.resolveTailscaleHost().then((host) => {
+          const name = (host || '').trim().toLowerCase().replace(/\.$/, '')
+          if (name && !guardOpts.tailscaleHosts!.includes(name)) guardOpts.tailscaleHosts!.push(name)
+        }).catch(() => {})
+      }
+      this.tailscaleLookupAt = 0
+      learnTailscaleHost()
+      const allowed = (host: string | undefined, origin: string | undefined): boolean => {
+        if (isRequestAllowed(host, origin, guardOpts)) return true
+        if (namesTailscaleHost(host, origin)) learnTailscaleHost()
+        return false
       }
       this.app = express()
       // Host/Origin gate — registered before static files and the API so
       // every route is covered. Kills DNS rebinding + cross-site sockets.
       this.app.use((req: any, res: any, next: any) => {
-        if (isRequestAllowed(req.headers.host, req.headers.origin, guardOpts)) { next(); return }
+        if (allowed(req.headers.host, req.headers.origin)) { next(); return }
         res.status(403).json({ error: 'Forbidden' })
       })
       this.app.use(express.json())
       this.httpServer = createServer(this.app)
       this.io = new SocketServer(this.httpServer, {
         allowRequest: (req, callback) => {
-          callback(null, isRequestAllowed(req.headers.host, req.headers.origin as string | undefined, guardOpts))
+          callback(null, allowed(req.headers.host, req.headers.origin as string | undefined))
         },
       })
 
@@ -164,10 +207,11 @@ export class RemoteServer {
   }
 
   private announceSizeOwner(owner: SizeOwner): void {
-    try {
-      const wc = this.getWebContents()
-      if (wc && !wc.isDestroyed()) wc.send('remote:size-owner', { remote: owner === 'remote' })
-    } catch {}
+    for (const wc of this.getAllWebContents()) {
+      try {
+        if (!wc.isDestroyed()) wc.send('remote:size-owner', { remote: owner === 'remote' })
+      } catch {}
+    }
   }
 
   getUrls(port: number): string[] {
@@ -390,6 +434,16 @@ export class RemoteServer {
         if (!wc.isDestroyed()) {
           wc.send('remote:session-created', {
             id, path: cwd, name, color: '', agentCli,
+            // What was actually launched, and the settings as main has them
+            // now: the window's own copy can be stale (a browser may have just
+            // changed them), and comparing against it would pin the folder.
+            launchArgs: args,
+            settingsArgs: {
+              claudeArgs: this.settings.get('claudeArgs'),
+              codexArgs: this.settings.get('codexArgs'),
+              grokArgs: this.settings.get('grokArgs'),
+              opencodeArgs: this.settings.get('opencodeArgs'),
+            },
             claudeArgs: argsByAgent.claude,
             codexArgs: argsByAgent.codex,
             grokArgs: argsByAgent.grok,
@@ -543,13 +597,18 @@ export class RemoteServer {
       req.on('end', () => {
         if (totalSize > MAX_UPLOAD_SIZE) return
         const buffer = Buffer.concat(chunks)
-        const screenshotsDir = join(meta.path, '.screenshots')
-        mkdirSync(screenshotsDir, { recursive: true })
-
         const now = new Date()
         const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}h${String(now.getMinutes()).padStart(2, '0')}m${String(now.getSeconds()).padStart(2, '0')}s`
-        const filePath = join(screenshotsDir, `screenshot-${stamp}.png`)
-        writeFileSync(filePath, buffer)
+        // Phone photos are usually JPEG: name the file for what it is, or the
+        // agent reading it may reject or misread it.
+        const filePath = join(meta.path, '.screenshots', `screenshot-${stamp}.${imageExtension(req.headers['content-type'])}`)
+        try {
+          mkdirSync(join(meta.path, '.screenshots'), { recursive: true })
+          writeFileSync(filePath, buffer)
+        } catch (e) {
+          res.status(500).json({ error: `Could not save image: ${e instanceof Error ? e.message : String(e)}` })
+          return
+        }
 
         this.ptyManager.write(id, filePath)
         res.json({ path: filePath })
@@ -619,6 +678,16 @@ export class RemoteServer {
     this.addPtyListener('exit', ({ id, exitCode }: { id: string; exitCode: number }) => {
       if (this.io) {
         this.io.emit('session:exit', { id, exitCode })
+        this.io.emit('sessions:changed', this.ptyManager.listAll())
+      }
+    })
+
+    // Closed on purpose (a tile closed on the desktop, Kill on the phone). The
+    // exit listener is gone by then, so without this every other client kept
+    // listing a dead session. exitCode null = closed, not exited.
+    this.addPtyListener('killed', ({ id }: { id: string }) => {
+      if (this.io) {
+        this.io.emit('session:exit', { id, exitCode: null })
         this.io.emit('sessions:changed', this.ptyManager.listAll())
       }
     })

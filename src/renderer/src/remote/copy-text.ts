@@ -13,6 +13,9 @@ export function copyText(text: string): boolean {
 
 function legacyCopy(text: string): boolean {
   if (typeof document === 'undefined') return false
+  // select() moves focus to the temporary textarea; without handing it back,
+  // a terminal stops receiving keystrokes after every copy.
+  const previous = document.activeElement as HTMLElement | null
   const ta = document.createElement('textarea')
   ta.value = text
   ta.setAttribute('readonly', 'readonly')
@@ -27,5 +30,18 @@ function legacyCopy(text: string): boolean {
     ok = document.execCommand('copy')
   } catch {}
   document.body.removeChild(ta)
+  try { previous?.focus({ preventScroll: true }) } catch {}
   return ok
+}
+
+/** Ready xterm's hidden textarea for the browser's native copy: put the
+ *  selection in it and select it, so a browser that only copies a real DOM
+ *  selection still copies the text. xterm's own `copy` listener sets
+ *  clipboardData from its selection as well. Focus never moves, so typing
+ *  carries on. The value is cleared once the copy has run. */
+export function primeNativeCopy(textarea: HTMLTextAreaElement | null | undefined, text: string): void {
+  if (!textarea || !text) return
+  textarea.value = text
+  textarea.select()
+  setTimeout(() => { textarea.value = '' }, 0)
 }

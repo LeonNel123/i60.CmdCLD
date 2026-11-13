@@ -68,6 +68,9 @@
   }
 
   function legacyCopy(text) {
+    // select() moves focus to the temporary textarea; without handing it back
+    // the terminal stops receiving keystrokes after every copy.
+    var previous = document.activeElement
     var ta = document.createElement('textarea')
     ta.value = text
     // Keep it off-screen but selectable; display:none would break execCommand.
@@ -83,7 +86,19 @@
       ok = document.execCommand('copy')
     } catch (e) {}
     document.body.removeChild(ta)
+    try { if (previous && previous.focus) previous.focus({ preventScroll: true }) } catch (e) {}
     return ok
+  }
+
+  // Ready xterm's hidden textarea for the browser's native copy (see the
+  // Ctrl/Cmd+C handler): select the text in it so the copy carries it, and
+  // keep focus where it is so typing carries on. Cleared once the copy ran.
+  function primeNativeCopy(text) {
+    var ta = term && term.textarea
+    if (!ta || !text) return
+    ta.value = text
+    ta.select()
+    setTimeout(function () { ta.value = '' }, 0)
   }
 
   // Whole scrollback, trailing blank lines trimmed. term.buffer.active covers
@@ -195,6 +210,15 @@
 
       safeFitHandler = safeFit
       window.addEventListener('resize', safeFitHandler)
+    } else {
+      // The phone never claims a size, but it must follow the PTY when another
+      // client resizes it — or every line wraps at the old width.
+      remoteResizeHandler = function (cols, rows) {
+        if (!term) return
+        if (term.cols !== cols || term.rows !== rows) {
+          try { term.resize(cols, rows) } catch (e) {}
+        }
+      }
     }
 
     if (scrollback) {
@@ -222,15 +246,19 @@
         // Ctrl/Cmd+C with an active selection copies. Without a selection it must
         // still reach the PTY as  — that is the interrupt, and stealing it would
         // leave no way to stop a running agent from the keyboard.
-        if (ev.type === 'keydown' && (ev.ctrlKey || ev.metaKey) && !ev.altKey && (ev.key === 'c' || ev.key === 'C')) {
+        if (ev.type === 'keydown' && (ev.ctrlKey || ev.metaKey) && !ev.altKey && !ev.shiftKey && (ev.key === 'c' || ev.key === 'C')) {
+          // With a selection, let the browser's own copy run: it works over plain
+          // http and, unlike the hidden-textarea fallback, never moves focus.
           if (term && term.hasSelection()) {
-            copyText(term.getSelection())
+            primeNativeCopy(term.getSelection())
             return false
           }
           return true
         }
-        // Ctrl+Shift+C always copies, matching common terminal emulators.
-        if (ev.type === 'keydown' && ev.ctrlKey && ev.shiftKey && (ev.key === 'C' || ev.key === 'c')) {
+        // Ctrl+Shift+C (Cmd+Shift+C on a Mac) always copies, matching common
+        // terminal emulators.
+        if (ev.type === 'keydown' && (ev.ctrlKey || ev.metaKey) && ev.shiftKey && (ev.key === 'C' || ev.key === 'c')) {
+          ev.preventDefault() // Chrome's element inspector is also Ctrl/Cmd+Shift+C
           copyOutput()
           return false
         }
@@ -277,7 +305,7 @@
   }
 
   function onExit(exitCode) {
-    var msg = '\r\n[Session exited with code ' + exitCode + ']'
+    var msg = exitCode == null ? '\r\n[Session closed]' : '\r\n[Session exited with code ' + exitCode + ']'
     if (term) term.write(msg)
   }
 
@@ -308,11 +336,16 @@
 
   function uploadImage(blob) {
     if (!currentId) return
+    // Failures are shown in this view only (term.write never reaches the PTY).
+    function fail(msg) { if (term) term.write('\r\n\x1b[31m[Image upload failed: ' + msg + ']\x1b[0m\r\n') }
     fetch('/api/sessions/' + currentId + '/upload-image', {
       method: 'POST',
       headers: { 'Content-Type': blob.type || 'image/png' },
       body: blob,
-    }).catch(function () {})
+    }).then(function (r) {
+      if (r.ok) return
+      return r.json().then(function (b) { fail((b && b.error) || ('HTTP ' + r.status)) }, function () { fail('HTTP ' + r.status) })
+    }).catch(function () { fail('connection lost') })
   }
 
   // Single source of truth for sending. Every trigger — Send tap, Enter key,
@@ -327,6 +360,7 @@
     if (text === null) return
     currentSocket.emit('session:submit', { id: currentId, text: text })
     mobileInput.value = ''
+    composerNewlines = 0
     fitMobileInput()
   }
 
@@ -348,6 +382,7 @@
 
   mobileClearBtn.addEventListener('click', function () {
     mobileInput.value = ''
+    composerNewlines = 0
     fitMobileInput()
     mobileInput.focus()
   })
@@ -372,10 +407,16 @@
   // both keydown and beforeinput and just inject a raw \n into the value.
   // Skip paste events — pasted multi-line content is intentional and the
   // user may want to review it before hitting Send.
+  // Only a newline this event ADDED counts as Enter — newlines left in the box
+  // by an earlier paste must not send the prompt on the next keystroke.
+  var composerNewlines = 0
   mobileInput.addEventListener('input', function (e) {
     fitMobileInput()
+    var n = window.CmdCLD_InputSanitizer.countNewlines(mobileInput.value)
+    var added = n > composerNewlines
+    composerNewlines = n
     if (e && e.inputType === 'insertFromPaste') return
-    if (window.CmdCLD_InputSanitizer.hasNewline(mobileInput.value)) sendMobileInput()
+    if (added) sendMobileInput()
   })
 
   // Quick action buttons
@@ -449,5 +490,5 @@
   }
 
   // Expose globally
-  window.CmdCLD_Terminal = { open: open, close: close, onData: onData, onExit: onExit, onResize: onResize, copyOutput: copyOutput }
+  window.CmdCLD_Terminal = { open: open, close: close, onData: onData, onExit: onExit, onResize: onResize, copyOutput: copyOutput, copyText: copyText, bufferText: bufferText, hasSelection: function () { return !!(term && term.hasSelection()) }, isMobile: isMobile }
 })()

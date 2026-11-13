@@ -104,13 +104,19 @@ export function createRemoteApi(deps: RemoteApiDeps): ElectronAPI & { remote: tr
     sessionClearLast: noop,
 
     // ---- clipboard --------------------------------------------------------
-    // Image paste on the browser page goes through TerminalPanel's paste
-    // handler → clipboardSaveImage. A browser cannot read the clipboard on
-    // demand over plain http, so this resolves null; the panel then falls
-    // back to text paste. Image upload remains available via the phone UI.
+    // A browser cannot read the clipboard on demand over plain http, so these
+    // resolve null. Paste on the browser page rides the DOM paste event
+    // instead: text goes to xterm, an image to uploadPastedImage.
     clipboardSaveImage: async () => null,
     clipboardReadFiles: async () => null,
     clipboardWriteText: async (text) => { deps.copyText(text) },
+    uploadPastedImage: async (id, image) => {
+      await fetchJson(`/api/sessions/${encodeURIComponent(id)}/upload-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': image.type || 'image/png' },
+        body: image,
+      })
+    },
 
     // ---- desktop-only: stubs -----------------------------------------------
     openPath: async () => ({ ok: false, error: 'Not available remotely' }),

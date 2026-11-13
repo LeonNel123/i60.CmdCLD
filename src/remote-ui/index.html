@@ -31,7 +31,10 @@
     <div id="dashboard-view">
       <header id="status-bar">
         <span id="connection-status" class="status-dot disconnected">Connecting...</span>
-        <span id="session-count">0 sessions</span>
+        <span id="status-bar-right">
+          <span id="session-count">0 sessions</span>
+          <a id="desktop-view-link" class="btn-small" href="/desktop/?desktop" title="Switch to the desktop layout (grid of terminals)">Desktop view</a>
+        </span>
       </header>
 
       <div id="session-cards"></div>
@@ -119,6 +122,23 @@
           </button>
         </div>
       </header>
+
+      <!-- Phone copy sheet: xterm has no touch selection, so the output is shown
+           as plain text where the OS long-press selection works. -->
+      <div id="copy-sheet" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content copy-sheet-content">
+          <div class="copy-sheet-header">
+            <h3>Copy output</h3>
+            <span id="copy-sheet-hint">Long-press to select</span>
+          </div>
+          <pre id="copy-sheet-text"></pre>
+          <div class="modal-footer copy-sheet-footer">
+            <button id="copy-sheet-close" class="btn-secondary">Close</button>
+            <button id="copy-sheet-all" class="btn-primary">Copy all</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Mobile button help modal -->
       <div id="help-modal" class="modal hidden">

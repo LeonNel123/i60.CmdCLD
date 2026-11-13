@@ -11,6 +11,16 @@
     return /[\r\n]/.test(String(raw))
   }
 
+  // Newline count, for the input-event fallback: it must fire only when a
+  // newline was just ADDED. A multi-line paste leaves newlines in the box, and
+  // testing the whole value would send the half-written prompt on the next
+  // ordinary keystroke.
+  function countNewlines(raw) {
+    if (raw == null) return 0
+    var m = String(raw).replace(/\r\n/g, '\n').match(/[\r\n]/g)
+    return m ? m.length : 0
+  }
+
   // Build the text of a composed message (input bar, quick actions).
   //
   // Internal newlines are PRESERVED as \n. The server wraps the body in bracketed
@@ -36,7 +46,7 @@
     return Math.min(Math.max(h, minPx), maxPx)
   }
 
-  var api = { hasNewline: hasNewline, buildSubmitText: buildSubmitText, fitInputHeight: fitInputHeight }
+  var api = { hasNewline: hasNewline, countNewlines: countNewlines, buildSubmitText: buildSubmitText, fitInputHeight: fitInputHeight }
 
   // Expose for browser (terminal-view.js) and CommonJS (vitest).
   if (typeof window !== 'undefined') window.CmdCLD_InputSanitizer = api

@@ -258,7 +258,7 @@ contextBridge.exposeInMainWorld('api', {
     return () => { ipcRenderer.removeListener('remote:size-owner', listener) }
   },
 
-  onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string; codexArgs?: string; grokArgs?: string; opencodeArgs?: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode' }) => void): (() => void) => {
+  onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string; codexArgs?: string; grokArgs?: string; opencodeArgs?: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode'; launchArgs?: string; settingsArgs?: { claudeArgs: string; codexArgs: string; grokArgs: string; opencodeArgs: string } }) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, session: any): void => callback(session)
     ipcRenderer.on('remote:session-created', listener)
     return () => { ipcRenderer.removeListener('remote:session-created', listener) }

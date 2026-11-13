@@ -4,7 +4,7 @@ import { formatRelativeTime } from '../utils/format-relative-time'
 import { partitionSidebarFolders } from '../utils/sidebar-folders'
 import {
   ChevronLeft, ChevronRight, ChevronDown, Star, X, LayoutGrid,
-  FolderOpen, Sparkles, TerminalSquare, AppWindow, FolderPlus, Settings, RadioTower,
+  FolderOpen, Sparkles, TerminalSquare, AppWindow, FolderPlus, Settings, RadioTower, ListIcon,
 } from './icons'
 
 interface TerminalEntry {
@@ -375,6 +375,14 @@ export function Sidebar({
           <button onClick={onNewWindow} style={btnStyle()} className="sidebar-btn" title="New Window">
             <span style={{ color: '#aaa', display: 'flex', flexShrink: 0 }}><AppWindow width={14} height={14} /></span>
             {!collapsed && <span>New Window</span>}
+          </button>
+        )}
+        {window.api.remote && (
+          // `?mobile` is remembered by page-select.js, so the browser stays on
+          // the classic list until the user switches back from there.
+          <button onClick={() => { location.href = '/?mobile' }} style={btnStyle()} className="sidebar-btn" title="Classic view — the session list page">
+            <span style={{ color: '#aaa', display: 'flex', flexShrink: 0 }}><ListIcon width={14} height={14} /></span>
+            {!collapsed && <span>Classic View</span>}
           </button>
         )}
         {hasProjectsRoot && (

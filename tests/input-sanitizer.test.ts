@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 // Load the remote-ui sanitizer. It's a browser IIFE that also exports via
 // CommonJS when `module` is defined, which vitest sets up for us.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { hasNewline, buildSubmitText } = require('../src/remote-ui/input-sanitizer.js')
+const { hasNewline, countNewlines, buildSubmitText } = require('../src/remote-ui/input-sanitizer.js')
 
 describe('remote input sanitizer', () => {
   describe('hasNewline', () => {
@@ -113,5 +113,17 @@ describe('fitInputHeight', () => {
   it('treats a non-finite content height as the minimum', () => {
     expect(fitInputHeight(NaN, 48, 200)).toBe(48)
     expect(fitInputHeight(undefined, 48, 200)).toBe(48)
+  })
+})
+
+describe('countNewlines — the composer fallback fires only when one is added', () => {
+  it('counts \\n, \\r and \\r\\n as one each', () => {
+    expect(countNewlines(null)).toBe(0)
+    expect(countNewlines('one line')).toBe(0)
+    expect(countNewlines('a\nb\r\nc\rd')).toBe(3)
+  })
+  it('a keystroke after a multi-line paste adds none', () => {
+    const pasted = 'line one\nline two'
+    expect(countNewlines(pasted + 'x')).toBe(countNewlines(pasted))
   })
 })

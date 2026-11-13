@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { isRequestAllowed } from '../src/main/remote-guard'
+import { isRequestAllowed, namesTailscaleHost } from '../src/main/remote-guard'
 
-const LOOPBACK = { lanAccess: false, lanAddresses: ['192.168.1.20'] }
-const LAN = { lanAccess: true, lanAddresses: ['192.168.1.20'] }
+const LOOPBACK = { lanAccess: false, lanAddresses: ['192.168.1.20'], tailscaleHosts: ['mymachine.tail1234.ts.net'] }
+const LAN = { lanAccess: true, lanAddresses: ['192.168.1.20'], tailscaleHosts: ['mymachine.tail1234.ts.net'] }
 
 describe('isRequestAllowed', () => {
   it('allows loopback hosts with and without port', () => {
@@ -15,6 +15,14 @@ describe('isRequestAllowed', () => {
   it('allows Tailscale serve hostnames', () => {
     expect(isRequestAllowed('mymachine.tail1234.ts.net', undefined, LOOPBACK)).toBe(true)
     expect(isRequestAllowed('MyMachine.Tail1234.TS.NET', undefined, LOOPBACK)).toBe(true)
+  })
+
+  // Anyone can publish a page on their own *.ts.net name (Tailscale Funnel).
+  // A suffix match let such a page open a socket to localhost and drive every PTY.
+  it('rejects other machines\' .ts.net names, as Host or as Origin', () => {
+    expect(isRequestAllowed('attacker.tail9999.ts.net', undefined, LOOPBACK)).toBe(false)
+    expect(isRequestAllowed('localhost:3456', 'https://attacker.tail9999.ts.net', LOOPBACK)).toBe(false)
+    expect(isRequestAllowed('localhost:3456', 'https://mymachine.tail1234.ts.net', { lanAccess: false, lanAddresses: [] })).toBe(false)
   })
 
   it('rejects arbitrary hostnames (DNS rebinding)', () => {
@@ -39,5 +47,14 @@ describe('isRequestAllowed', () => {
     expect(isRequestAllowed('localhost:3456', 'https://evil.example.com', LOOPBACK)).toBe(false)
     expect(isRequestAllowed('localhost:3456', 'null', LOOPBACK)).toBe(false)
     expect(isRequestAllowed('localhost:3456', 'not a url', LOOPBACK)).toBe(false)
+  })
+})
+
+describe('namesTailscaleHost', () => {
+  it('spots a .ts.net Host or Origin so the server can re-read its own name', () => {
+    expect(namesTailscaleHost('box.tail1.ts.net', undefined)).toBe(true)
+    expect(namesTailscaleHost('localhost:3456', 'https://box.tail1.ts.net')).toBe(true)
+    expect(namesTailscaleHost('localhost:3456', 'http://localhost:3456')).toBe(false)
+    expect(namesTailscaleHost(undefined, 'null')).toBe(false)
   })
 })

@@ -26,3 +26,38 @@ export function pastePolicy(remote: boolean): { interceptNativePaste: boolean; i
     ? { interceptNativePaste: false, interceptModV: false }
     : { interceptNativePaste: true, interceptModV: true }
 }
+
+/** On the browser page, is this keydown the platform's copy or paste shortcut?
+ *  Returning false from xterm's key handler for these hands the key to the
+ *  browser, whose native copy/paste works over plain http — navigator.clipboard
+ *  does not, and xterm would otherwise send Ctrl+V to the PTY as ^V and cancel
+ *  the paste. Copy needs a selection: Ctrl+C without one is the interrupt.
+ *  Ctrl+Shift+C is left alone — in Chrome it opens the element inspector. */
+export function browserClipboardKey(
+  e: { type: string; key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean },
+  platform: InputPlatform,
+  hasSelection: boolean,
+): 'copy' | 'paste' | null {
+  if (e.type !== 'keydown' || e.altKey) return null
+  const mod = platform === 'darwin' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
+  if (!mod) return null
+  const key = e.key.toLowerCase()
+  if (key === 'v') return 'paste'
+  if (key === 'c' && !e.shiftKey && hasSelection) return 'copy'
+  return null
+}
+
+/** The image to upload from a browser paste, or null to let xterm paste text.
+ *  Many clipboards carry text and an image together (VS Code, browsers,
+ *  Office); text wins, as on the phone UI. */
+export function pastedImageFile<F>(
+  items: ArrayLike<{ kind: string; type: string; getAsFile(): F | null }>,
+): F | null {
+  let image: F | null = null
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i]
+    if (it.kind === 'string' && it.type.startsWith('text/')) return null
+    if (!image && it.kind === 'file' && it.type.startsWith('image/')) image = it.getAsFile()
+  }
+  return image
+}

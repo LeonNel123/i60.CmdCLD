@@ -285,6 +285,10 @@ export class PtyManager extends EventEmitter {
       entry.exitDisposable?.dispose()
       entry.process.kill()
       this.ptys.delete(id)
+      // Not 'exit': the exit listener was disposed above on purpose, and
+      // 'exit' listeners expect a real exit code. Other clients still need to
+      // hear that the session is gone.
+      this.emit('killed', { id })
     }
   }
 

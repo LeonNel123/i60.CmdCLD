@@ -10,7 +10,8 @@ import { livePtyCache } from '../utils/live-pty-cache'
 import { logicalLineBounds } from '../utils/logical-line'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatPaths } from '../utils/format-paths'
-import { pastePolicy, resolveInputPlatform } from '../remote/input-policy'
+import { pastePolicy, resolveInputPlatform, browserClipboardKey, pastedImageFile } from '../remote/input-policy'
+import { primeNativeCopy } from '../remote/copy-text'
 import { extractDroppedPaths } from '../utils/dropped-paths'
 import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
 import { findTerminalPaths, resolveTerminalPath } from '../../../shared/terminal-link'
@@ -416,7 +417,10 @@ export function TerminalPanel({
     })
 
     const removeExit = window.api.onTerminalExit(id, (code) => {
-      term.write(`\r\n\x1b[33m[Process exited with code ${code}]\x1b[0m\r\n`)
+      // null only reaches the browser page: the session was closed elsewhere.
+      term.write(code == null
+        ? '\r\n\x1b[33m[Session closed]\x1b[0m\r\n'
+        : `\r\n\x1b[33m[Process exited with code ${code}]\x1b[0m\r\n`)
       livePtyCache.forget(id)
     })
 
@@ -431,7 +435,10 @@ export function TerminalPanel({
     })
 
     const removePaste = () => {
-      if (xtermTextarea) xtermTextarea.removeEventListener('paste', blockNativePaste, true)
+      if (xtermTextarea) {
+        xtermTextarea.removeEventListener('paste', blockNativePaste, true)
+        xtermTextarea.removeEventListener('paste', uploadImagePaste, true)
+      }
     }
 
     // Drag-and-drop: forward dropped file paths into the PTY
@@ -481,6 +488,19 @@ export function TerminalPanel({
     if (xtermTextarea && paste.interceptNativePaste) {
       xtermTextarea.addEventListener('paste', blockNativePaste, true)
     }
+    // Browser page: an image-only paste is uploaded (the server types the saved
+    // path); anything with text falls through to xterm's own paste handler.
+    function uploadImagePaste(e: ClipboardEvent): void {
+      const upload = window.api.uploadPastedImage
+      const image = upload && e.clipboardData ? pastedImageFile(e.clipboardData.items) : null
+      if (!image) return
+      e.preventDefault()
+      e.stopPropagation()
+      upload!(id, image).catch((err) => { console.warn('[paste] image upload failed:', err) })
+    }
+    if (xtermTextarea && window.api.remote) {
+      xtermTextarea.addEventListener('paste', uploadImagePaste, true)
+    }
 
     // Use Cmd on macOS, Ctrl on Windows/Linux for terminal shortcuts — the
     // keyboard's OS, which on the browser page is the client's, not the host's.
@@ -492,6 +512,13 @@ export function TerminalPanel({
     const modKey = (e: KeyboardEvent) => isMac ? e.metaKey : e.ctrlKey
 
     term.attachCustomKeyEventHandler((e) => {
+      // Browser page: copy and paste shortcuts go to the browser's native
+      // clipboard events — the only path that works over plain http.
+      if (window.api.remote) {
+        const clip = browserClipboardKey(e, isMac ? 'darwin' : 'other', term.hasSelection())
+        if (clip === 'copy') primeNativeCopy(term.textarea, term.getSelection())
+        if (clip) return false
+      }
       if (e.type === 'keydown' && modKey(e) && e.key === 'c' && term.hasSelection()) {
         window.api.clipboardWriteText(term.getSelection())
         return false

@@ -30,3 +30,22 @@ describe('ScrollbackBuffer', () => {
     expect(buf.getAll()).toBe('')
   })
 })
+
+describe('PtyManager.kill', () => {
+  // The exit listener is disposed before the kill, so without 'killed' the
+  // remote clients never heard that a closed session was gone.
+  it("emits 'killed' (not 'exit') once the session is removed", async () => {
+    const { PtyManager } = await import('../src/main/pty-manager')
+    const m = new PtyManager()
+    const events: string[] = []
+    m.on('killed', ({ id }: { id: string }) => events.push(`killed:${id}:${m.has(id)}`))
+    m.on('exit', () => events.push('exit'))
+    ;(m as any).ptys.set('t1', {
+      flushTimer: null, pendingData: '', webContents: { isDestroyed: () => true },
+      dataDisposable: { dispose() {} }, exitDisposable: { dispose() {} }, process: { kill() {} },
+    })
+    m.kill('t1')
+    m.kill('t1') // second kill is a no-op
+    expect(events).toEqual(['killed:t1:false'])
+  })
+})

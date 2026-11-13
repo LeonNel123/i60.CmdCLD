@@ -82,7 +82,17 @@
     socket.on('connect', function () {
       connectionStatus.textContent = 'Connected'
       connectionStatus.className = 'status-dot connected'
-      refreshSessions()
+      // After a sleep or network change the open terminal missed output and
+      // would show TUI repaints over a stale screen: reload it from scrollback,
+      // or go back to the list if the session ended meanwhile.
+      var openId = currentSessionId
+      refreshSessions().then(function () {
+        if (!openId || currentSessionId !== openId) return
+        var alive = false
+        for (var i = 0; i < sessions.length; i++) if (sessions[i].id === openId) alive = true
+        if (alive) openTerminal(openId)
+        else closeTerminal()
+      })
     })
 
     socket.on('disconnect', function () {
@@ -176,7 +186,7 @@
 
   // Fetch sessions via REST
   function refreshSessions() {
-    fetch('/api/sessions')
+    return fetch('/api/sessions')
       .then(function (r) { return r.json() })
       .then(function (list) {
         sessions = list
@@ -242,15 +252,19 @@
     fetch('/api/sessions/' + id + '/scrollback')
       .then(function (r) { return r.json() })
       .then(function (data) {
+        // Another session was opened (or the list shown) while this loaded.
+        if (currentSessionId !== id) return
         window.CmdCLD_Terminal.open(id, data.scrollback || '', socket, data.cols, data.rows)
       })
       .catch(function () {
+        if (currentSessionId !== id) return
         window.CmdCLD_Terminal.open(id, '', socket)
       })
   }
 
   // Back to dashboard
   function closeTerminal() {
+    if (copySheet) closeCopySheet()
     // Blur the mobile input so the virtual keyboard dismisses before we
     // navigate away — prevents the next session from inheriting a
     // keyboard-sized viewport height.
@@ -437,10 +451,45 @@
     if (e.key === 'Enter') { e.preventDefault(); submitCustomPath() }
   })
 
+  // Phone copy sheet. xterm cannot select by touch, so on a phone the Copy
+  // button shows the output as plain text for the OS's own long-press
+  // selection and copy menu, plus "Copy all".
+  var copySheet = document.getElementById('copy-sheet')
+  var copySheetText = document.getElementById('copy-sheet-text')
+  var copySheetAll = document.getElementById('copy-sheet-all')
+  function closeCopySheet() {
+    copySheet.classList.add('hidden')
+    copySheetText.textContent = ''
+  }
+  function openCopySheet() {
+    copySheetText.textContent = window.CmdCLD_Terminal.bufferText()
+    copySheet.classList.remove('hidden')
+    // Latest output is what people usually want.
+    copySheetText.scrollTop = copySheetText.scrollHeight
+  }
+  if (copySheet) {
+    document.getElementById('copy-sheet-close').addEventListener('click', closeCopySheet)
+    copySheet.querySelector('.modal-backdrop').addEventListener('click', closeCopySheet)
+    copySheetAll.addEventListener('click', function () {
+      var ok = window.CmdCLD_Terminal.copyText(copySheetText.textContent)
+      copySheetAll.textContent = ok ? 'Copied' : 'Copy failed'
+      setTimeout(function () { copySheetAll.textContent = 'Copy all' }, 1200)
+    })
+  }
+
   var copyBtn = document.getElementById('copy-btn')
   if (copyBtn) {
     copyBtn.addEventListener('click', function () {
-      var ok = window.CmdCLD_Terminal.copyOutput()
+      var T = window.CmdCLD_Terminal
+      // Touch devices too: a phone in landscape is wider than isMobile() allows
+      // but still cannot select in xterm by touch.
+      var touch = false
+      try { touch = window.matchMedia('(pointer: coarse)').matches } catch (e) {}
+      if (copySheet && (T.isMobile() || touch) && !T.hasSelection()) {
+        openCopySheet()
+        return
+      }
+      var ok = T.copyOutput()
       // No clipboard permission prompt over plain http, so confirm visually.
       var previous = copyBtn.title
       copyBtn.title = ok ? 'Copied' : 'Copy failed'
@@ -467,10 +516,12 @@
   })
 
   // Utils
+  // Also quotes: the result goes into data-path="…" attributes, and a folder
+  // name may legally contain a quote on macOS and Linux.
   function escapeHtml(str) {
     var div = document.createElement('div')
     div.textContent = str
-    return div.innerHTML
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;')
   }
 
   // Expose for terminal-view.js

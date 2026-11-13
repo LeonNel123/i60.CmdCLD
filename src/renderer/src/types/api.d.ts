@@ -172,6 +172,9 @@ export interface ElectronAPI {
   /** True on the browser (/desktop) page, where window.api is the transport
    *  adapter. Absent in Electron. Components use it to hide desktop-only controls. */
   remote?: boolean
+  /** Browser page only: a pasted image, uploaded to the session's folder; the
+   *  server types the saved path into the PTY (as the phone UI's paste does). */
+  uploadPastedImage?: (id: string, image: Blob) => Promise<void>
   platform: 'win32' | 'darwin' | 'linux'
   /** Absolute path of a dropped File (Electron's webUtils; File.path is gone). */
   getPathForFile: (file: File) => string
@@ -260,7 +263,7 @@ export interface ElectronAPI {
   }>
   tailscaleServeStart: () => Promise<{ ok: boolean; url?: string; error?: string }>
   tailscaleServeStop: () => Promise<{ ok: boolean; error?: string }>
-  onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string; codexArgs?: string; grokArgs?: string; opencodeArgs?: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode' }) => void) => () => void
+  onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string; codexArgs?: string; grokArgs?: string; opencodeArgs?: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode'; launchArgs?: string; settingsArgs?: { claudeArgs: string; codexArgs: string; grokArgs: string; opencodeArgs: string } }) => void) => () => void
   autopilotKeyExists: (provider: 'anthropic' | 'openrouter') => Promise<boolean>
   autopilotKeySet: (provider: 'anthropic' | 'openrouter', key: string) => Promise<void>
   autopilotKeyClear: (provider: 'anthropic' | 'openrouter') => Promise<void>

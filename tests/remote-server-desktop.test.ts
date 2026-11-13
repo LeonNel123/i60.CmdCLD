@@ -22,6 +22,7 @@ function fakeDeps(opts: { existingIds?: string[]; settings?: Record<string, unkn
   }
   const setCalls: Array<{ key: string; value: unknown }> = []
   const recentAdds: string[] = []
+  const sent: Array<{ channel: string; msg: any }> = []
   const deps = {
     ptyManager: {
       on() {}, off() {},
@@ -47,10 +48,10 @@ function fakeDeps(opts: { existingIds?: string[]; settings?: Record<string, unkn
       remove: async () => {},
       checkPath: async (p: string) => (p === '/nope' ? 'missing' : 'ok'),
     } as any,
-    getWebContents: () => ({ isDestroyed: () => false, send() {} }) as any,
+    getWebContents: () => ({ isDestroyed: () => false, send(channel: string, msg: any) { sent.push({ channel, msg }) } }) as any,
     desktopUiPath: opts.desktopUiPath,
   }
-  return { deps, created, written, setCalls, recentAdds }
+  return { deps, created, written, setCalls, recentAdds, sent }
 }
 
 function request(port: number, method: string, path: string, body?: unknown): Promise<{ status: number; json: any }> {
@@ -109,6 +110,17 @@ describe('POST /api/sessions with a renderer-chosen id', () => {
     // The renderer writes the launch command itself after create resolves.
     await new Promise((r) => setTimeout(r, 1100))
     expect(written).toHaveLength(0)
+  })
+
+  // The desktop window records the folder's args from this event. It must see
+  // what was launched and main's current settings — its own copy can be stale.
+  it('tells the desktop window the launched args and the current settings', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cmdcld-'))
+    const { port, sent } = await start({ settings: { claudeArgs: '--model opus' } })
+    await request(port, 'POST', '/api/sessions', { id: VALID_ID, path: dir, agentCli: 'claude', launchArgs: '--custom' })
+    const ev = sent.find((e) => e.channel === 'remote:session-created')!.msg
+    expect(ev.launchArgs).toBe('--custom')
+    expect(ev.settingsArgs).toEqual({ claudeArgs: '--model opus', codexArgs: '', grokArgs: '', opencodeArgs: '' })
   })
 
   it('still launches server-side when no id is supplied (phone flow unchanged)', async () => {
@@ -223,6 +235,22 @@ describe('desktop-page support routes', () => {
     for (const [path, method] of [['/api/settings', 'POST'], ['/api/folders/check?path=/tmp', 'GET'], ['/api/git/status?path=/tmp', 'GET'], ['/desktop/', 'GET']] as const) {
       expect(await hostile(path, method), path).toBe(403)
     }
+  })
+
+  it('accepts this machine\'s own Tailscale name and rejects any other .ts.net site', async () => {
+    const f = fakeDeps()
+    const server = new RemoteServer({ ...f.deps, resolveTailscaleHost: async () => 'mine.tail1.ts.net.' })
+    servers.push(server)
+    const { port } = await server.start(0)
+    await new Promise((r) => setTimeout(r, 20)) // the name is looked up asynchronously at start
+    const status = (headers: Record<string, string>) => new Promise<number>((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, method: 'GET', path: '/api/status', headers }, (res) => { res.resume(); resolve(res.statusCode ?? 0) })
+      req.on('error', reject); req.end()
+    })
+    expect(await status({ Host: 'mine.tail1.ts.net' })).toBe(200)
+    expect(await status({ Host: `localhost:${port}`, Origin: 'https://mine.tail1.ts.net' })).toBe(200)
+    expect(await status({ Host: `localhost:${port}`, Origin: 'https://attacker.tail9.ts.net' })).toBe(403)
+    expect(await status({ Host: 'attacker.tail9.ts.net' })).toBe(403)
   })
 
   it('POST /api/settings refuses the remote-access keys so a remote page cannot widen its own exposure', async () => {

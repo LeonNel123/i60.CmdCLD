@@ -25,6 +25,22 @@ body {
   flex-shrink: 0;
 }
 
+#status-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#desktop-view-link {
+  text-decoration: none;
+}
+
+/* The desktop layout needs the width; on a phone the link would only lead
+   somewhere unusable. Same 769px threshold as page-select.js. */
+@media (max-width: 768px) {
+  #desktop-view-link { display: none; }
+}
+
 .status-dot::before {
   content: '●';
   margin-right: 6px;
@@ -855,4 +871,57 @@ body {
    when the page is served over plain http. */
 #copy-btn.copy-ok svg {
   stroke: #22c55e;
+}
+
+/* Phone copy sheet */
+.copy-sheet-content {
+  display: flex;
+  flex-direction: column;
+  max-width: 640px;
+  width: 94%;
+  margin: 6dvh auto;
+  max-height: 82dvh;
+  padding: 14px;
+  overflow: hidden;
+}
+
+.copy-sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.copy-sheet-header h3 { margin-bottom: 10px; }
+
+#copy-sheet-hint {
+  color: #888;
+  font-size: 11px;
+}
+
+#copy-sheet-text {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0;
+  padding: 8px;
+  background: #0d0d0d;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #d4d4d4;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
+.copy-sheet-footer {
+  gap: 8px;
+  margin-top: 10px;
+  flex-shrink: 0;
 }

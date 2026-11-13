@@ -235,6 +235,8 @@ function broadcastAutopilotCouncilUpdate(terminalId: string, state: CouncilState
 try {
   ptyManager = new PtyManager()
   ptyManager.on('exit', ({ id }: { id: string }) => clearAttachSession(id))
+  // A kill from the phone (DELETE /api/sessions/:id) skips pty:kill's cleanup.
+  ptyManager.on('killed', ({ id }: { id: string }) => clearAttachSession(id))
   autopilotPtyWriter = new QueuedPtyWriter((terminalId, data) => {
     ptyManager.write(terminalId, data)
   }, {
@@ -257,6 +259,10 @@ try {
       if (list.length === 0) return null
       return registry.getWebContents(list[0].id) || null
     },
+    resolveTailscaleHost: async () => (await tsGetStatus()).httpsHost,
+    getAllWebContents: () => registry.list()
+      .map((w) => registry.getWebContents(w.id))
+      .filter((wc): wc is Electron.WebContents => Boolean(wc)),
   })
 
 
