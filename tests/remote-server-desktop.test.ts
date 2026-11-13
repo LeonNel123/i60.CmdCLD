@@ -253,6 +253,26 @@ describe('desktop-page support routes', () => {
     expect(await status({ Host: 'attacker.tail9.ts.net' })).toBe(403)
   })
 
+  it('trusts only the current Tailscale name after a rename', async () => {
+    const f = fakeDeps()
+    let current = 'old.tail1.ts.net'
+    const server = new RemoteServer({ ...f.deps, resolveTailscaleHost: async () => current })
+    servers.push(server)
+    const { port } = await server.start(0)
+    const status = (host: string) => new Promise<number>((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, method: 'GET', path: '/api/status', headers: { Host: host } }, (res) => { res.resume(); resolve(res.statusCode ?? 0) })
+      req.on('error', reject); req.end()
+    })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(await status('old.tail1.ts.net')).toBe(200)
+    current = 'new.tail1.ts.net'
+    ;(server as any).tailscaleLookupAt = 0 // skip the 10 s rate limit
+    expect(await status('new.tail1.ts.net')).toBe(403) // unknown: triggers the re-read
+    await new Promise((r) => setTimeout(r, 20))
+    expect(await status('new.tail1.ts.net')).toBe(200)
+    expect(await status('old.tail1.ts.net')).toBe(403)
+  })
+
   it('POST /api/settings refuses the remote-access keys so a remote page cannot widen its own exposure', async () => {
     const { port, setCalls } = await start()
     for (const key of ['remoteAccess', 'remoteLanAccess', 'remotePort']) {

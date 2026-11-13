@@ -139,10 +139,13 @@ export class RemoteServer {
       const learnTailscaleHost = (): void => {
         if (Date.now() - this.tailscaleLookupAt < 10_000) return
         this.tailscaleLookupAt = Date.now()
+        // Replace, never append: after a rename the old name may belong to
+        // another device on the tailnet. A failed or logged-out lookup clears
+        // it; the next .ts.net request (10 s later at most) looks it up again.
         this.resolveTailscaleHost().then((host) => {
           const name = (host || '').trim().toLowerCase().replace(/\.$/, '')
-          if (name && !guardOpts.tailscaleHosts!.includes(name)) guardOpts.tailscaleHosts!.push(name)
-        }).catch(() => {})
+          guardOpts.tailscaleHosts = name ? [name] : []
+        }).catch(() => { guardOpts.tailscaleHosts = [] })
       }
       this.tailscaleLookupAt = 0
       learnTailscaleHost()
