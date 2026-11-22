@@ -18,6 +18,7 @@ import { LastSessionStore, type SavedSession } from './last-session-store'
 import { initCatalogue, getCatalogue, refreshCatalogue } from './openrouter-catalogue'
 import { detectEditors, getDefaultEditor, findProjectAnchor, type EditorInfo } from './editor-detect'
 import { RemoteServer } from './remote-server'
+import { createSettingsBroadcast } from './settings-broadcast'
 import { hardenGlobalSettings, trustFolder, readClaudeConfig, writeClaudeConfig } from './claude-config'
 import { getStatus as tsGetStatus, getServeStatus as tsGetServeStatus, startServe as tsStartServe, stopServe as tsStopServe } from './tailscale'
 import { getGitStatus, clearGitStatusCache } from './git-status'
@@ -264,6 +265,20 @@ try {
       .map((w) => registry.getWebContents(w.id))
       .filter((wc): wc is Electron.WebContents => Boolean(wc)),
   })
+  // Every client keeps its own copy of the settings; tell them all when any
+  // of them (or main) writes, so none launches from, or writes back, a stale one.
+  const settingsBroadcast = createSettingsBroadcast({
+    notify: (keys) => {
+      for (const w of registry.list()) {
+        const wc = registry.getWebContents(w.id)
+        try {
+          if (wc && !wc.isDestroyed()) wc.send('settings:changed', { keys })
+        } catch {}
+      }
+      remoteServer.notifySettingsChanged(keys)
+    },
+  })
+  settings.onChange((key) => settingsBroadcast.changed(key))
 
 
   // Auto-detect editors and set default if not configured

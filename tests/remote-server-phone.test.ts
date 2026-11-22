@@ -159,6 +159,20 @@ describe('remote server — phone clients', () => {
     })
   })
 
+  describe('settings', () => {
+    it('tells every browser client when settings changed', () => {
+      ctx.server.notifySettingsChanged(['claudeArgs', 'favoriteFolders'])
+      expect(ctx.io.of('settings:changed')).toEqual([
+        { rooms: null, ev: 'settings:changed', msg: { keys: ['claudeArgs', 'favoriteFolders'] } },
+      ])
+    })
+
+    it('says nothing while the server is not running', () => {
+      ;(ctx.server as any).io = null
+      expect(() => ctx.server.notifySettingsChanged(['claudeArgs'])).not.toThrow()
+    })
+  })
+
   // "Fit to phone": the phone resizes the PTY to its own screen. The desktop
   // window would fit its tile and take the size straight back, so the phone
   // asks for ownership the same way the /desktop page gets it.

@@ -92,6 +92,7 @@ export const SETTINGS_DEFAULTS: Readonly<AppSettings> = DEFAULTS
 export class Settings {
   private settings: AppSettings
   private filePath: string
+  private changeListeners = new Set<(key: keyof AppSettings) => void>()
 
   constructor(filePath: string) {
     this.filePath = filePath
@@ -125,6 +126,18 @@ export class Settings {
       writeFileSync(tmp, JSON.stringify(this.settings, null, 2))
       renameSync(tmp, this.filePath)
     } catch {}
+    // After the value is readable, and whoever wrote it — the window over
+    // IPC, a browser over REST, or main itself. A listener must not be able
+    // to break a write.
+    for (const listener of [...this.changeListeners]) {
+      try { listener(key) } catch {}
+    }
+  }
+
+  /** Called after every `set`. Returns an unsubscribe function. */
+  onChange(listener: (key: keyof AppSettings) => void): () => void {
+    this.changeListeners.add(listener)
+    return () => { this.changeListeners.delete(listener) }
   }
 
   getAll(): AppSettings {

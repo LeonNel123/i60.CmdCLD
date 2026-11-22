@@ -223,6 +223,11 @@ export class RemoteServer {
     return this.sizeOwner.count
   }
 
+  /** Settings were written (by anyone): browser clients reload their copy. */
+  notifySettingsChanged(keys: string[]): void {
+    this.io?.emit('settings:changed', { keys })
+  }
+
   private announceSizeOwner(owner: SizeOwner): void {
     for (const wc of this.getAllWebContents()) {
       try {

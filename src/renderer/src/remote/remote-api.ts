@@ -158,6 +158,13 @@ export function createRemoteApi(deps: RemoteApiDeps): ElectronAPI & { remote: tr
     tailscaleServeStart: async () => ({ ok: false, error: 'Not available remotely' }),
     tailscaleServeStop: async () => ({ ok: false, error: 'Not available remotely' }),
     onRemoteSessionCreated: unsub,
+    onSettingsChanged: (cb) => {
+      const handler = (msg: { keys?: unknown } | undefined): void => {
+        cb({ keys: msg && Array.isArray(msg.keys) ? msg.keys.filter((k): k is string => typeof k === 'string') : [] })
+      }
+      socket.on('settings:changed', handler)
+      return () => { socket.off('settings:changed', handler) }
+    },
     // exitCode null = closed on purpose somewhere else (see the `killed`
     // listener in remote-server.ts); a real exit keeps its tile and message.
     onRemoteSessionClosed: (cb) => {

@@ -259,6 +259,41 @@ export default function App() {
     [minimizedIds],
   )
 
+  // The one place main's settings are copied into this window's state: at
+  // mount, and again whenever any client writes them.
+  const applySettings = useCallback((settings: Awaited<ReturnType<typeof window.api.settingsGetAll>>) => {
+    setDefaultAgentCli(normalizeAgentCli(settings.defaultAgentCli))
+    setClaudeArgs(settings.claudeArgs)
+    setCodexArgs(settings.codexArgs ?? '')
+    setGrokArgs(settings.grokArgs ?? '')
+    setOpencodeArgs(settings.opencodeArgs ?? '')
+    setProjectAgents(settings.projectAgents ?? {})
+    setAskBeforeLaunch(settings.askBeforeLaunch)
+    setNotifyOnIdle(settings.notifyOnIdle)
+    setProjectsRoot(settings.projectsRoot)
+    setDefaultViewMode(settings.defaultViewMode)
+    setFavoriteFolders(settings.favoriteFolders ?? [])
+    setRestoreSessionEnabled(settings.restoreSessionEnabled ?? false)
+    setRestoreSessionResume(settings.restoreSessionResume ?? false)
+    setTerminalFontFamily(resolveTerminalFontFamily(settings.terminalFontFamily))
+    setTerminalFontSize(clampTerminalFontSize(settings.terminalFontSize))
+    setAppFontFamily(resolveAppFontFamily(settings.appFontFamily))
+    setUiScalePct(clampUiScalePct(settings.uiScalePct))
+    setAutopilotDefaults({
+      costCap: settings.autopilotDefaultCostCap ?? 1.0,
+      maxIterations: settings.autopilotDefaultMaxIterations ?? 40,
+    })
+  }, [])
+
+  // Settings live in main; this window and every /desktop tab hold a copy.
+  // Without this a tab kept launching with flags removed on the PC, and
+  // either side wrote back favourites or per-folder agents from a stale list.
+  useEffect(() => {
+    return window.api.onSettingsChanged(() => {
+      window.api.settingsGetAll().then(applySettings).catch(() => {})
+    })
+  }, [applySettings])
+
   // Load settings + saved state + recent folders on mount
   useEffect(() => {
     Promise.all([
@@ -266,29 +301,7 @@ export default function App() {
       window.api.recentList().catch(() => [] as RecentFolder[]),
       window.api.terminalListLive().catch(() => []),
     ]).then(([settings, recent, live]) => {
-      if (settings) {
-        setDefaultAgentCli(normalizeAgentCli(settings.defaultAgentCli))
-        setClaudeArgs(settings.claudeArgs)
-        setCodexArgs(settings.codexArgs ?? '')
-        setGrokArgs(settings.grokArgs ?? '')
-        setOpencodeArgs(settings.opencodeArgs ?? '')
-        setProjectAgents(settings.projectAgents ?? {})
-        setAskBeforeLaunch(settings.askBeforeLaunch)
-        setNotifyOnIdle(settings.notifyOnIdle)
-        setProjectsRoot(settings.projectsRoot)
-        setDefaultViewMode(settings.defaultViewMode)
-        setFavoriteFolders(settings.favoriteFolders ?? [])
-        setRestoreSessionEnabled(settings.restoreSessionEnabled ?? false)
-        setRestoreSessionResume(settings.restoreSessionResume ?? false)
-        setTerminalFontFamily(resolveTerminalFontFamily(settings.terminalFontFamily))
-        setTerminalFontSize(clampTerminalFontSize(settings.terminalFontSize))
-        setAppFontFamily(resolveAppFontFamily(settings.appFontFamily))
-        setUiScalePct(clampUiScalePct(settings.uiScalePct))
-        setAutopilotDefaults({
-          costCap: settings.autopilotDefaultCostCap ?? 1.0,
-          maxIterations: settings.autopilotDefaultMaxIterations ?? 40,
-        })
-      }
+      if (settings) applySettings(settings)
       setRecentFolders(recent)
       // Reattach to PTYs that outlived the page (a reload after a hang or a renderer
       // crash). Same ids as main, so each tile replays its scrollback instead of

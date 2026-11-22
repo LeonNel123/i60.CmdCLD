@@ -176,7 +176,7 @@ describe('createRemoteApi — every ElectronAPI member exists and stubs resolve'
     'editorGetDefaults','editorSetDefault','onWindowListUpdated','recentCheckPath','claudeConfigRead',
     'claudeConfigWrite','sessionSaveLast','sessionLoadLast','sessionClearLast','gitStatus','getBuildInfo',
     'remoteToggle','remoteStatus','tailscaleStatus','tailscaleServeStart','tailscaleServeStop',
-    'onRemoteSessionCreated','onRemoteSessionClosed','onRemoteSizeOwner','autopilotKeyExists','autopilotKeySet','autopilotKeyClear','autopilotStart',
+    'onRemoteSessionCreated','onRemoteSessionClosed','onSettingsChanged','onRemoteSizeOwner','autopilotKeyExists','autopilotKeySet','autopilotKeyClear','autopilotStart',
     'autopilotProStart','autopilotCouncilStart','autopilotProRunMeta','autopilotPause','autopilotResume',
     'autopilotStop','autopilotApproveGoal','autopilotReplyToWaiting','autopilotPermissionAllow',
     'autopilotPermissionDeny','autopilotGetStatus','autopilotInspectOutput','autopilotProbeArtifacts',
@@ -214,6 +214,26 @@ describe('createRemoteApi — every ElectronAPI member exists and stubs resolve'
 // The server reports a session closed on purpose as an exit with a null code.
 // The page drops the tile for it — left in place, a restore finds no PTY
 // under the id and launches the agent again.
+describe('createRemoteApi — settings changed elsewhere', () => {
+  it('reports the keys the server names', () => {
+    const { api, socket } = make()
+    const seen: string[][] = []
+    const unsub = api.onSettingsChanged(({ keys }) => seen.push(keys))
+    socket.receive('settings:changed', { keys: ['claudeArgs'] })
+    unsub()
+    socket.receive('settings:changed', { keys: ['codexArgs'] })
+    expect(seen).toEqual([['claudeArgs']])
+  })
+
+  it('treats a notice without a key list as "something changed"', () => {
+    const { api, socket } = make()
+    const seen: string[][] = []
+    api.onSettingsChanged(({ keys }) => seen.push(keys))
+    socket.receive('settings:changed', undefined)
+    expect(seen).toEqual([[]])
+  })
+})
+
 describe('createRemoteApi — sessions closed elsewhere', () => {
   it('reports a closed session', () => {
     const { api, socket } = make()

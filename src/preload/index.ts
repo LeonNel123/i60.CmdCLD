@@ -264,6 +264,14 @@ contextBridge.exposeInMainWorld('api', {
     return () => { ipcRenderer.removeListener('remote:session-created', listener) }
   },
 
+  // Settings were written somewhere — another window, a browser client, or
+  // this window itself. The renderer reloads its copy from main.
+  onSettingsChanged: (callback: (change: { keys: string[] }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, change: { keys: string[] }): void => callback(change)
+    ipcRenderer.on('settings:changed', listener)
+    return () => { ipcRenderer.removeListener('settings:changed', listener) }
+  },
+
   // A browser client closed a session (the /desktop grid, or Kill on the
   // phone). The window drops the tile; it must not kill anything itself.
   onRemoteSessionClosed: (callback: (session: { id: string }) => void): (() => void) => {
