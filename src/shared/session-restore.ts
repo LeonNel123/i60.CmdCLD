@@ -66,7 +66,8 @@ export function resolveRestoredSession(
     }),
   ) as Record<AgentCli, string>
 
-  return { agentCli, argsByAgent, remember: custom ? { agentCli, customArgs: custom } : { agentCli } }
+  // `!== undefined`, not truthiness: '' means the folder runs with no flags.
+  return { agentCli, argsByAgent, remember: custom !== undefined ? { agentCli, customArgs: custom } : { agentCli } }
 }
 
 /**

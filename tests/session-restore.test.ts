@@ -60,6 +60,19 @@ describe('restoring a saved session', () => {
 
   // The resume flag belongs to this restore, not to the project. Remembering it would
   // make every later open resume, and --continue would compound on each save/restore.
+  // A folder opted out of the global flags (customArgs: '') must not get them
+  // back from a restore, and must stay opted out afterwards.
+  it('restores a folder that was launched with no args without the global ones', () => {
+    const bare = { ...saved, agentCli: 'claude' as const }
+    const remembered = { agentCli: 'claude' as const, customArgs: '' }
+    const r = resolveRestoredSession(bare, false, { argsSettings, remembered })
+    expect(r.argsByAgent.claude).toBe('')
+    expect(r.remember).toEqual({ agentCli: 'claude', customArgs: '' })
+    const resumed = resolveRestoredSession(bare, true, { argsSettings, remembered })
+    expect(resumed.argsByAgent.claude).not.toContain('--dangerously-skip-permissions')
+    expect(resumed.remember).toEqual({ agentCli: 'claude', customArgs: '' })
+  })
+
   it('never lets resume flags leak into what the folder remembers', () => {
     const resumed = resolveRestoredSession(saved, true, { argsSettings })
     expect(resumed.remember).toEqual({ agentCli: 'codex' })

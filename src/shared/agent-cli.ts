@@ -370,9 +370,17 @@ export function rememberLaunch(
   return followsSettings ? { agentCli } : { agentCli, customArgs: launched }
 }
 
-/** The folder's customised args, if it has some for this CLI. */
+/**
+ * The folder's customised args, if it has some for this CLI.
+ *
+ * An empty string is a customisation — "launch this folder with no flags" —
+ * and must come back as '' rather than undefined. Testing for truthiness here
+ * read it as "not customised" and gave the folder the global flags it had
+ * been opted out of. Callers must likewise test the result against undefined.
+ */
 export function customArgsFor(remembered: RememberedProjectAgent | undefined, agentCli: AgentCli): string | undefined {
-  return remembered?.agentCli === agentCli && remembered.customArgs ? remembered.customArgs : undefined
+  if (remembered?.agentCli !== agentCli) return undefined
+  return typeof remembered.customArgs === 'string' ? remembered.customArgs : undefined
 }
 
 /**

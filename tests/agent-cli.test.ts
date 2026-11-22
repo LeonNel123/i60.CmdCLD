@@ -464,4 +464,15 @@ describe('what a launch records for its folder', () => {
   it('records args the user changed', () => {
     expect(rememberLaunch('claude', '--model opus', argsSettings)).toEqual({ agentCli: 'claude', customArgs: '--model opus' })
   })
+
+  // Clearing the args in the launch dialog is a choice too — usually the
+  // choice not to run this folder with --dangerously-skip-permissions. The
+  // empty string was stored and then read back as "no choice made", so the
+  // folder's next open ran with the global flags it had been opted out of.
+  it('remembers a folder launched with no args at all, and opens it that way again', () => {
+    const remembered = rememberLaunch('claude', '', argsSettings)
+    expect(remembered).toEqual({ agentCli: 'claude', customArgs: '' })
+    const r = resolveProjectLaunch({ remembered, defaultAgentCli: 'claude', argsSettings })
+    expect(r).toEqual({ agentCli: 'claude', args: '' })
+  })
 })
