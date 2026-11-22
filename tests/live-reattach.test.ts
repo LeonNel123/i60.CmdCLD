@@ -43,6 +43,26 @@ describe('terminalsFromLiveSessions', () => {
     expect(out.map((t) => t.color)).toEqual(['#111', '#222', '#333'])
   })
 
+  // Main used to have no idea a session was a plain shell, so after a window
+  // reload (or on the /desktop page) a shell came back as an agent tile.
+  it('brings a plain shell back as a plain shell, named like one', () => {
+    const [t] = terminalsFromLiveSessions(
+      [{ id: 'a', path: 'D:\p', name: 'p', color: '#1', agentCli: 'claude', launchArgs: '', isPlainShell: true }],
+      pickColor,
+    )
+    expect(t.isPlainShell).toBe(true)
+    expect(t.name).toBe('p (shell)')
+  })
+
+  it('leaves agent sessions unmarked', () => {
+    const [t] = terminalsFromLiveSessions(
+      [{ id: 'a', path: 'D:\p', name: 'p', color: '#1', agentCli: 'claude', launchArgs: '' }],
+      pickColor,
+    )
+    expect(t.isPlainShell).toBeUndefined()
+    expect(t.name).toBe('p')
+  })
+
   it('normalises an unknown agent to the default CLI', () => {
     const [t] = terminalsFromLiveSessions(
       [{ id: 'a', path: 'D:\p', name: 'p', color: '#1', agentCli: 'bogus' as never, launchArgs: '' }],

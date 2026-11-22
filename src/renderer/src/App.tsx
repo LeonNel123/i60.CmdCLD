@@ -442,15 +442,20 @@ export default function App() {
       })
       // Compare against main's settings, not this window's copy: a browser may
       // have just changed them, and a stale copy would pin the folder.
-      rememberProjectAgent(session.path, rememberLaunch(remoteCli, launched, session.settingsArgs ?? argsSettingsRef.current))
+      // A plain shell is not a choice of agent for the folder: recording one
+      // replaced whatever CLI and args the folder had with "claude".
+      if (!session.isPlainShell) {
+        rememberProjectAgent(session.path, rememberLaunch(remoteCli, launched, session.settingsArgs ?? argsSettingsRef.current))
+      }
       setTerminals((prev) => {
         if (prev.find((t) => t.id === session.id)) return prev
         const usedColors = prev.map((t) => t.color)
         const newEntry: TerminalEntry = {
           id: session.id,
           path: session.path,
-          name: session.name,
+          name: session.isPlainShell ? `${session.name} (shell)` : session.name,
           color: session.color || assignColor(usedColors),
+          ...(session.isPlainShell ? { isPlainShell: true } : {}),
           agentCli: remoteCli,
           claudeArgs: remoteCli === 'claude' ? launched : session.claudeArgs,
           codexArgs: remoteCli === 'codex' ? launched : session.codexArgs ?? '',

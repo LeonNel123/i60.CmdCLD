@@ -384,7 +384,7 @@ export class RemoteServer {
     app.post('/api/sessions', (req: any, res: any) => {
       const {
         path: cwd, agentCli: agentCliRaw, claudeArgs, codexArgs, grokArgs, opencodeArgs,
-        id: clientId, size: sizeRaw, launchArgs: launchArgsRaw,
+        id: clientId, size: sizeRaw, launchArgs: launchArgsRaw, isPlainShell: plainShellRaw,
       } = req.body
       if (!cwd || typeof cwd !== 'string') {
         res.status(400).json({ error: 'path is required' })
@@ -432,7 +432,12 @@ export class RemoteServer {
             grokArgs: argsByAgent.grok,
             opencodeArgs: argsByAgent.opencode,
           })
+      // A plain shell exists only on the renderer-driven path: there the page
+      // decides what to type into the PTY, and for a shell it types nothing.
+      // The phone path always launches an agent.
+      const isPlainShell = rendererDriven && plainShellRaw === true
       const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli, launchArgs: args }
+      if (isPlainShell) meta.isPlainShell = true
       const wc = this.getWebContents()
 
       if (!wc) {
@@ -440,7 +445,7 @@ export class RemoteServer {
         return
       }
 
-      if (agentCli === 'claude') trustFolder(cwd)
+      if (agentCli === 'claude' && !isPlainShell) trustFolder(cwd)
       const size = resolvePtySpawnSize(rendererDriven ? sizeRaw : undefined)
       try {
         this.ptyManager.create(id, cwd, wc, meta, undefined, size)
@@ -468,6 +473,8 @@ export class RemoteServer {
         if (!wc.isDestroyed()) {
           wc.send('remote:session-created', {
             id, path: cwd, name, color: '', agentCli,
+            // The window must not record a shell as this folder's agent.
+            isPlainShell,
             // What was actually launched, and the settings as main has them
             // now: the window's own copy can be stale (a browser may have just
             // changed them), and comparing against it would pin the folder.

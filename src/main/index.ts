@@ -530,7 +530,7 @@ ipcMain.handle('pty:exists', (_event, id: string) => ptyManager.has(id))
 // their original ids instead of restoring from disk and launching duplicates.
 ipcMain.handle('pty:listMine', (event) => ptyManager.listByWebContents(event.sender))
 
-ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: AgentCli, launchArgsRaw?: string, elevatedRaw?: unknown, sizeRaw?: unknown) => {
+ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: AgentCli, launchArgsRaw?: string, elevatedRaw?: unknown, sizeRaw?: unknown, plainShellRaw?: unknown) => {
   const windowId = getWindowIdFromEvent(event)
   const wc = windowId ? registry.getWebContents(windowId) : null
   // Refuse with a reason rather than a bare `return`: an undefined resolve
@@ -555,9 +555,13 @@ ipcMain.handle('pty:create', (event, id: string, cwd: string, agentCliRaw?: Agen
     opencodeArgs: settings.get('opencodeArgs'),
   })
   const meta: TerminalMeta = { id, path: cwd, name, color: '', agentCli, launchArgs }
+  // The renderer launches nothing in a plain shell; record that, so a reload
+  // (pty:listMine) and remote clients do not take it for an agent session.
+  const isPlainShell = plainShellRaw === true
+  if (isPlainShell) meta.isPlainShell = true
   // Folder trust is a nicety — a failure here shouldn't kill the tile.
   try {
-    if (agentCli === 'claude') trustFolder(cwd)
+    if (agentCli === 'claude' && !isPlainShell) trustFolder(cwd)
   } catch (e) {
     log(`pty:create trustFolder failed (non-fatal): ${e}`)
   }

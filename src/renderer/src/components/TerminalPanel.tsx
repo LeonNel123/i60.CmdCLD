@@ -628,7 +628,7 @@ export function TerminalPanel({
           // which used to leave the agent launching into 80x24 inside a full
           // tile — its first repaints then smeared across the terminal.
           const size = { cols: term.cols, rows: term.rows }
-          window.api.createTerminal(id, folderPath, agentCli, launchArgs, elevated, size).then(() => {
+          window.api.createTerminal(id, folderPath, agentCli, launchArgs, elevated, size, isPlainShell).then(() => {
             if (disposed) return
             // The tile may have moved during the spawn (grid re-layout as
             // sibling tiles arrive); the pty exists now, so this one lands.

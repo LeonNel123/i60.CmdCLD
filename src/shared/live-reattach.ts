@@ -19,6 +19,7 @@ export interface LiveSession {
   color: string
   agentCli?: AgentCli
   launchArgs?: string
+  isPlainShell?: boolean
 }
 
 export interface ReattachedTerminal {
@@ -31,6 +32,7 @@ export interface ReattachedTerminal {
   codexArgs: string
   grokArgs: string
   opencodeArgs: string
+  isPlainShell?: boolean
 }
 
 export function terminalsFromLiveSessions(
@@ -48,6 +50,12 @@ export function terminalsFromLiveSessions(
     const args = Object.fromEntries(
       AGENT_CLIS.map((cli) => [`${cli}Args`, cli === agentCli ? (s.launchArgs ?? '') : '']),
     ) as Pick<ReattachedTerminal, 'claudeArgs' | 'codexArgs' | 'grokArgs' | 'opencodeArgs'>
+    // A shell comes back as a shell, named the way the app names one. Main
+    // only knows the folder name, and an agent tile for a bare shell would be
+    // saved, and next time launched, as an agent.
+    if (s.isPlainShell) {
+      return { id: s.id, path: s.path, name: `${s.name} (shell)`, color, agentCli, ...args, isPlainShell: true }
+    }
     return { id: s.id, path: s.path, name: s.name, color, agentCli, ...args }
   })
 }

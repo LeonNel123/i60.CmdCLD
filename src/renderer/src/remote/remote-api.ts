@@ -66,8 +66,8 @@ export function createRemoteApi(deps: RemoteApiDeps): ElectronAPI & { remote: tr
     getPathForFile: () => '',
 
     // ---- terminal lifecycle --------------------------------------------
-    createTerminal: async (id, cwd, agentCli, launchArgs, _elevated, size) => {
-      await post('/api/sessions', { id, path: cwd, agentCli, launchArgs, size })
+    createTerminal: async (id, cwd, agentCli, launchArgs, _elevated, size, isPlainShell) => {
+      await post('/api/sessions', { id, path: cwd, agentCli, launchArgs, size, isPlainShell: isPlainShell || undefined })
     },
     writeTerminal: async (id, data) => { socket.emit('session:input', { id, data }) },
     resizeTerminal: async (id, cols, rows) => { socket.emit('session:resize', { id, cols, rows }) },

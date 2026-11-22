@@ -1,9 +1,14 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import http from 'http'
 import { tmpdir } from 'os'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { RemoteServer } from '../src/main/remote-server'
+import { trustFolder } from '../src/main/claude-config'
+
+// The real trustFolder writes to ~/.claude.json. Left unmocked, every run of
+// this file added its temp folders to the developer's own Claude config.
+vi.mock('../src/main/claude-config', () => ({ trustFolder: vi.fn() }))
 
 type Created = { id: string; cwd: string; meta: any; size: any }
 
@@ -133,6 +138,41 @@ describe('POST /api/sessions with a renderer-chosen id', () => {
     await new Promise((r) => setTimeout(r, 1100))
     expect(written).toHaveLength(1)
     expect(written[0].id).toBe(created[0].id)
+  })
+
+  // A plain shell opened on the /desktop page arrived here with no way to say
+  // so, was recorded as a Claude session, and the desktop window then stored
+  // "claude" as that folder's agent over whatever the user had chosen.
+  it('records a plain shell as a plain shell and says so to the desktop window', async () => {
+    vi.mocked(trustFolder).mockClear()
+    const dir = mkdtempSync(join(tmpdir(), 'cmdcld-'))
+    const { port, created, sent } = await start()
+    const res = await request(port, 'POST', '/api/sessions', { id: VALID_ID, path: dir, isPlainShell: true })
+    expect(res.status).toBe(200)
+    expect(created[0].meta.isPlainShell).toBe(true)
+    const evt = sent.find((s) => s.channel === 'remote:session-created')
+    expect(evt?.msg.isPlainShell).toBe(true)
+    // Trusting the folder is for launching Claude in it; a shell launches nothing.
+    expect(trustFolder).not.toHaveBeenCalled()
+  })
+
+  it('does not mark an agent session as a plain shell', async () => {
+    vi.mocked(trustFolder).mockClear()
+    const dir = mkdtempSync(join(tmpdir(), 'cmdcld-'))
+    const { port, created, sent } = await start()
+    await request(port, 'POST', '/api/sessions', { id: VALID_ID, path: dir, agentCli: 'claude', launchArgs: '' })
+    expect(created[0].meta.isPlainShell).toBeUndefined()
+    expect(sent.find((s) => s.channel === 'remote:session-created')?.msg.isPlainShell).toBe(false)
+    expect(trustFolder).toHaveBeenCalledWith(dir)
+  })
+
+  // The phone has no shell button; the flag only means something on the
+  // renderer-driven path, where the page (not the server) decides what to launch.
+  it('ignores the flag on the phone path, which always launches an agent', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cmdcld-'))
+    const { port, created } = await start()
+    await request(port, 'POST', '/api/sessions', { path: dir, agentCli: 'codex', isPlainShell: true })
+    expect(created[0].meta.isPlainShell).toBeUndefined()
   })
 
   it('rejects a non-UUID id with 400 and spawns nothing', async () => {

@@ -180,7 +180,7 @@ export interface ElectronAPI {
   getPathForFile: (file: File) => string
   /** `size` is the cols/rows the tile's xterm fitted to; the pty spawns at that
    *  size so the agent's first frame is drawn for the real grid. */
-  createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex' | 'grok' | 'opencode', launchArgs?: string, elevated?: boolean, size?: { cols: number; rows: number }) => Promise<void>
+  createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex' | 'grok' | 'opencode', launchArgs?: string, elevated?: boolean, size?: { cols: number; rows: number }, isPlainShell?: boolean) => Promise<void>
   writeTerminal: (id: string, data: string) => Promise<void>
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>
   killTerminal: (id: string) => Promise<void>
@@ -188,7 +188,7 @@ export interface ElectronAPI {
   /** Whether main still has a live pty for this id. Authoritative; the renderer's own
    *  activePtys set is only a cache and misses ptys created main-side. */
   terminalExists: (id: string) => Promise<boolean>
-  terminalListLive: () => Promise<Array<{ id: string; path: string; name: string; color: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode'; launchArgs?: string }>>
+  terminalListLive: () => Promise<Array<{ id: string; path: string; name: string; color: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode'; launchArgs?: string; isPlainShell?: boolean }>>
   onTerminalData: (id: string, callback: (data: string) => void) => () => void
   onTerminalExit: (id: string, callback: (exitCode: number) => void) => () => void
   onTerminalResize: (id: string, callback: (size: { cols: number; rows: number }) => void) => () => void
@@ -265,7 +265,7 @@ export interface ElectronAPI {
   tailscaleServeStop: () => Promise<{ ok: boolean; error?: string }>
   /** A session was closed from another client. Drop the tile; do not kill. */
   onRemoteSessionClosed: (callback: (session: { id: string }) => void) => () => void
-  onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string; codexArgs?: string; grokArgs?: string; opencodeArgs?: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode'; launchArgs?: string; settingsArgs?: { claudeArgs: string; codexArgs: string; grokArgs: string; opencodeArgs: string } }) => void) => () => void
+  onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string; codexArgs?: string; grokArgs?: string; opencodeArgs?: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode'; launchArgs?: string; isPlainShell?: boolean; settingsArgs?: { claudeArgs: string; codexArgs: string; grokArgs: string; opencodeArgs: string } }) => void) => () => void
   autopilotKeyExists: (provider: 'anthropic' | 'openrouter') => Promise<boolean>
   autopilotKeySet: (provider: 'anthropic' | 'openrouter', key: string) => Promise<void>
   autopilotKeyClear: (provider: 'anthropic' | 'openrouter') => Promise<void>

@@ -249,7 +249,7 @@
       var statusText = st.text
       return '<div class="session-card" data-id="' + s.id + '" style="border-left-color: ' + (s.color || '#6366f1') + '">' +
         '<div class="card-info">' +
-          '<h4>' + escapeHtml(s.name) + ' <span class="folder-badge">' + escapeHtml(normalizeAgentCli(s.agentCli)) + '</span></h4>' +
+          '<h4>' + escapeHtml(s.name) + ' <span class="folder-badge">' + escapeHtml(s.isPlainShell ? 'shell' : normalizeAgentCli(s.agentCli)) + '</span></h4>' +
           '<div class="card-path">' + escapeHtml(s.path) + '</div>' +
         '</div>' +
         '<div class="card-status">' +

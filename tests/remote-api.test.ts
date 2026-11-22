@@ -81,6 +81,12 @@ describe('createRemoteApi — terminal calls', () => {
     })
   })
 
+  it('createTerminal says when the tile is a plain shell', async () => {
+    const { api, calls } = make(async () => ({ id: 'id1', name: 'p', path: '/p' }))
+    await api.createTerminal('id1', '/p', 'claude', '', false, { cols: 90, rows: 20 }, true)
+    expect(JSON.parse(String(calls[0].init?.body)).isPlainShell).toBe(true)
+  })
+
   it('createTerminal rejects with the server message on failure', async () => {
     const { api } = make(async () => { throw new Error('Terminal "id1" already exists.') })
     await expect(api.createTerminal('id1', '/p')).rejects.toThrow('already exists')
@@ -170,7 +176,7 @@ describe('createRemoteApi — every ElectronAPI member exists and stubs resolve'
     'editorGetDefaults','editorSetDefault','onWindowListUpdated','recentCheckPath','claudeConfigRead',
     'claudeConfigWrite','sessionSaveLast','sessionLoadLast','sessionClearLast','gitStatus','getBuildInfo',
     'remoteToggle','remoteStatus','tailscaleStatus','tailscaleServeStart','tailscaleServeStop',
-    'onRemoteSessionCreated','onRemoteSizeOwner','autopilotKeyExists','autopilotKeySet','autopilotKeyClear','autopilotStart',
+    'onRemoteSessionCreated','onRemoteSessionClosed','onRemoteSizeOwner','autopilotKeyExists','autopilotKeySet','autopilotKeyClear','autopilotStart',
     'autopilotProStart','autopilotCouncilStart','autopilotProRunMeta','autopilotPause','autopilotResume',
     'autopilotStop','autopilotApproveGoal','autopilotReplyToWaiting','autopilotPermissionAllow',
     'autopilotPermissionDeny','autopilotGetStatus','autopilotInspectOutput','autopilotProbeArtifacts',

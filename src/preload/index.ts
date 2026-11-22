@@ -17,8 +17,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // Existing PTY methods. `elevated` spawns the shell through an elevation
   // bridge (gsudo / sudo inline) so the tile hosts an admin shell.
-  createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex' | 'grok' | 'opencode', launchArgs?: string, elevated?: boolean, size?: { cols: number; rows: number }): Promise<void> =>
-    ipcRenderer.invoke('pty:create', id, cwd, agentCli, launchArgs, elevated, size),
+  createTerminal: (id: string, cwd: string, agentCli?: 'claude' | 'codex' | 'grok' | 'opencode', launchArgs?: string, elevated?: boolean, size?: { cols: number; rows: number }, isPlainShell?: boolean): Promise<void> =>
+    ipcRenderer.invoke('pty:create', id, cwd, agentCli, launchArgs, elevated, size, isPlainShell),
 
   writeTerminal: (id: string, data: string): Promise<void> =>
     ipcRenderer.invoke('pty:write', id, data),
@@ -35,7 +35,7 @@ contextBridge.exposeInMainWorld('api', {
   terminalExists: (id: string): Promise<boolean> =>
     ipcRenderer.invoke('pty:exists', id),
 
-  terminalListLive: (): Promise<Array<{ id: string; path: string; name: string; color: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode'; launchArgs?: string }>> =>
+  terminalListLive: (): Promise<Array<{ id: string; path: string; name: string; color: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode'; launchArgs?: string; isPlainShell?: boolean }>> =>
     ipcRenderer.invoke('pty:listMine'),
 
   onTerminalData: (id: string, callback: (data: string) => void): (() => void) => {
@@ -258,7 +258,7 @@ contextBridge.exposeInMainWorld('api', {
     return () => { ipcRenderer.removeListener('remote:size-owner', listener) }
   },
 
-  onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string; codexArgs?: string; grokArgs?: string; opencodeArgs?: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode'; launchArgs?: string; settingsArgs?: { claudeArgs: string; codexArgs: string; grokArgs: string; opencodeArgs: string } }) => void): (() => void) => {
+  onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string; codexArgs?: string; grokArgs?: string; opencodeArgs?: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode'; launchArgs?: string; isPlainShell?: boolean; settingsArgs?: { claudeArgs: string; codexArgs: string; grokArgs: string; opencodeArgs: string } }) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, session: any): void => callback(session)
     ipcRenderer.on('remote:session-created', listener)
     return () => { ipcRenderer.removeListener('remote:session-created', listener) }

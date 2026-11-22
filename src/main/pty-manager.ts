@@ -89,6 +89,10 @@ export interface TerminalMeta {
   color: string
   agentCli?: AgentCli
   launchArgs?: string
+  /** A bare shell: no agent was launched in it. Set only when true. Without
+   *  it main reported every shell as a session of the default agent, and a
+   *  reloaded window (or the /desktop page) rebuilt it as an agent tile. */
+  isPlainShell?: true
 }
 
 interface PtyEntry {
