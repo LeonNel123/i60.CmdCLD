@@ -338,6 +338,43 @@ describe('/desktop page serving', () => {
     expect(bare.status).toBe(302)
   })
 
+  // `send` refuses any path with a dot-directory in it unless the file is
+  // named relative to a root. The app's own location is not ours to choose:
+  // a Linux AppImage mounts at /tmp/.mount_CmdCLDxxxx, and a dev checkout can
+  // live under .worktrees.
+  it('serves the page when the bundle sits under a dot-directory', async () => {
+    const dir = join(mkdtempSync(join(tmpdir(), 'cmdcld-ui-')), '.mount_CmdCLD', 'renderer')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'remote.html'), '<!doctype html><title>R</title>')
+    const f = fakeDeps({ desktopUiPath: dir })
+    const server = new RemoteServer(f.deps)
+    servers.push(server)
+    const { port } = await server.start(0)
+    const page = await request(port, 'GET', '/desktop/')
+    expect(page.status).toBe(200)
+    expect(String(page.json)).toContain('<title>R</title>')
+  })
+
+  // page-select.js reads ?desktop / ?mobile on the page it lands on; a
+  // redirect that drops the query sends a phone forcing the grid back to `/`.
+  it('keeps the query string when adding the trailing slash', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cmdcld-ui-'))
+    writeFileSync(join(dir, 'remote.html'), '<!doctype html><title>R</title>')
+    const f = fakeDeps({ desktopUiPath: dir })
+    const server = new RemoteServer(f.deps)
+    servers.push(server)
+    const { port } = await server.start(0)
+    const location = (path: string) => new Promise<string | undefined>((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port, path, headers: { Host: `localhost:${port}` } }, (res) => {
+        res.resume()
+        resolve(res.headers.location)
+      }).on('error', reject)
+    })
+    expect(await location('/desktop?desktop')).toBe('/desktop/?desktop')
+    expect(await location('/desktop?mobile&x=1')).toBe('/desktop/?mobile&x=1')
+    expect(await location('/desktop')).toBe('/desktop/')
+  })
+
   it('answers 503 with a build hint when the bundle is missing', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'cmdcld-empty-'))
     const f = fakeDeps({ desktopUiPath: dir })

@@ -312,7 +312,7 @@ export class RemoteServer {
       this.app.use('/vendor/xterm', express.static(join(nmPath, '@xterm/xterm')))
       // Map xterm-addon-fit.js -> addon-fit.js (package renamed the file)
       this.app.get('/vendor/xterm-addon-fit/lib/xterm-addon-fit.js', (_req: any, res: any) => {
-        res.sendFile(join(nmPath, '@xterm/addon-fit/lib/addon-fit.js'))
+        res.sendFile('addon-fit.js', { root: join(nmPath, '@xterm/addon-fit/lib') })
       })
     }
 
@@ -323,8 +323,18 @@ export class RemoteServer {
       // resolve ./assets against the site root.
       // Non-strict routing: this one route matches both `/desktop` and `/desktop/`.
       this.app.get('/desktop', (req: any, res: any) => {
-        if (!String(req.path).endsWith('/')) { res.redirect('/desktop/'); return }
-        res.sendFile(join(this.desktopUiPath, 'remote.html'))
+        if (!String(req.path).endsWith('/')) {
+          // Keep the query: page-select.js reads ?desktop / ?mobile on arrival.
+          const url = String(req.originalUrl)
+          const query = url.includes('?') ? url.slice(url.indexOf('?')) : ''
+          res.redirect('/desktop/' + query)
+          return
+        }
+        // Always name the file relative to a root. `send` rejects an absolute
+        // path with a dot-directory anywhere in it, and where the app lives is
+        // not ours to choose (an AppImage mounts at /tmp/.mount_…, a checkout
+        // can sit under .worktrees) — the page answered 404 there.
+        res.sendFile('remote.html', { root: this.desktopUiPath })
       })
       this.app.use('/desktop', express.static(this.desktopUiPath))
     } else {
@@ -337,7 +347,7 @@ export class RemoteServer {
 
     this.app.use(express.static(uiPath))
     this.app.get('/', (_req: any, res: any) => {
-      res.sendFile(join(uiPath, 'index.html'))
+      res.sendFile('index.html', { root: uiPath })
     })
   }
 
