@@ -300,8 +300,14 @@ export default function App() {
       window.api.settingsGetAll().catch(() => null),
       window.api.recentList().catch(() => [] as RecentFolder[]),
       window.api.terminalListLive().catch(() => []),
-    ]).then(([settings, recent, live]) => {
+      // Who owns PTY size has to be known before the reattached tiles mount:
+      // a tile that mounts believing this window owns it fits itself and
+      // claims the size from the browser that is actually driving. Learning
+      // it in a separate effect lost that race on every reload.
+      window.api.remote ? Promise.resolve(null) : window.api.remoteStatus().catch(() => null),
+    ]).then(([settings, recent, live, remote]) => {
       if (settings) applySettings(settings)
+      if (remote && (remote.desktopClients ?? 0) > 0) setRemoteOwnsSize(true)
       setRecentFolders(recent)
       // Reattach to PTYs that outlived the page (a reload after a hang or a renderer
       // crash). Same ids as main, so each tile replays its scrollback instead of

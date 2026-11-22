@@ -610,6 +610,8 @@ ipcMain.handle('pty:scrollback', (_event, id: string) => {
   return ptyManager.getScrollback(id)
 })
 
+ipcMain.handle('pty:size', (_event, id: string) => ptyManager.getSize(id))
+
 ipcMain.handle('pty:kill', (_event, id: string) => {
   clearAttachSession(id)
   ptyManager.kill(id)

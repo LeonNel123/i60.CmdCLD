@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('api', {
 
   killTerminal: (id: string): Promise<void> =>
     ipcRenderer.invoke('pty:kill', id),
+  getTerminalSize: (id: string): Promise<{ cols: number; rows: number }> =>
+    ipcRenderer.invoke('pty:size', id),
 
   getScrollback: (id: string): Promise<string> =>
     ipcRenderer.invoke('pty:scrollback', id),

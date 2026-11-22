@@ -654,7 +654,22 @@ export function TerminalPanel({
           // Remount — PTY exists, replay scrollback to restore terminal content. Re-seed
           // the cache so a renderer that had lost this id stops re-asking main.
           livePtyCache.add(id)
-          window.api.getScrollback(id).then((data) => {
+          // While another device owns PTY size this tile mirrors it, and it
+          // learns the size only from pty:resize events — none arrives for a
+          // size set before this mount. Ask, or the tile keeps what it just
+          // fitted to itself: a session a browser created at 140 columns
+          // replayed and ran wrapped at this tile's 60 until the remote
+          // layout next changed. Sized before the replay so that wraps right.
+          const sized = followPtySizeRef.current
+            ? window.api.getTerminalSize(id).then(({ cols, rows }) => {
+                if (disposed || !followPtySizeRef.current) return
+                ptyDimsRef.current = { cols, rows }
+                if (term.cols !== cols || term.rows !== rows) {
+                  try { term.resize(cols, rows) } catch {}
+                }
+              }).catch(() => {})
+            : Promise.resolve()
+          sized.then(() => window.api.getScrollback(id)).then((data) => {
             if (!disposed && data) term.write(data)
           }).catch(() => {})
           claudeLaunched = true

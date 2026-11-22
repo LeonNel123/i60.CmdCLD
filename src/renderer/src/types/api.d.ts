@@ -184,6 +184,8 @@ export interface ElectronAPI {
   writeTerminal: (id: string, data: string) => Promise<void>
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>
   killTerminal: (id: string) => Promise<void>
+  /** The PTY's current size, for a tile that mirrors it instead of fitting. */
+  getTerminalSize: (id: string) => Promise<{ cols: number; rows: number }>
   getScrollback: (id: string) => Promise<string>
   /** Whether main still has a live pty for this id. Authoritative; the renderer's own
    *  activePtys set is only a cache and misses ptys created main-side. */

@@ -87,6 +87,14 @@ describe('createRemoteApi — terminal calls', () => {
     expect(JSON.parse(String(calls[0].init?.body)).isPlainShell).toBe(true)
   })
 
+  // A tile that mirrors PTY size (another device owns it) has to ask what
+  // the size is when it mounts: resize events only report later changes.
+  it('getTerminalSize reports the PTY size the server holds', async () => {
+    const { api, calls } = make(async () => ({ scrollback: 'x', cols: 140, rows: 40 }))
+    expect(await api.getTerminalSize('id 1')).toEqual({ cols: 140, rows: 40 })
+    expect(calls[0].path).toBe('/api/sessions/id%201/scrollback')
+  })
+
   it('createTerminal rejects with the server message on failure', async () => {
     const { api } = make(async () => { throw new Error('Terminal "id1" already exists.') })
     await expect(api.createTerminal('id1', '/p')).rejects.toThrow('already exists')
@@ -166,7 +174,7 @@ describe('createRemoteApi — settings, recents, status', () => {
 
 describe('createRemoteApi — every ElectronAPI member exists and stubs resolve', () => {
   const PRELOAD_KEYS = [
-    'platform','getPathForFile','createTerminal','writeTerminal','resizeTerminal','killTerminal','getScrollback',
+    'platform','getPathForFile','createTerminal','writeTerminal','resizeTerminal','killTerminal','getScrollback','getTerminalSize',
     'terminalExists','terminalListLive','onTerminalData','onTerminalExit','onTerminalResize','selectFolder',
     'loadState','saveState','recentList','recentAdd','recentRemove','clipboardSaveImage','clipboardReadFiles',
     'clipboardWriteText','openPath','adminShellMode','openAdminShell','readFile','getHomeDir','getVersion',
