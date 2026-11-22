@@ -4,6 +4,7 @@ import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { Sidebar } from './components/Sidebar'
 import { TerminalPanel, killPty, forgetPty } from './components/TerminalPanel'
+import { inputPlatformOf, modKeyPressed } from './remote/input-policy'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { SettingsDialog } from './components/settings/SettingsDialog'
 import { LaunchDialog } from './components/LaunchDialog'
@@ -914,8 +915,8 @@ export default function App() {
   // Cmd+P / Ctrl+P opens the fuzzy command palette.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const isMac = window.api.platform === 'darwin'
-      const mod = isMac ? e.metaKey : e.ctrlKey
+      // The keyboard's OS — on the browser page that is the browser's, not the host's.
+      const mod = modKeyPressed(e, inputPlatformOf(window))
       if (mod && !e.shiftKey && !e.altKey && (e.key === 'p' || e.key === 'P')) {
         e.preventDefault()
         setPaletteOpen(true)
@@ -941,9 +942,9 @@ export default function App() {
 
   // Global keyboard shortcuts (Cmd on macOS, Ctrl on Windows/Linux)
   useEffect(() => {
-    const isMac = window.api.platform === 'darwin'
+    const inputPlatform = inputPlatformOf(window)
     const handler = (e: KeyboardEvent) => {
-      const mod = isMac ? e.metaKey : e.ctrlKey
+      const mod = modKeyPressed(e, inputPlatform)
       // Mod+1-9: switch to terminal by index (restoring it if minimized)
       if (mod && e.key >= '1' && e.key <= '9') {
         const idx = parseInt(e.key) - 1

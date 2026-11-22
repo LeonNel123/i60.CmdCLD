@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveInputPlatform, pastePolicy, browserClipboardKey, pastedImageFile } from '../src/renderer/src/remote/input-policy'
+import { resolveInputPlatform, pastePolicy, browserClipboardKey, pastedImageFile, inputPlatformOf, modKeyPressed, modKeyLabel } from '../src/renderer/src/remote/input-policy'
 
 describe('resolveInputPlatform — which OS the keyboard belongs to', () => {
   it('in Electron the host platform is the keyboard platform', () => {
@@ -57,5 +57,37 @@ describe('pastedImageFile', () => {
   })
   it('ignores non-image files', () => {
     expect(pastedImageFile([item('file', 'application/pdf', 'PDF')])).toBeNull()
+  })
+})
+
+// The app's own shortcuts (palette, tile switching) and Mod+click on a link
+// asked the *host* which key is Mod. On the browser page the keyboard is the
+// browser's: a Mac host made a Windows browser need the Windows key, which
+// the OS takes for itself, and a Windows host made a Mac need Ctrl+click,
+// which macOS turns into a right-click.
+describe('whose modifier key', () => {
+  const win = (remote: boolean, host: string, nav: string) => ({ api: { remote, platform: host }, navigator: { platform: nav } })
+
+  it('follows the host in the Electron window', () => {
+    expect(inputPlatformOf(win(false, 'darwin', 'Win32'))).toBe('darwin')
+    expect(inputPlatformOf(win(false, 'win32', 'MacIntel'))).toBe('other')
+  })
+
+  it('follows the browser on the /desktop page', () => {
+    expect(inputPlatformOf(win(true, 'darwin', 'Win32'))).toBe('other')
+    expect(inputPlatformOf(win(true, 'win32', 'MacIntel'))).toBe('darwin')
+    expect(inputPlatformOf(win(true, 'win32', 'iPad'))).toBe('darwin')
+  })
+
+  it('reads Cmd as Mod on a Mac keyboard and Ctrl everywhere else', () => {
+    expect(modKeyPressed({ metaKey: true, ctrlKey: false }, 'darwin')).toBe(true)
+    expect(modKeyPressed({ metaKey: false, ctrlKey: true }, 'darwin')).toBe(false)
+    expect(modKeyPressed({ metaKey: false, ctrlKey: true }, 'other')).toBe(true)
+    expect(modKeyPressed({ metaKey: true, ctrlKey: false }, 'other')).toBe(false)
+  })
+
+  it('names the key the way that keyboard prints it', () => {
+    expect(modKeyLabel('darwin')).toBe('⌘')
+    expect(modKeyLabel('other')).toBe('Ctrl')
   })
 })

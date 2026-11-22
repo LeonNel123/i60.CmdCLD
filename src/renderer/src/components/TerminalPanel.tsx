@@ -10,7 +10,7 @@ import { livePtyCache } from '../utils/live-pty-cache'
 import { logicalLineBounds } from '../utils/logical-line'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatPaths } from '../utils/format-paths'
-import { pastePolicy, resolveInputPlatform, browserClipboardKey, pastedImageFile } from '../remote/input-policy'
+import { pastePolicy, inputPlatformOf, modKeyPressed, browserClipboardKey, pastedImageFile } from '../remote/input-policy'
 import { primeNativeCopy } from '../remote/copy-text'
 import { extractDroppedPaths } from '../utils/dropped-paths'
 import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
@@ -267,7 +267,9 @@ export function TerminalPanel({
     const isLinkActivation = (event?: MouseEvent | null): boolean => {
       const t = terminalRef.current
       if (t && t.modes.mouseTrackingMode !== 'none') return false
-      return !event || (window.api.platform === 'darwin' ? event.metaKey : event.ctrlKey)
+      // The keyboard's OS, not the host's: on the browser page a Windows host
+      // asked a Mac for Ctrl+click, which macOS turns into a right-click.
+      return !event || modKeyPressed(event, inputPlatformOf(window))
     }
 
     const term = new Terminal({
@@ -511,11 +513,7 @@ export function TerminalPanel({
 
     // Use Cmd on macOS, Ctrl on Windows/Linux for terminal shortcuts — the
     // keyboard's OS, which on the browser page is the client's, not the host's.
-    const isMac = resolveInputPlatform({
-      remote: Boolean(window.api.remote),
-      hostPlatform: window.api.platform,
-      navigatorPlatform: typeof navigator !== 'undefined' ? navigator.platform : '',
-    }) === 'darwin'
+    const isMac = inputPlatformOf(window) === 'darwin'
     const modKey = (e: KeyboardEvent) => isMac ? e.metaKey : e.ctrlKey
 
     term.attachCustomKeyEventHandler((e) => {

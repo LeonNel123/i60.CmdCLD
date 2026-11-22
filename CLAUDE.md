@@ -58,6 +58,29 @@ passive — close the tab when you return to the desktop.
 does **not** write the launch command — the renderer does, as with `pty:create`. Without `id` (phone UI) the
 server launches as before. `POST /api/settings` refuses `remoteAccess` / `remoteLanAccess` / `remotePort`.
 
+**Two clients, one set of state.** The desktop window and a `/desktop` tab each hold their own copy of
+things main owns. Each of these exists because one side changed something and the other never heard:
+
+- *Settings*: `Settings.set` → `settings-broadcast.ts` (coalesced) → `settings:changed` to every window
+  and socket; both renderers reload via `applySettings` in `App.tsx`. A new setting that the renderer
+  caches must be applied there.
+- *A session closed elsewhere*: `DELETE /api/sessions/:id` sends `remote:session-closed` to the windows;
+  the browser page gets `session:exit` with a null code. Both drop the tile (`removeTile`) without
+  killing. A tile left behind relaunches its agent when restored from minimised.
+- *Plain shells*: `TerminalMeta.isPlainShell` travels with `pty:create`, `POST /api/sessions`,
+  `remote:session-created` and the live-session list. Main otherwise records every PTY as the default
+  agent, and the other client stores that as the folder's agent.
+- *PTY size at mount*: a tile that follows (`followPtySize`) asks `pty:size` on its remount path —
+  `pty:resize` only reports later changes.
+- *Typed folder paths*: the browser page resolves them through `GET /api/folders/resolve`
+  (`folder-resolve.ts`) before use. A folder path is a key (recents, favourites, `projectAgents`), so it
+  must be the one spelling the native picker would have returned.
+- *Modifier keys*: ask `inputPlatformOf(window)` (`remote/input-policy.ts`), never `window.api.platform`
+  — that is the host's OS, and on the browser page the keyboard is the browser's.
+
+Serve files with `res.sendFile(name, { root })`, never an absolute path: `send` 404s on any dot-directory
+in an absolute path, and the app may live under one (AppImage mount, `.worktrees`).
+
 ## Phone UI (`src/remote-ui/`)
 
 A triage tool, not a terminal: see which sessions need you, answer, start or stop one. Plain ES5 scripts,

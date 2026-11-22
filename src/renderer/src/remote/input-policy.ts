@@ -16,6 +16,30 @@ export function resolveInputPlatform(args: {
   return /mac|iphone|ipad|ipod/i.test(args.navigatorPlatform) ? 'darwin' : 'other'
 }
 
+/** The same question, asked of the page itself. Everything that reads a
+ *  modifier key goes through this — the terminal's shortcuts, the app's own,
+ *  and Mod+click on a link — so they cannot disagree about which key is Mod. */
+export function inputPlatformOf(win: {
+  api: { remote?: boolean; platform: string }
+  navigator?: { platform?: string }
+}): InputPlatform {
+  return resolveInputPlatform({
+    remote: Boolean(win.api.remote),
+    hostPlatform: win.api.platform,
+    navigatorPlatform: win.navigator?.platform ?? '',
+  })
+}
+
+/** Is the primary shortcut modifier held: Cmd on a Mac keyboard, Ctrl elsewhere. */
+export function modKeyPressed(e: { metaKey: boolean; ctrlKey: boolean }, platform: InputPlatform): boolean {
+  return platform === 'darwin' ? e.metaKey : e.ctrlKey
+}
+
+/** How that modifier is printed in shortcut hints. */
+export function modKeyLabel(platform: InputPlatform): string {
+  return platform === 'darwin' ? '⌘' : 'Ctrl'
+}
+
 /** Electron intercepts the DOM paste and Mod+V so main can read images and
  *  file lists off the OS clipboard. A browser cannot do that at all over plain
  *  http (navigator.clipboard is absent in an insecure context), but xterm's

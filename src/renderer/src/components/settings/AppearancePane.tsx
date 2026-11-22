@@ -11,6 +11,7 @@ import {
 import { APP_FONT_PRESETS, DEFAULT_APP_FONT_FAMILY, resolveAppFontFamily } from '../../../../shared/app-font'
 import { UI_SCALE_PCT_MAX, UI_SCALE_PCT_MIN, UI_SCALE_PCT_STEP, clampUiScalePct } from '../../../../shared/ui-scale'
 import { Field, INPUT_STYLE, NumberStepper, PaneHeading, TextInput } from './controls'
+import { inputPlatformOf, modKeyLabel } from '../../remote/input-policy'
 
 export interface AppearancePaneProps {
   terminalFontFamily: string
@@ -72,7 +73,7 @@ const PREVIEW_BOX: React.CSSProperties = {
 }
 
 export function AppearancePane(p: AppearancePaneProps) {
-  const mod = window.api.platform === 'darwin' ? '⌘' : 'Ctrl'
+  const mod = modKeyLabel(inputPlatformOf(window))
   return (
     <div>
       <PaneHeading>Appearance</PaneHeading>
