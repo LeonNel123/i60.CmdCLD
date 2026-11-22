@@ -213,6 +213,27 @@ describe('desktop-page support routes', () => {
     return { port, ...f }
   }
 
+  // The browser page has no folder picker; what is typed there is resolved
+  // here, on the machine the folder is on, before anything is launched in it.
+  it('GET /api/folders/resolve returns the stored spelling of a typed path', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cmdcld-'))
+    const { port } = await start()
+    const plain = await request(port, 'GET', '/api/folders/resolve?path=' + encodeURIComponent(dir))
+    expect(plain.status).toBe(200)
+    const quoted = await request(port, 'GET', '/api/folders/resolve?path=' + encodeURIComponent(`"${dir}/"`))
+    expect(quoted.status).toBe(200)
+    expect(quoted.json.path).toBe(plain.json.path)
+  })
+
+  it('GET /api/folders/resolve explains why a path was refused', async () => {
+    const { port } = await start()
+    const missing = await request(port, 'GET', '/api/folders/resolve?path=' + encodeURIComponent(join(tmpdir(), 'cmdcld-does-not-exist')))
+    expect(missing.status).toBe(400)
+    expect(missing.json.error).toContain('cmdcld-does-not-exist')
+    const none = await request(port, 'GET', '/api/folders/resolve')
+    expect(none.status).toBe(400)
+  })
+
   it('GET /api/status carries platform, home dir and build info', async () => {
     const { port } = await start()
     const res = await request(port, 'GET', '/api/status')

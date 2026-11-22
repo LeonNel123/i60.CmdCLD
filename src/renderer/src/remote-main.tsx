@@ -19,7 +19,12 @@ async function boot(): Promise<void> {
   const status = await fetchJson<RemoteStatus>('/api/status')
   // `client=desktop` tells the server this page owns PTY size while connected.
   const socket = io({ reconnection: true, reconnectionDelay: 1000, query: { client: 'desktop' } })
-  window.api = createRemoteApi({ socket, fetchJson, status, promptForPath, copyText })
+  const resolvePath = async (raw: string): Promise<string> =>
+    (await fetchJson<{ path: string }>('/api/folders/resolve?path=' + encodeURIComponent(raw))).path
+  window.api = createRemoteApi({
+    socket, fetchJson, status, copyText,
+    promptForPath: () => promptForPath({ platform: status.platform, resolvePath }),
+  })
 
   // Reconnect = the desktop's own recovery path: reload, and App rebuilds the
   // tiles from the server's live sessions under their original ids.

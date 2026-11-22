@@ -22,6 +22,7 @@ import { resolvePtySpawnSize } from './pty-create-validation'
 import { getGitStatus, clearGitStatusCache } from './git-status'
 import { RemoteSizeOwner, type SizeOwner } from './remote-size-owner'
 import { SessionActivityTracker, activityWire } from './remote-activity'
+import { resolveFolderInput } from './folder-resolve'
 
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024 // 10MB
 
@@ -563,6 +564,14 @@ export class RemoteServer {
       } catch {
         res.status(500).json({ error: 'failed to add' })
       }
+    })
+
+    // A folder path typed into the browser page → the one spelling the app
+    // stores for it, or the reason it cannot be opened (see folder-resolve.ts).
+    app.get('/api/folders/resolve', (req: any, res: any) => {
+      const resolved = resolveFolderInput(req.query?.path)
+      if (resolved.ok) res.json({ path: resolved.path })
+      else res.status(400).json({ error: resolved.error })
     })
 
     app.get('/api/folders/check', async (req: any, res: any) => {

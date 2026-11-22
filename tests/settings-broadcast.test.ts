@@ -20,7 +20,7 @@ describe('Settings.onChange', () => {
     const keys: string[] = []
     settings.onChange((key) => keys.push(key))
     settings.set('claudeArgs', '--model opus')
-    settings.set('favoriteFolders', ['D:\a'])
+    settings.set('favoriteFolders', ['D:/a'])
     expect(keys).toEqual(['claudeArgs', 'favoriteFolders'])
   })
 
