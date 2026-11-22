@@ -115,8 +115,20 @@ body {
   color: #f59e0b;
 }
 
+/* Idle and already looked at: nothing new here, so it recedes. */
 .session-card .card-status .status-label.idle {
+  color: #8a8a8a;
+}
+
+/* Went idle since this phone last had it open — the ones worth a tap. */
+.session-card .card-status .status-label.unseen {
   color: #10b981;
+  font-weight: 600;
+}
+
+.session-card .card-status .status-label {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .session-card .card-status .chevron {
@@ -652,6 +664,45 @@ body {
   background: #1e1e1e;
   overflow: auto;
   min-height: 0;
+}
+
+/* Raw keys (Esc, arrows, Tab, Enter) for agent menus. One row, equal widths,
+   tall enough to hit with a thumb. */
+#key-row {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  background: #181818;
+  border-top: 1px solid #2d2d2d;
+  flex-shrink: 0;
+}
+
+.key-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0;
+  background: #ffffff08;
+  color: #ccc;
+  border: 1px solid #333;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: monospace;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.key-btn:active {
+  background: rgba(255,255,255,0.16);
+  border-color: #555;
+}
+
+/* "Fit" is on: the PTY is sized to this phone. */
+#fit-btn[aria-pressed="true"] {
+  background: rgba(34,197,94,0.14);
+  border-color: #22c55e;
+  color: #22c55e;
 }
 
 #quick-actions {

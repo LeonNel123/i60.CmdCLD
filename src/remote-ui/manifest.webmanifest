@@ -1,0 +1,14 @@
+{
+  "name": "CmdCLD Remote",
+  "short_name": "CmdCLD",
+  "description": "Check on and answer the agent sessions running on your PC.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#1e1e1e",
+  "theme_color": "#181818",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

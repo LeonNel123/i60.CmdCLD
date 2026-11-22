@@ -4,6 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
   <title>CmdCLD Remote</title>
+  <!-- Home-screen install: opens full-screen, without the browser's bars. -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#181818">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="CmdCLD">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="stylesheet" href="/vendor/xterm/css/xterm.css">
   <link rel="stylesheet" href="/style.css">
   <script src="/page-select.js"></script>
@@ -98,6 +107,7 @@
         <div class="terminal-header-right">
           <button id="font-dec-btn" class="btn-small mobile-only" title="Smaller terminal text">A−</button>
           <button id="font-inc-btn" class="btn-small mobile-only" title="Larger terminal text">A+</button>
+          <button id="fit-btn" class="btn-small mobile-only" title="Fit the terminal to this screen" aria-label="Fit the terminal to this screen" aria-pressed="false">Fit</button>
           <button id="copy-btn" class="btn-small icon-only-btn" title="Copy output (selection, or all)" aria-label="Copy output">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <rect x="9" y="9" width="11" height="11" rx="2"></rect>
@@ -167,8 +177,13 @@
             <div class="help-item"><span class="help-key help-key-danger">Clr</span><span>Clear conversation history</span></div>
             <div class="help-item"><span class="help-key help-key-danger">FY</span><span>Full deploy: test, commit, push, deploy</span></div>
 
+            <div class="help-group-label">Keys</div>
+            <div class="help-item"><span class="help-key">Esc ← ↑ ↓ → ⏎</span><span>Sent straight to the agent — for menus and permission prompts</span></div>
+            <div class="help-item"><span class="help-key">Tab / ⇧Tab</span><span>Complete, or cycle the agent's mode</span></div>
+
             <div class="help-group-label">Header</div>
             <div class="help-item"><span class="help-key">A− / A+</span><span>Terminal font size (saved)</span></div>
+            <div class="help-item"><span class="help-key">Fit</span><span>Resize the terminal to this screen (saved). The PC window follows until you leave.</span></div>
             <div class="help-item"><span class="help-key">Ctrl+C</span><span>Interrupt current command</span></div>
             <div class="help-item"><span class="help-key help-key-danger">Kill</span><span>Kill this session</span></div>
           </div>
@@ -184,6 +199,18 @@
       <!-- Mobile: read-only output + quick actions + input -->
       <div id="mobile-terminal">
         <div id="mobile-output"></div>
+        <!-- Raw keys for agent menus and permission prompts, which the composer
+             (text + Enter) cannot drive. -->
+        <div id="key-row">
+          <button class="key-btn" type="button" data-key="esc" aria-label="Escape">Esc</button>
+          <button class="key-btn" type="button" data-key="tab" aria-label="Tab">Tab</button>
+          <button class="key-btn" type="button" data-key="shift-tab" aria-label="Shift Tab">⇧Tab</button>
+          <button class="key-btn" type="button" data-key="left" aria-label="Left arrow">←</button>
+          <button class="key-btn" type="button" data-key="up" aria-label="Up arrow">↑</button>
+          <button class="key-btn" type="button" data-key="down" aria-label="Down arrow">↓</button>
+          <button class="key-btn" type="button" data-key="right" aria-label="Right arrow">→</button>
+          <button class="key-btn" type="button" data-key="enter" aria-label="Enter">⏎</button>
+        </div>
         <div id="quick-actions">
           <button class="quick-btn" data-input="yes&#13;" title="Yes">Y</button>
           <button class="quick-btn" data-input="no&#13;" title="No">N</button>
@@ -247,6 +274,7 @@
   <script src="/vendor/xterm/lib/xterm.js"></script>
   <script src="/vendor/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
   <script src="/input-sanitizer.js"></script>
+  <script src="/phone-helpers.js"></script>
   <script src="/app.js"></script>
   <script src="/terminal-view.js"></script>
 </body>

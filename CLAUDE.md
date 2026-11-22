@@ -58,6 +58,28 @@ passive — close the tab when you return to the desktop.
 does **not** write the launch command — the renderer does, as with `pty:create`. Without `id` (phone UI) the
 server launches as before. `POST /api/settings` refuses `remoteAccess` / `remoteLanAccess` / `remotePort`.
 
+## Phone UI (`src/remote-ui/`)
+
+A triage tool, not a terminal: see which sessions need you, answer, start or stop one. Plain ES5 scripts,
+no bundler; pure logic lives in `phone-helpers.js` (`window.CmdCLD_Phone`, unit-tested through CommonJS)
+and the DOM/socket code in `app.js` / `terminal-view.js`. Three server contracts it depends on:
+
+- **Output is routed, not broadcast.** `session:output` goes to the room `output*` (every `/desktop` client)
+  and `output:<id>` (clients that sent `session:watch {id}`; `{id: null}` stops). A client that never
+  watches gets no terminal output at all — so a new kind of client must join one of the two.
+- **Activity is tracked in main** (`src/main/remote-activity.ts`): busy after output has been sustained for
+  1 s, idle 2 s after the last output, and a single burst (a resize repaint) is ignored. It rides on the
+  session list (`busy`, `ageMs`) and on `session:activity`. It is an age, not a timestamp, because the
+  phone's clock is not the PC's. The list sorts sessions that went idle since the phone last opened them
+  first (`sortForTriage`; "last opened" is per phone, in localStorage).
+- **Fit** (header toggle, off by default, remembered): the phone sizes the PTY to its own screen and sends
+  `size:claim {on}` so the desktop window goes passive exactly as it does for `/desktop`. It claims only
+  while a terminal is open and releases on leaving it or disconnecting. Rows are not shrunk when only the
+  height changed (`fitDims`) — the on-screen keyboard would otherwise resize the agent on every tap.
+
+The key row (Esc, arrows, Tab, Enter) sends raw `session:input`; the composer and quick buttons send
+`session:submit`. Keep them apart — a key through `session:submit` gets queued and an Enter appended.
+
 ## Autopilot architecture
 
 There are **two independent orchestrators** that share marker types but not state machines:

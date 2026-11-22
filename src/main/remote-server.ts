@@ -21,8 +21,16 @@ import { detectAgentCliAvailability } from './agent-cli-detect'
 import { resolvePtySpawnSize } from './pty-create-validation'
 import { getGitStatus, clearGitStatusCache } from './git-status'
 import { RemoteSizeOwner, type SizeOwner } from './remote-size-owner'
+import { SessionActivityTracker, activityWire } from './remote-activity'
 
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024 // 10MB
+
+// Terminal output goes to rooms, not to every socket. The /desktop page shows
+// every terminal and joins ALL_OUTPUT_ROOM; the phone shows one at a time and
+// joins that session's room (`session:watch`). The `*` keeps the all-output
+// name out of reach of any `output:<id>`.
+const ALL_OUTPUT_ROOM = 'output*'
+const outputRoom = (id: string): string => `output:${id}`
 
 /** File extension for an uploaded image from its Content-Type; png when unknown. */
 export function imageExtension(contentType: string | undefined): string {
@@ -88,6 +96,12 @@ export class RemoteServer {
   private submitWriter: QueuedPtyWriter
   private desktopUiPath: string
   private sizeOwner = new RemoteSizeOwner({ announce: (owner) => this.announceSizeOwner(owner) })
+  // Busy/idle per session, for the phone's list (see remote-activity.ts).
+  private activity = new SessionActivityTracker({
+    onChange: (id, state) => {
+      this.io?.emit('session:activity', { id, ...activityWire(state, Date.now()) })
+    },
+  })
 
   constructor(opts: {
     ptyManager: PtyManager
@@ -221,6 +235,13 @@ export class RemoteServer {
     return this.getLocalUrls(port)
   }
 
+  /** Every session with its activity: `busy`, and `ageMs` — how long it has
+   *  been in that state, null when that predates this server. */
+  private sessionList(): (TerminalMeta & { busy: boolean; ageMs: number | null })[] {
+    const now = Date.now()
+    return this.ptyManager.listAll().map((s) => ({ ...s, ...activityWire(this.activity.get(s.id), now) }))
+  }
+
   private cleanup(): void {
     if (this.io) {
       this.io.close()
@@ -232,6 +253,7 @@ export class RemoteServer {
     }
     this.app = null
     this.sizeOwner.reset()
+    this.activity.reset()
     for (const { event, fn } of this.boundListeners) {
       this.ptyManager.off(event, fn)
     }
@@ -346,8 +368,7 @@ export class RemoteServer {
 
     // Sessions
     app.get('/api/sessions', (_req: any, res: any) => {
-      const sessions = this.ptyManager.listAll()
-      res.json(sessions)
+      res.json(this.sessionList())
     })
 
     app.post('/api/sessions', (req: any, res: any) => {
@@ -623,12 +644,41 @@ export class RemoteServer {
     if (!this.io) return
 
     this.io.on('connection', (socket) => {
-      socket.emit('sessions:changed', this.ptyManager.listAll())
+      socket.emit('sessions:changed', this.sessionList())
 
       // The /desktop page identifies itself in the handshake; the phone UI does not.
       const isDesktopClient = socket.handshake.query?.client === 'desktop'
-      this.sizeOwner.connect(isDesktopClient)
-      socket.on('disconnect', () => { this.sizeOwner.disconnect(isDesktopClient) })
+
+      // PTY size ownership (see remote-size-owner.ts). The /desktop page owns it
+      // for as long as it is connected. A phone owns it only while "fit to
+      // phone" has a terminal open, and says so with `size:claim` — without
+      // that the desktop window would fit its own tile and take the size back.
+      let ownsSize = isDesktopClient
+      this.sizeOwner.connect(ownsSize)
+      socket.on('size:claim', (msg: { on?: unknown } | undefined) => {
+        if (isDesktopClient) return
+        const on = !!msg && msg.on === true
+        if (on === ownsSize) return
+        ownsSize = on
+        if (on) this.sizeOwner.connect(true)
+        else this.sizeOwner.disconnect(true)
+      })
+      socket.on('disconnect', () => {
+        this.sizeOwner.disconnect(ownsSize)
+        ownsSize = false
+      })
+
+      // Which terminal output this client receives. The /desktop page shows
+      // them all; the phone names the one it has open, or null for none.
+      if (isDesktopClient) socket.join(ALL_OUTPUT_ROOM)
+      let watching: string | null = null
+      socket.on('session:watch', (msg: { id?: unknown } | undefined) => {
+        const id = msg && typeof msg.id === 'string' && this.ptyManager.has(msg.id) ? msg.id : null
+        if (id === watching) return
+        if (watching !== null) socket.leave(outputRoom(watching))
+        watching = id
+        if (id !== null) socket.join(outputRoom(id))
+      })
 
       // Raw keystroke stream from xterm — must stay unbuffered and unwrapped so
       // control sequences and interactive editing behave normally.
@@ -673,15 +723,19 @@ export class RemoteServer {
 
   private setupPtyListeners(): void {
     this.addPtyListener('data', ({ id, data }: { id: string; data: string }) => {
+      this.activity.onData(id)
       if (this.io) {
-        this.io.emit('session:output', { id, data })
+        // Only to clients showing this terminal — a phone on the session list
+        // gets `session:activity` instead of every terminal's output.
+        this.io.to([ALL_OUTPUT_ROOM, outputRoom(id)]).emit('session:output', { id, data })
       }
     })
 
     this.addPtyListener('exit', ({ id, exitCode }: { id: string; exitCode: number }) => {
+      this.activity.remove(id)
       if (this.io) {
         this.io.emit('session:exit', { id, exitCode })
-        this.io.emit('sessions:changed', this.ptyManager.listAll())
+        this.io.emit('sessions:changed', this.sessionList())
       }
     })
 
@@ -689,16 +743,17 @@ export class RemoteServer {
     // exit listener is gone by then, so without this every other client kept
     // listing a dead session. exitCode null = closed, not exited.
     this.addPtyListener('killed', ({ id }: { id: string }) => {
+      this.activity.remove(id)
       if (this.io) {
         this.io.emit('session:exit', { id, exitCode: null })
-        this.io.emit('sessions:changed', this.ptyManager.listAll())
+        this.io.emit('sessions:changed', this.sessionList())
       }
     })
 
     this.addPtyListener('created', ({ id, meta }: { id: string; meta: TerminalMeta }) => {
       if (this.io) {
         this.io.emit('session:created', meta)
-        this.io.emit('sessions:changed', this.ptyManager.listAll())
+        this.io.emit('sessions:changed', this.sessionList())
       }
     })
 

@@ -11,6 +11,7 @@
   var quickActions = document.getElementById('quick-actions')
   var fontDecBtn = document.getElementById('font-dec-btn')
   var fontIncBtn = document.getElementById('font-inc-btn')
+  var fitBtn = document.getElementById('fit-btn')
 
   var term = null
   var fitAddon = null
@@ -46,8 +47,93 @@
     try { localStorage.setItem(MOBILE_FONT_KEY, String(n)) } catch (e) {}
     if (term && isMobile()) {
       try { term.options.fontSize = n } catch (e) {}
+      fitToPhone() // a different cell size fits a different number of columns
     }
     return n
+  }
+
+  // Fit to phone — size the PTY to this screen instead of mirroring the PC's.
+  //
+  // By default the phone shows the terminal at whatever size the PC window
+  // gave it, so lines run off the side and you pan. With Fit on, the agent
+  // re-wraps to the phone's width. The cost: the PC window's tile shows the
+  // narrow layout until the phone leaves the terminal, which is why this is a
+  // toggle (remembered) and not the default.
+  var FIT_KEY = 'cmdcld-remote-fit'
+  var fitOn = false
+  try { fitOn = localStorage.getItem(FIT_KEY) === '1' } catch (e) {}
+  // Whether we told the server this phone owns PTY size (see size:claim in
+  // remote-server.ts). The server forgets on disconnect, so claiming is
+  // always re-sent rather than trusted from this flag.
+  var sizeClaimed = false
+  // Last size applied by fitToPhone; kept across sessions, it is a property
+  // of this screen.
+  var lastFit = null
+
+  function claimSize() {
+    if (!currentSocket) return
+    sizeClaimed = true
+    currentSocket.emit('size:claim', { on: true })
+  }
+
+  function releaseSize() {
+    if (!sizeClaimed) return
+    sizeClaimed = false
+    if (currentSocket) currentSocket.emit('size:claim', { on: false })
+  }
+
+  // xterm measures its cell from whatever font is available when it opens. On
+  // a first visit that is the fallback, JetBrains Mono arriving a moment
+  // later; the cell is then wider and taller than xterm believes and a fit
+  // overshoots the screen. Wait for the font, make xterm measure again (it
+  // only does so when a font option changes or the grid resizes), then fit.
+  var fontsReady = !(document.fonts && document.fonts.load)
+  if (!fontsReady) {
+    var onFonts = function () {
+      if (fontsReady) return
+      fontsReady = true
+      remeasureCell()
+      fitToPhone()
+    }
+    Promise.all([
+      document.fonts.load("12px 'JetBrains Mono'"),
+      document.fonts.load("bold 12px 'JetBrains Mono'"),
+    ]).then(onFonts, onFonts)
+    setTimeout(onFonts, 3000) // a font that never arrives must not block fitting
+  }
+
+  function remeasureCell() {
+    if (!term) return
+    try {
+      var size = term.options.fontSize
+      term.options.fontSize = size + 1
+      term.options.fontSize = size
+    } catch (e) {}
+  }
+
+  function fitToPhone() {
+    if (!fitOn || !fontsReady || !term || !fitAddon || !currentSocket || !currentId || !isMobile()) return
+    if (mobileOutput.clientWidth <= 0 || mobileOutput.clientHeight <= 0) return
+    var proposed
+    try { proposed = fitAddon.proposeDimensions() } catch (e) { return }
+    var dims = window.CmdCLD_Phone.fitDims(proposed, lastFit)
+    if (!dims) return
+    lastFit = dims
+    if (term.cols !== dims.cols || term.rows !== dims.rows) {
+      try { term.resize(dims.cols, dims.rows) } catch (e) {}
+    }
+    if (ptyCols !== dims.cols || ptyRows !== dims.rows) {
+      ptyCols = dims.cols
+      ptyRows = dims.rows
+      currentSocket.emit('session:resize', { id: currentId, cols: dims.cols, rows: dims.rows })
+    }
+    // Rows are kept when the keyboard opens, so the terminal is now taller
+    // than its box: keep the bottom — the prompt — in view.
+    mobileOutput.scrollTop = mobileOutput.scrollHeight
+  }
+
+  function renderFitBtn() {
+    if (fitBtn) fitBtn.setAttribute('aria-pressed', fitOn ? 'true' : 'false')
   }
 
   // Clipboard write that also works over plain http.
@@ -126,7 +212,9 @@
   var ptyRows = 24
 
   function open(id, scrollback, socket, cols, rows) {
-    close()
+    // Not close(): that hands PTY size back to the PC, and when Fit is on we
+    // are about to claim it again — two resizes for every session switch.
+    teardown()
     currentId = id
     currentSocket = socket
     if (cols) ptyCols = cols
@@ -211,18 +299,40 @@
       safeFitHandler = safeFit
       window.addEventListener('resize', safeFitHandler)
     } else {
-      // The phone never claims a size, but it must follow the PTY when another
-      // client resizes it — or every line wraps at the old width.
+      // Unless Fit is on the phone never claims a size, but it must follow the
+      // PTY when another client resizes it — or every line wraps at the old
+      // width.
       remoteResizeHandler = function (cols, rows) {
         if (!term) return
+        ptyCols = cols
+        ptyRows = rows
         if (term.cols !== cols || term.rows !== rows) {
           try { term.resize(cols, rows) } catch (e) {}
         }
       }
+
+      // Fit on: follow the output area (rotation, keyboard, browser bars).
+      if (window.ResizeObserver) {
+        var fitTimer = null
+        resizeObs = new ResizeObserver(function () {
+          if (fitTimer) clearTimeout(fitTimer)
+          fitTimer = setTimeout(fitToPhone, 120)
+        })
+        resizeObs.observe(container)
+      }
     }
 
+    // Scrollback was produced at the PTY's current width; write it at that
+    // width and only then fit, so xterm reflows it instead of mangling it.
+    var afterScrollback = function () {
+      if (!mobile || !term || currentId !== id) return
+      if (fitOn) { claimSize(); fitToPhone() }
+      else releaseSize()
+    }
     if (scrollback) {
-      term.write(scrollback)
+      term.write(scrollback, afterScrollback)
+    } else {
+      afterScrollback()
     }
 
     if (!mobile) {
@@ -309,7 +419,13 @@
     if (term) term.write(msg)
   }
 
+  // Leaving the terminal: the PC window gets PTY size back.
   function close() {
+    releaseSize()
+    teardown()
+  }
+
+  function teardown() {
     if (safeFitHandler) {
       window.removeEventListener('resize', safeFitHandler)
       safeFitHandler = null
@@ -433,6 +549,36 @@
       })
     })(quickBtns[i])
   }
+
+  // Key row: Esc, arrows, Tab, Enter as raw input for agent menus.
+  var keyBtns = document.querySelectorAll('.key-btn')
+  for (var k = 0; k < keyBtns.length; k++) {
+    (function (btn) {
+      // Keep focus where it is: with the composer focused, a tap that moved
+      // focus would drop the on-screen keyboard between arrow presses.
+      btn.addEventListener('mousedown', function (e) { e.preventDefault() })
+      btn.addEventListener('click', function () {
+        if (!currentSocket || !currentId) return
+        var appCursor = !!(term && term.modes && term.modes.applicationCursorKeysMode)
+        var seq = window.CmdCLD_Phone.keySequence(btn.dataset.key, appCursor)
+        if (seq === null) return
+        currentSocket.emit('session:input', { id: currentId, data: seq })
+      })
+    })(keyBtns[k])
+  }
+
+  if (fitBtn) {
+    fitBtn.addEventListener('click', function () {
+      fitOn = !fitOn
+      try { localStorage.setItem(FIT_KEY, fitOn ? '1' : '0') } catch (e) {}
+      renderFitBtn()
+      if (!term || !isMobile()) return
+      if (fitOn) { claimSize(); fitToPhone() }
+      // Off: the PC window refits its tile and this terminal follows it.
+      else releaseSize()
+    })
+  }
+  renderFitBtn()
 
   // Mobile image upload
   mobileImageInput.addEventListener('change', function (e) {

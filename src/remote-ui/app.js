@@ -6,8 +6,13 @@
   var sessions = []
   var currentSessionId = null
   var socket = null
-  var busyTimers = {}
-  var busyState = {}
+  // id → { busy, since }. Tracked by the server (one clock for every client)
+  // and converted to this device's clock on receipt.
+  var activity = {}
+  // id → when this phone last had the session open. A session that went idle
+  // after that is "unseen" and floats to the top of the list.
+  var SEEN_KEY = 'cmdcld-remote-seen'
+  var seenAt = loadSeen()
   var remoteSettings = {
     defaultAgentCli: 'claude',
     claudeArgs: '',
@@ -85,13 +90,14 @@
       // After a sleep or network change the open terminal missed output and
       // would show TUI repaints over a stale screen: reload it from scrollback,
       // or go back to the list if the session ended meanwhile.
-      var openId = currentSessionId
+      // On a fresh page load nothing is open yet, but the URL may name the
+      // session that was (a reload, or the home-screen app resuming).
+      var wasOpen = currentSessionId
+      var openId = wasOpen || window.CmdCLD_Phone.sessionFromHash(location.hash)
       refreshSessions().then(function () {
-        if (!openId || currentSessionId !== openId) return
-        var alive = false
-        for (var i = 0; i < sessions.length; i++) if (sessions[i].id === openId) alive = true
-        if (alive) openTerminal(openId)
-        else closeTerminal()
+        if (!openId || currentSessionId !== wasOpen) return
+        if (sessionById(openId)) openTerminal(openId)
+        else leaveTerminal()
       })
     })
 
@@ -105,26 +111,34 @@
       connectionStatus.className = 'status-dot reconnecting'
     })
 
-    socket.on('sessions:changed', function (list) {
-      sessions = list
-      renderDashboard()
-    })
+    socket.on('sessions:changed', applySessionList)
 
     socket.on('session:created', function () {
       refreshSessions()
     })
 
+    // Only the open terminal's output arrives (see session:watch); the list
+    // is driven by session:activity.
     socket.on('session:output', function (msg) {
-      trackBusy(msg.id, true)
       if (msg.id === currentSessionId) {
         window.CmdCLD_Terminal.onData(msg.data)
       }
     })
 
+    socket.on('session:activity', function (msg) {
+      if (!msg || typeof msg.id !== 'string') return
+      setActivity(msg.id, msg.busy, msg.ageMs)
+      renderTerminalStatus(msg.id)
+      // Re-sort, not just relabel: a session that just finished belongs at
+      // the top. These are rare — the server ignores single bursts of output.
+      if (!currentSessionId) renderDashboard()
+    })
+
     socket.on('session:exit', function (msg) {
-      trackBusy(msg.id, false)
+      delete activity[msg.id]
       if (msg.id === currentSessionId) {
         window.CmdCLD_Terminal.onExit(msg.exitCode)
+        renderTerminalStatus(msg.id)
       }
       refreshSessions()
     })
@@ -139,45 +153,72 @@
     })
   }
 
-  // Activity tracking — only update the status label, don't rebuild the DOM
-  function trackBusy(id, dataReceived) {
-    if (!dataReceived) {
-      busyState[id] = false
-      clearTimeout(busyTimers[id])
-      updateCardStatus(id)
-      renderTerminalStatus(id)
-      return
-    }
-
-    if (dataReceived) {
-      var wasBusy = busyState[id]
-      busyState[id] = true
-      clearTimeout(busyTimers[id])
-      busyTimers[id] = setTimeout(function () {
-        busyState[id] = false
-        updateCardStatus(id)
-        renderTerminalStatus(id)
-      }, 2000)
-      if (!wasBusy) {
-        updateCardStatus(id)
-        renderTerminalStatus(id)
-      }
-    }
+  function loadSeen() {
+    try {
+      var parsed = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}')
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+    } catch (e) {}
+    return {}
   }
 
-  function updateCardStatus(id) {
-    var card = sessionCards.querySelector('.session-card[data-id="' + id + '"]')
-    if (!card) return
-    var label = card.querySelector('.status-label')
-    if (!label) return
-    var busy = busyState[id]
-    label.className = 'status-label ' + (busy ? 'busy' : 'idle')
-    label.textContent = busy ? '⟳ Working...' : '● Idle'
+  function markSeen(id) {
+    seenAt[id] = Date.now()
+    try { localStorage.setItem(SEEN_KEY, JSON.stringify(seenAt)) } catch (e) {}
   }
+
+  function sessionById(id) {
+    for (var i = 0; i < sessions.length; i++) if (sessions[i].id === id) return sessions[i]
+    return null
+  }
+
+  function setActivity(id, busy, ageMs) {
+    activity[id] = { busy: !!busy, since: window.CmdCLD_Phone.localSince(ageMs, Date.now()) }
+  }
+
+  // A fresh session list from the server, each entry carrying its activity.
+  function applySessionList(list) {
+    sessions = Array.isArray(list) ? list : []
+    var live = {}
+    for (var i = 0; i < sessions.length; i++) {
+      live[sessions[i].id] = true
+      setActivity(sessions[i].id, sessions[i].busy, sessions[i].ageMs)
+    }
+    var id
+    for (id in activity) if (!live[id]) delete activity[id]
+    for (id in seenAt) if (!live[id]) delete seenAt[id]
+    renderDashboard()
+    if (currentSessionId) renderTerminalStatus(currentSessionId)
+  }
+
+  // Label for a session card: state, how long it has held, and whether it
+  // finished since this phone last looked.
+  function cardStatus(id) {
+    var a = activity[id] || { busy: false, since: null }
+    var age = a.since == null ? '' : window.CmdCLD_Phone.formatAge(Date.now() - a.since)
+    if (a.busy) return { cls: 'busy', text: '⟳ Working' + (age ? ' ' + age : '') }
+    var unseen = window.CmdCLD_Phone.isUnseen(a, seenAt[id])
+    return { cls: unseen ? 'idle unseen' : 'idle', text: '● Idle' + (age ? ' ' + age : '') }
+  }
+
+  // Keep the "4m" on each card moving without rebuilding (or re-sorting) the
+  // list under the user's thumb.
+  function refreshCardLabels() {
+    var cards = sessionCards.querySelectorAll('.session-card')
+    for (var i = 0; i < cards.length; i++) {
+      var label = cards[i].querySelector('.status-label')
+      if (!label) continue
+      var st = cardStatus(cards[i].dataset.id)
+      label.className = 'status-label ' + st.cls
+      label.textContent = st.text
+    }
+  }
+  setInterval(function () {
+    if (!currentSessionId && !document.hidden) refreshCardLabels()
+  }, 20000)
 
   function renderTerminalStatus(id) {
     if (!terminalStatus || id !== currentSessionId) return
-    var busy = !!busyState[id]
+    var busy = !!(activity[id] && activity[id].busy)
     terminalStatus.textContent = '●'
     terminalStatus.className = 'terminal-status-dot ' + (busy ? 'busy' : 'idle')
     terminalStatus.title = busy ? 'Working' : 'Idle'
@@ -188,10 +229,7 @@
   function refreshSessions() {
     return fetch('/api/sessions')
       .then(function (r) { return r.json() })
-      .then(function (list) {
-        sessions = list
-        renderDashboard()
-      })
+      .then(applySessionList)
       .catch(function () {})
   }
 
@@ -204,10 +242,11 @@
       return
     }
 
-    sessionCards.innerHTML = sessions.slice().sort(function (a, b) { return a.name.localeCompare(b.name) }).map(function (s) {
-      var busy = busyState[s.id]
-      var statusClass = busy ? 'busy' : 'idle'
-      var statusText = busy ? '⟳ Working...' : '● Idle'
+    // Finished-since-you-looked first, then working, then the rest.
+    sessionCards.innerHTML = window.CmdCLD_Phone.sortForTriage(sessions, activity, seenAt).map(function (s) {
+      var st = cardStatus(s.id)
+      var statusClass = st.cls
+      var statusText = st.text
       return '<div class="session-card" data-id="' + s.id + '" style="border-left-color: ' + (s.color || '#6366f1') + '">' +
         '<div class="card-info">' +
           '<h4>' + escapeHtml(s.name) + ' <span class="folder-badge">' + escapeHtml(normalizeAgentCli(s.agentCli)) + '</span></h4>' +
@@ -231,14 +270,37 @@
     }
   }
 
+  // The open session lives in browser history, so the phone's Back gesture
+  // returns to the list instead of leaving the page, and a reload reopens the
+  // same terminal.
+  function enterSessionHistory(id) {
+    try {
+      var hash = window.CmdCLD_Phone.sessionHash(id)
+      var st = history.state
+      if (st && st.s === id) return
+      if (st && st.s) { history.replaceState({ s: id }, '', hash); return }
+      // Arrived with the hash already in the URL (bookmark, reload without
+      // state): put the list underneath so Back has somewhere to go.
+      if (location.hash) history.replaceState(null, '', location.pathname + location.search)
+      history.pushState({ s: id }, '', hash)
+    } catch (e) {}
+  }
+
+  window.addEventListener('popstate', function () {
+    var id = window.CmdCLD_Phone.sessionFromHash(location.hash)
+    if (id && id !== currentSessionId && sessionById(id)) openTerminal(id, { fromHistory: true })
+    else if (!id && currentSessionId) closeTerminal()
+  })
+
   // Open terminal view for a session
-  function openTerminal(id) {
-    currentSessionId = id
-    var session = null
-    for (var i = 0; i < sessions.length; i++) {
-      if (sessions[i].id === id) { session = sessions[i]; break }
-    }
+  function openTerminal(id, opts) {
+    var session = sessionById(id)
     if (!session) return
+    currentSessionId = id
+    markSeen(id)
+    if (!(opts && opts.fromHistory)) enterSessionHistory(id)
+    // From here the server streams this terminal's output to us (and no other).
+    if (socket) socket.emit('session:watch', { id: id })
 
     terminalName.textContent = session.name
     document.title = session.name + ' — CmdCLD Remote'
@@ -262,8 +324,23 @@
       })
   }
 
+  // Leave the terminal for the list — the Back button, Kill, and a session
+  // that ended while we were away. Closes first and then drops the history
+  // entry, so the view never depends on popstate arriving.
+  function leaveTerminal() {
+    var hadEntry = false
+    try { hadEntry = !!(history.state && history.state.s) } catch (e) {}
+    if (currentSessionId) closeTerminal()
+    try {
+      if (hadEntry) history.back()
+      else if (location.hash) history.replaceState(null, '', location.pathname + location.search)
+    } catch (e) {}
+  }
+
   // Back to dashboard
   function closeTerminal() {
+    if (currentSessionId) markSeen(currentSessionId)
+    if (socket) socket.emit('session:watch', { id: null })
     if (copySheet) closeCopySheet()
     // Blur the mobile input so the virtual keyboard dismisses before we
     // navigate away — prevents the next session from inheriting a
@@ -311,6 +388,12 @@
           alert('Could not open session: ' + (data.error || 'unknown error'))
         })
       }
+      // Straight into the new session — landing on the list and tapping the
+      // card that just appeared was an extra step every time.
+      return r.json().then(function (data) {
+        if (!data || !data.id) return
+        return refreshSessions().then(function () { openTerminal(data.id) })
+      })
     }).catch(function () {
       alert('Could not open session (network error)')
     })
@@ -430,7 +513,7 @@
       })
     })(agentButtons[ab])
   }
-  backBtn.addEventListener('click', closeTerminal)
+  backBtn.addEventListener('click', leaveTerminal)
 
   // Custom path input — submit on Open button click or Enter key
   var customPathInput = document.getElementById('custom-path-input')
@@ -511,7 +594,7 @@
     if (!currentSessionId) return
     if (!confirm('Kill this session?')) return
     fetch('/api/sessions/' + currentSessionId, { method: 'DELETE' })
-      .then(function () { closeTerminal() })
+      .then(function () { leaveTerminal() })
       .catch(function () {})
   })
 
@@ -525,7 +608,7 @@
   }
 
   // Expose for terminal-view.js
-  window.CmdCLD_App = { closeTerminal: closeTerminal, refreshSessions: refreshSessions }
+  window.CmdCLD_App = { closeTerminal: leaveTerminal, refreshSessions: refreshSessions }
 
   // Init
   connect()

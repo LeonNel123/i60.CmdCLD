@@ -9,8 +9,10 @@
  * The remote user then sees a 33-column terminal in a 450 px tile.
  *
  * So while at least one /desktop browser client is connected, the desktop
- * window goes passive: it mirrors PTY sizes instead of claiming them. Phone
- * clients (the single-terminal UI) never take ownership.
+ * window goes passive: it mirrors PTY sizes instead of claiming them. A phone
+ * (the single-terminal UI) mirrors too, unless "Fit" is on there: then it is
+ * counted as an owner for as long as it has a terminal open (`size:claim` in
+ * remote-server.ts), through the same connect/disconnect calls.
  *
  * Handing ownership back waits a grace period: a browser reload is a
  * disconnect followed by a reconnect within a second, and announcing `local`
