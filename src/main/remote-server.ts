@@ -496,6 +496,15 @@ export class RemoteServer {
         return
       }
       this.ptyManager.kill(id)
+      // The desktop window owns a tile for this session and hears nothing
+      // from kill() itself — only socket clients do. Left alone the tile
+      // stays, dead; restored from minimised it finds no PTY under its id
+      // and launches the agent again.
+      for (const wc of this.getAllWebContents()) {
+        try {
+          if (!wc.isDestroyed()) wc.send('remote:session-closed', { id })
+        } catch {}
+      }
       res.json({ ok: true })
     })
 

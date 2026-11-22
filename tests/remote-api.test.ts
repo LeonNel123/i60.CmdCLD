@@ -204,3 +204,34 @@ describe('createRemoteApi — every ElectronAPI member exists and stubs resolve'
     }
   })
 })
+
+// The server reports a session closed on purpose as an exit with a null code.
+// The page drops the tile for it — left in place, a restore finds no PTY
+// under the id and launches the agent again.
+describe('createRemoteApi — sessions closed elsewhere', () => {
+  it('reports a closed session', () => {
+    const { api, socket } = make()
+    const closed: string[] = []
+    api.onRemoteSessionClosed(({ id }) => closed.push(id))
+    socket.receive('session:exit', { id: 'a', exitCode: null })
+    expect(closed).toEqual(['a'])
+  })
+
+  it('does not report a process that exited by itself', () => {
+    const { api, socket } = make()
+    const closed: string[] = []
+    api.onRemoteSessionClosed(({ id }) => closed.push(id))
+    socket.receive('session:exit', { id: 'a', exitCode: 0 })
+    socket.receive('session:exit', { id: 'b', exitCode: 1 })
+    expect(closed).toEqual([])
+  })
+
+  it('stops reporting after unsubscribe', () => {
+    const { api, socket } = make()
+    const closed: string[] = []
+    const unsub = api.onRemoteSessionClosed(({ id }) => closed.push(id))
+    unsub()
+    socket.receive('session:exit', { id: 'a', exitCode: null })
+    expect(closed).toEqual([])
+  })
+})

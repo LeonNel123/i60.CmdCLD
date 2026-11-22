@@ -315,6 +315,36 @@ describe('desktop-page support routes', () => {
   })
 })
 
+// A tile closed from a browser (the /desktop grid, or Kill on the phone) used
+// to stay in the desktop window: main killed the PTY and told only the socket
+// clients. The dead tile took keystrokes nowhere, and minimising then restoring
+// it found no PTY under its id and launched the agent again.
+describe('DELETE /api/sessions/:id', () => {
+  let servers: RemoteServer[] = []
+  afterEach(() => { for (const s of servers) s.stop(); servers = [] })
+
+  it('tells the desktop window which session was closed', async () => {
+    const id = '3f2b8c1e-5d47-4a9b-8e21-0c6f7a1d9b42'
+    const f = fakeDeps({ existingIds: [id] })
+    const server = new RemoteServer(f.deps)
+    servers.push(server)
+    const { port } = await server.start(0)
+    const res = await request(port, 'DELETE', `/api/sessions/${id}`)
+    expect(res.status).toBe(200)
+    expect(f.sent).toContainEqual({ channel: 'remote:session-closed', msg: { id } })
+  })
+
+  it('says nothing for a session that does not exist', async () => {
+    const f = fakeDeps()
+    const server = new RemoteServer(f.deps)
+    servers.push(server)
+    const { port } = await server.start(0)
+    const res = await request(port, 'DELETE', '/api/sessions/nope')
+    expect(res.status).toBe(404)
+    expect(f.sent).toEqual([])
+  })
+})
+
 describe('/desktop page serving', () => {
   let servers: RemoteServer[] = []
   afterEach(() => { for (const s of servers) s.stop(); servers = [] })

@@ -57,9 +57,16 @@ function writeChunked(id: string, text: string): void {
 
 // Kill a PTY explicitly (called from App.tsx on confirmed close)
 export function killPty(id: string): void {
+  forgetPty(id)
+  window.api.killTerminal(id)
+}
+
+// This window's bookkeeping for a PTY that is already gone — closed from
+// another client. Without it the cache still says "running" and a remount
+// would skip straight to replaying a scrollback that no longer exists.
+export function forgetPty(id: string): void {
   livePtyCache.forget(id)
   removeTerminalActivity(id)
-  window.api.killTerminal(id)
 }
 
 // Source/config extensions that open in the code editor when a terminal link

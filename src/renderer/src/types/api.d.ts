@@ -263,6 +263,8 @@ export interface ElectronAPI {
   }>
   tailscaleServeStart: () => Promise<{ ok: boolean; url?: string; error?: string }>
   tailscaleServeStop: () => Promise<{ ok: boolean; error?: string }>
+  /** A session was closed from another client. Drop the tile; do not kill. */
+  onRemoteSessionClosed: (callback: (session: { id: string }) => void) => () => void
   onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string; codexArgs?: string; grokArgs?: string; opencodeArgs?: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode'; launchArgs?: string; settingsArgs?: { claudeArgs: string; codexArgs: string; grokArgs: string; opencodeArgs: string } }) => void) => () => void
   autopilotKeyExists: (provider: 'anthropic' | 'openrouter') => Promise<boolean>
   autopilotKeySet: (provider: 'anthropic' | 'openrouter', key: string) => Promise<void>

@@ -264,6 +264,14 @@ contextBridge.exposeInMainWorld('api', {
     return () => { ipcRenderer.removeListener('remote:session-created', listener) }
   },
 
+  // A browser client closed a session (the /desktop grid, or Kill on the
+  // phone). The window drops the tile; it must not kill anything itself.
+  onRemoteSessionClosed: (callback: (session: { id: string }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, session: { id: string }): void => callback(session)
+    ipcRenderer.on('remote:session-closed', listener)
+    return () => { ipcRenderer.removeListener('remote:session-closed', listener) }
+  },
+
   autopilotKeyExists: (provider: 'anthropic' | 'openrouter'): Promise<boolean> =>
     ipcRenderer.invoke('autopilot:keyExists', provider),
   autopilotKeySet: (provider: 'anthropic' | 'openrouter', key: string): Promise<void> =>

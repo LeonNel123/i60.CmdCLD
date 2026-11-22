@@ -3,7 +3,7 @@ import { Responsive, WidthProvider, Layout } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { Sidebar } from './components/Sidebar'
-import { TerminalPanel, killPty } from './components/TerminalPanel'
+import { TerminalPanel, killPty, forgetPty } from './components/TerminalPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { SettingsDialog } from './components/settings/SettingsDialog'
 import { LaunchDialog } from './components/LaunchDialog'
@@ -750,33 +750,53 @@ export default function App() {
     setClosingId(id)
   }, [])
 
-  const handleConfirmClose = useCallback(() => {
-    if (!closingId) return
-    killPty(closingId)
-    const newTerminals = terminals.filter((t) => t.id !== closingId)
-    setTerminals(newTerminals)
-
-    const newLayouts = layoutsForVisible(newTerminals, minimizedRef.current)
-    setLayouts(newLayouts)
-    setClosingId(null)
+  // Drop a tile and everything that refers to it. Functional updates only:
+  // this also runs from an IPC listener, where a `terminals` captured by the
+  // closure would be stale.
+  const removeTile = useCallback((id: string) => {
+    setTerminals((prev) => {
+      if (!prev.some((t) => t.id === id)) return prev
+      const next = prev.filter((t) => t.id !== id)
+      setLayouts(layoutsForVisible(next, minimizedRef.current))
+      return next
+    })
+    setClosingId((prev) => (prev === id ? null : prev))
     setMinimizedIds((prev) => {
-      if (!prev.has(closingId)) return prev
+      if (!prev.has(id)) return prev
       const next = new Set(prev)
-      next.delete(closingId)
+      next.delete(id)
       return next
     })
     setAttentionIds((prev) => {
-      if (!prev.has(closingId)) return prev
+      if (!prev.has(id)) return prev
       const next = new Set(prev)
-      next.delete(closingId)
+      next.delete(id)
       return next
     })
     setViewMode((prev) =>
-      prev.type === 'focused' && prev.terminalId === closingId
+      prev.type === 'focused' && prev.terminalId === id
         ? { type: 'grid' }
         : prev
     )
-  }, [closingId, terminals])
+  }, [])
+
+  const handleConfirmClose = useCallback(() => {
+    if (!closingId) return
+    killPty(closingId)
+    removeTile(closingId)
+  }, [closingId, removeTile])
+
+  // A session closed from another client (a tile closed on /desktop, Kill on
+  // the phone, or — for the browser page — a tile closed in the desktop
+  // window). Its PTY is already gone, so the tile goes too. Left in place it
+  // took keystrokes nowhere, and restoring it from minimised found no PTY
+  // under its id and launched the agent again.
+  useEffect(() => {
+    return window.api.onRemoteSessionClosed(({ id }) => {
+      forgetPty(id)
+      removeTile(id)
+    })
+  }, [removeTile])
 
   const handleLayoutChange = useCallback((layout: Layout[]) => {
     // The grid stays mounted in focused mode now, but every item is CSS-overridden to
