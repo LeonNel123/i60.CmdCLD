@@ -95,7 +95,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('clipboard:writeText', text),
 
   // Open a file/folder with the OS default program (path or file:// URL)
-  openPath: (target: string): Promise<{ ok: boolean; error?: string }> =>
+  openPath: (target: string): Promise<{ ok: boolean; error?: string; revealed?: boolean }> =>
     ipcRenderer.invoke('shell:openPath', target),
 
   // How "Run as administrator" opens: 'in-app' (elevation bridge available,

@@ -10,11 +10,11 @@ import { livePtyCache } from '../utils/live-pty-cache'
 import { logicalLineBounds } from '../utils/logical-line'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatPaths } from '../utils/format-paths'
-import { pastePolicy, inputPlatformOf, modKeyPressed, browserClipboardKey, pastedImageFile } from '../remote/input-policy'
+import { pastePolicy, inputPlatformOf, browserClipboardKey, pastedImageFile } from '../remote/input-policy'
 import { primeNativeCopy } from '../remote/copy-text'
 import { extractDroppedPaths } from '../utils/dropped-paths'
 import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
-import { findTerminalPaths, resolveTerminalPath } from '../../../shared/terminal-link'
+import { findTerminalPaths, resolveTerminalPath, terminalLinkAction, shouldFollowLink, linkGestureHint } from '../../../shared/terminal-link'
 import {
   DEFAULT_TERMINAL_FONT_SIZE,
   TERMINAL_FONT_SIZE_MAX,
@@ -69,16 +69,6 @@ export function forgetPty(id: string): void {
   removeTerminalActivity(id)
 }
 
-// Source/config extensions that open in the code editor when a terminal link
-// is clicked. `.md` opens in the in-app markdown viewer; everything else —
-// data/query/markup files (sql, xml, csv, …), pdf, images, archives, html, and
-// any file:// link — opens with the OS default program.
-const EDITOR_EXTS = new Set([
-  'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'json', 'jsonc', 'yaml', 'yml', 'toml',
-  'css', 'scss', 'less', 'py', 'rs', 'go', 'java', 'kt', 'kts', 'c', 'cc', 'cpp',
-  'h', 'hpp', 'cs', 'rb', 'php', 'swift', 'sh', 'bash', 'zsh', 'ps1',
-  'env', 'cfg', 'ini', 'conf', 'gradle', 'vue', 'svelte',
-])
 
 interface TerminalPanelProps {
   id: string
@@ -228,6 +218,11 @@ export function TerminalPanel({
     // Route a clicked terminal link/path: http(s) -> system browser; .md ->
     // in-app viewer; source/config files -> editor; everything else (incl.
     // file:// links) -> the OS default program (like double-clicking it).
+    // For "~/…" paths. Asked once; until it answers they resolve against the
+    // tile's folder, as before.
+    let homeDir: string | undefined
+    window.api.getHomeDir().then((h) => { homeDir = h }).catch(() => {})
+
     const openTarget = (raw: string, source: string): void => {
       if (/^https?:/i.test(raw)) { window.api.openExternal(raw, source); return }
       const isFileUrl = /^file:/i.test(raw)
@@ -235,41 +230,58 @@ export function TerminalPanel({
       // terminal's folder — main resolves against the app cwd, not ours.
       const filePart = isFileUrl
         ? raw.replace(/:\d+(:\d+)?$/, '') // strip trailing :line[:col]
-        : resolveTerminalPath(raw, folderPath, window.api.platform)
-      const base = filePart.split(/[\\/]/).pop() || ''
-      const dotIdx = base.lastIndexOf('.')
-      const ext = dotIdx > 0 ? base.slice(dotIdx + 1).toLowerCase() : ''
-      if (!isFileUrl && ext === 'md' && onOpenMarkdown) {
+        : resolveTerminalPath(raw, folderPath, window.api.platform, homeDir)
+      const action = isFileUrl ? 'default-app' : terminalLinkAction(filePart)
+      if (action === 'markdown' && onOpenMarkdown) {
         onOpenMarkdown(filePart)
-      } else if (!isFileUrl && EDITOR_EXTS.has(ext)) {
+      } else if (action === 'editor') {
         window.api.openInEditor(filePart, { projectPath: folderPath }).then((res) => {
           if (!res.ok) onNotifyRef.current?.(res.error || 'Could not open in editor', 'warn')
         }).catch(() => onNotifyRef.current?.('Could not open in editor', 'warn'))
       } else {
-        window.api.openPath(isFileUrl ? raw : filePart)
+        // Main decides between opening and revealing (see open-target.ts) and
+        // says what happened. The result used to be dropped, so a path that
+        // did not exist, or resolved to the wrong place, was a dead click.
+        window.api.openPath(isFileUrl ? raw : filePart).then((res) => {
+          if (!res.ok) onNotifyRef.current?.(res.error || 'Could not open the file', 'warn')
+          else if (res.revealed) onNotifyRef.current?.('Shown in its folder — programs are not run from a link', 'info')
+        }).catch(() => onNotifyRef.current?.('Could not open the file', 'warn'))
       }
     }
 
-    // Require Ctrl+click (Cmd+click on macOS) to follow a terminal link, so a
-    // stray plain click never launches a file, app, or browser — same gesture
-    // as VS Code's integrated terminal. (On macOS, Ctrl+click is a right-click,
-    // so we require Cmd there instead.)
-    //
-    // While the pty application has mouse reporting enabled (Claude Code's
-    // fullscreen renderer, vim with mouse=a, …), xterm forwards clicks into
-    // the pty and the app owns the gesture. Claude Code opens ctrl+clicked
-    // links itself in that state — it only defers to terminals it recognizes
-    // (e.g. TERM_PROGRAM=vscode), and we are not one — so opening here too
-    // double-opened every link (two browser tabs per click, diagnosed via
-    // the openExternal [source] log). Stand down whenever the app tracks
-    // the mouse; at a plain shell prompt nothing tracks it and we handle
-    // the click as before.
-    const isLinkActivation = (event?: MouseEvent | null): boolean => {
+    const mouseTracked = (): boolean => {
       const t = terminalRef.current
-      if (t && t.modes.mouseTrackingMode !== 'none') return false
-      // The keyboard's OS, not the host's: on the browser page a Windows host
-      // asked a Mac for Ctrl+click, which macOS turns into a right-click.
-      return !event || modKeyPressed(event, inputPlatformOf(window))
+      return !!t && t.modes.mouseTrackingMode !== 'none'
+    }
+    // The keyboard's OS, not the host's: on the browser page a Windows host
+    // asked a Mac for Ctrl+click, which macOS turns into a right-click.
+    const onMac = inputPlatformOf(window) === 'darwin'
+
+    // Which click follows a link — the rule, and why a second key is needed
+    // while the agent tracks the mouse, is in shouldFollowLink.
+    const isLinkActivation = (event?: MouseEvent | null): boolean =>
+      shouldFollowLink({ mouseTracking: mouseTracked(), mac: onMac, event: event ?? false })
+
+    // Hover hint. xterm underlines a link and shows a hand on plain hover, but
+    // a plain click does nothing, and the gesture that works changes with the
+    // agent's mouse mode — so say which one it is, where the pointer is.
+    let linkHint: HTMLDivElement | null = null
+    const hideLinkHint = (): void => { linkHint?.remove(); linkHint = null }
+    const showLinkHint = (event: MouseEvent, isFile: boolean): void => {
+      if (!linkHint) {
+        linkHint = document.createElement('div')
+        linkHint.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;white-space:nowrap;'
+          + 'background:#252526;color:#cccccc;border:1px solid #454545;border-radius:4px;'
+          + 'padding:2px 7px;font:11px/1.5 system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.4)'
+        document.body.appendChild(linkHint)
+      }
+      // The browser page cannot open a file on the PC it is talking to.
+      linkHint.textContent = isFile && window.api.remote
+        ? 'Files open from the desktop app only'
+        : linkGestureHint({ mouseTracking: mouseTracked(), mac: onMac })
+      const width = linkHint.offsetWidth
+      linkHint.style.left = `${Math.max(4, Math.min(event.clientX + 12, window.innerWidth - width - 4))}px`
+      linkHint.style.top = `${Math.min(event.clientY + 18, window.innerHeight - 28)}px`
     }
 
     const term = new Terminal({
@@ -302,12 +314,24 @@ export function TerminalPanel({
       // fontRef.current.size is in points (matches Windows Terminal); xterm's
       // fontSize is CSS px, so convert at this boundary.
       fontSize: pointsToPixels(fontRef.current.size),
+      // On a Mac, Option is the key that makes xterm keep a click to itself
+      // while the program tracks the mouse (elsewhere it is Shift, always on).
+      // Following a link in that state depends on it — see shouldFollowLink —
+      // and without it a Mac has no native selection there either.
+      macOptionClickForcesSelection: true,
       // Handle OSC 8 hyperlinks (ESC]8;;<uri>) that terminal programs emit.
-      linkHandler: { activate: (event, uri) => { if (isLinkActivation(event)) openTarget(uri, 'osc8') } },
+      linkHandler: {
+        activate: (event, uri) => { if (isLinkActivation(event)) openTarget(uri, 'osc8') },
+        hover: (event) => showLinkHint(event, false),
+        leave: hideLinkHint,
+      },
     })
     const fitAddon = new FitAddon()
     const webLinksAddon = new WebLinksAddon((event, uri) => {
       if (isLinkActivation(event)) openTarget(uri, 'weblinks')
+    }, {
+      hover: (event) => showLinkHint(event, false),
+      leave: hideLinkHint,
     })
     const searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
@@ -362,6 +386,8 @@ export function TerminalPanel({
             activate(event) {
               if (isLinkActivation(event)) openTarget(l.text, 'path-provider')
             },
+            hover(event) { showLinkHint(event, true) },
+            leave: hideLinkHint,
           }
         }))
       },
@@ -690,6 +716,7 @@ export function TerminalPanel({
 
     return () => {
       disposed = true
+      hideLinkHint()
       clearTimeout(launchTimer)
       clearTimeout(resizeTimer)
       resizeObserver.disconnect()

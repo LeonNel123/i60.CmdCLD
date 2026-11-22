@@ -19,6 +19,7 @@ import { initCatalogue, getCatalogue, refreshCatalogue } from './openrouter-cata
 import { detectEditors, getDefaultEditor, findProjectAnchor, type EditorInfo } from './editor-detect'
 import { RemoteServer } from './remote-server'
 import { createSettingsBroadcast } from './settings-broadcast'
+import { openFileTarget } from './open-target'
 import { hardenGlobalSettings, trustFolder, readClaudeConfig, writeClaudeConfig } from './claude-config'
 import { getStatus as tsGetStatus, getServeStatus as tsGetServeStatus, startServe as tsStartServe, stopServe as tsStopServe } from './tailscale'
 import { getGitStatus, clearGitStatusCache } from './git-status'
@@ -886,25 +887,14 @@ ipcMain.handle('clipboard:writeText', (_event, text: string) => {
 
 // Open a file/folder with the OS default program (like double-clicking in
 // Explorer). Accepts a plain path, a file:// URL, or a "///C:/…" form.
-ipcMain.handle('shell:openPath', async (_event, target: string) => {
-  if (typeof target !== 'string' || !target) return { ok: false, error: 'empty target' }
-  let p = target
-  if (/^file:/i.test(p)) {
-    try { p = fileURLToPath(p) } catch { /* not a valid file URL — try as-is */ }
-  } else if (/^\/{2,}[A-Za-z]:/.test(p)) {
-    p = p.replace(/^\/+/, '') // strip leading slashes off a "///C:/…" path
-  }
-  try {
-    const err = await shell.openPath(p)
-    // No associated app / open failed — reveal it in Explorer so the click
-    // still does something visible rather than silently no-op.
-    if (err) { try { shell.showItemInFolder(p) } catch {} }
-    return { ok: !err, error: err || undefined }
-  } catch (e) {
-    try { shell.showItemInFolder(p) } catch {}
-    return { ok: false, error: String(e) }
-  }
-})
+// The rules — say when it is missing, never run a program, report which
+// happened — are in open-target.ts.
+ipcMain.handle('shell:openPath', (_event, target: string) =>
+  openFileTarget(target, {
+    exists: (p) => existsSync(p),
+    openPath: (p) => shell.openPath(p),
+    reveal: (p) => { try { shell.showItemInFolder(p) } catch {} },
+  }))
 
 // Settings
 ipcMain.handle('settings:getAll', () => {

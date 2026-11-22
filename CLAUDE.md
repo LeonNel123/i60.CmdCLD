@@ -242,6 +242,34 @@ When changing the bridge prompt or `indentBlock`, keep both invariants — the r
 
 Known limitation: `PtyWatcher.checkSettled` still locates the settle boundary with `cleaned.lastIndexOf(found.marker.raw)`, so a byte-identical quoted copy sends it to the wrong line. Measured consequence is that the cycle settles via the force-settle window instead of on idle — latency, not correctness.
 
+## Terminal links
+
+Matching and routing are pure and live in `src/shared/terminal-link.ts`; `TerminalPanel.tsx` only wires them
+to xterm. `findTerminalPaths` decides what is a link, `terminalLinkAction` what a file does (viewer / editor /
+default app / reveal), `shouldFollowLink` which click counts, and `src/main/open-target.ts` performs the open.
+
+**The gesture depends on the agent's mouse mode**, and this is the part that was invisible:
+
+- Nothing tracking the mouse: Ctrl+click (Cmd on a Mac).
+- A program tracking it (Claude Code fullscreen, OpenCode, vim): xterm fires our link handler *and* forwards
+  the click to the program, and Claude Code opens the link itself — answering too opened every URL twice
+  (`1f9f41a` therefore stood down completely, which is why links looked dead inside an agent). The click
+  must also carry the key that makes xterm keep it: Shift, or Option on a Mac (needs
+  `macOptionClickForcesSelection`, which is set). Then only we see it. Measured against xterm 5.5 in a
+  browser: Ctrl+click → handler fires and `ESC[<16;…M` is sent; Ctrl+Shift+click → handler fires, nothing sent.
+- Auto-copy on selection is the *agent's* mouse mode (it selects and sends OSC 52), not ours. If dragging
+  copies, the agent is tracking the mouse and the second key is needed.
+
+The hover hint (`linkGestureHint`) names the gesture for the current state; keep it in step with
+`shouldFollowLink` — they are tested together.
+
+Opening never runs a program: `LAUNCH_EXTS` are revealed in their folder, enforced in main as well as the
+renderer because `shell:openPath` takes any path, including one from a `file://` link in program output.
+
+Known gaps: a path containing spaces is split at the space (matching is per whitespace token, which is what
+bounds the regex's worst case); a path the agent's own TUI wrapped across rows is not rejoined (only
+xterm-wrapped rows are); the `/desktop` browser page cannot open files on the host at all.
+
 ## Renderer recovery (hang / crash)
 
 A pegged renderer JS thread leaves the window answering the OS (main owns the HWND, so

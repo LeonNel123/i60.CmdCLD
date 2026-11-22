@@ -214,7 +214,9 @@ export interface ElectronAPI {
   clipboardSaveImage: (cwd: string) => Promise<string | null>
   clipboardReadFiles: () => Promise<string[] | null>
   clipboardWriteText: (text: string) => Promise<void>
-  openPath: (target: string) => Promise<{ ok: boolean; error?: string }>
+  /** Open a file with the OS default program. `revealed`: it was shown in its
+   *  folder instead — a program is never run from a link. */
+  openPath: (target: string) => Promise<{ ok: boolean; error?: string; revealed?: boolean }>
   adminShellMode: () => Promise<'in-app' | 'external'>
   openAdminShell: () => Promise<{ ok: boolean; cancelled?: boolean; error?: string }>
   getHomeDir: () => Promise<string>

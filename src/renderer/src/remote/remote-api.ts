@@ -125,7 +125,8 @@ export function createRemoteApi(deps: RemoteApiDeps): ElectronAPI & { remote: tr
     },
 
     // ---- desktop-only: stubs -----------------------------------------------
-    openPath: async () => ({ ok: false, error: 'Not available remotely' }),
+    // A browser cannot start a program on the PC it is talking to.
+    openPath: async () => ({ ok: false, error: 'Files can only be opened from the desktop app' }),
     adminShellMode: async () => 'external' as const,
     openAdminShell: async () => ({ ok: false, error: 'Not available remotely' }),
     readFile: async () => null,

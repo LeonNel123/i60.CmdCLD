@@ -21,8 +21,11 @@ Open multiple project folders, each running its own Claude or Codex CLI instance
 - Ctrl+V paste with clipboard image support (screenshots saved to `.screenshots/` in your project)
 - Ctrl+F search through terminal scrollback
 - Ctrl+=/- font zoom (Ctrl+0 to reset)
-- Clickable URLs (open in browser) and file paths (open in editor)
-- Clickable `.md` files open in a built-in rendered markdown viewer
+- Ctrl+click (Cmd+click on macOS) a URL or file path to open it: URLs in the browser, source files in
+  your editor, `.md` in a built-in rendered viewer, and everything else — spreadsheets, CSV, PDF,
+  images — in its default app. Programs and installers are shown in their folder, never run.
+- While an agent is using the mouse itself (Claude Code fullscreen, OpenCode), add Shift (Option on
+  macOS): Ctrl+Shift+click. Hovering a link shows which gesture applies.
 - VS Code Dark+ color theme
 
 **Quick Actions (Terminal Header)**
