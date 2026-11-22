@@ -90,6 +90,9 @@ export class RemoteServer {
   private getAllWebContents: () => Electron.WebContents[]
   private resolveTailscaleHost: () => Promise<string | null>
   private tailscaleLookupAt = 0
+  /** Longest a request waits on a Tailscale name lookup before being judged
+   *  on what is already known. */
+  private tailscaleLookupTimeoutMs = 3000
   private startTime: number = 0
   private boundListeners: { event: string; fn: (...args: any[]) => void }[] = []
   // Composed messages only. Raw keystrokes must never go through this — the
@@ -151,36 +154,58 @@ export class RemoteServer {
       // Learn this machine's Tailscale name now, and again (at most every 10 s)
       // when a request names a .ts.net host we do not know yet — Tailscale may
       // have come up, or been renamed, after this server started.
-      const learnTailscaleHost = (): void => {
-        if (Date.now() - this.tailscaleLookupAt < 10_000) return
+      //
+      // Returns the lookup so a request can wait for it. Inside the 10 s
+      // window that is the lookup already made (usually long settled), so
+      // unknown names cannot make this run more often; and it is capped, so a
+      // `tailscale status` that never returns cannot hang a request.
+      let lookup: Promise<void> = Promise.resolve()
+      const learnTailscaleHost = (): Promise<void> => {
+        if (Date.now() - this.tailscaleLookupAt < 10_000) return lookup
         this.tailscaleLookupAt = Date.now()
         // Replace, never append: after a rename the old name may belong to
         // another device on the tailnet. A failed or logged-out lookup clears
         // it; the next .ts.net request (10 s later at most) looks it up again.
-        this.resolveTailscaleHost().then((host) => {
+        const read = this.resolveTailscaleHost().then((host) => {
           const name = (host || '').trim().toLowerCase().replace(/\.$/, '')
           guardOpts.tailscaleHosts = name ? [name] : []
         }).catch(() => { guardOpts.tailscaleHosts = [] })
+        const cap = new Promise<void>((done) => {
+          const timer = setTimeout(done, this.tailscaleLookupTimeoutMs)
+          timer.unref?.()
+        })
+        lookup = Promise.race([read, cap])
+        return lookup
       }
       this.tailscaleLookupAt = 0
-      learnTailscaleHost()
-      const allowed = (host: string | undefined, origin: string | undefined): boolean => {
+      void learnTailscaleHost()
+      // A request naming a .ts.net host we do not know waits for the re-read
+      // and is judged on its result. Refusing it and only *starting* the
+      // re-read answered the first page load 403 whenever Tailscale came up
+      // after this app did — which, started at login, is the usual order.
+      const allowed = async (host: string | undefined, origin: string | undefined): Promise<boolean> => {
         if (isRequestAllowed(host, origin, guardOpts)) return true
-        if (namesTailscaleHost(host, origin)) learnTailscaleHost()
-        return false
+        if (!namesTailscaleHost(host, origin)) return false
+        await learnTailscaleHost()
+        return isRequestAllowed(host, origin, guardOpts)
       }
       this.app = express()
       // Host/Origin gate — registered before static files and the API so
       // every route is covered. Kills DNS rebinding + cross-site sockets.
       this.app.use((req: any, res: any, next: any) => {
-        if (allowed(req.headers.host, req.headers.origin)) { next(); return }
-        res.status(403).json({ error: 'Forbidden' })
+        allowed(req.headers.host, req.headers.origin).then(
+          (ok) => { if (ok) next(); else res.status(403).json({ error: 'Forbidden' }) },
+          () => { res.status(403).json({ error: 'Forbidden' }) },
+        )
       })
       this.app.use(express.json())
       this.httpServer = createServer(this.app)
       this.io = new SocketServer(this.httpServer, {
         allowRequest: (req, callback) => {
-          callback(null, allowed(req.headers.host, req.headers.origin as string | undefined))
+          allowed(req.headers.host, req.headers.origin as string | undefined).then(
+            (ok) => callback(null, ok),
+            () => callback(null, false),
+          )
         },
       })
 

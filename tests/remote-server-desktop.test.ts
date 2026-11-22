@@ -328,10 +328,60 @@ describe('desktop-page support routes', () => {
     expect(await status('old.tail1.ts.net')).toBe(200)
     current = 'new.tail1.ts.net'
     ;(server as any).tailscaleLookupAt = 0 // skip the 10 s rate limit
-    expect(await status('new.tail1.ts.net')).toBe(403) // unknown: triggers the re-read
-    await new Promise((r) => setTimeout(r, 20))
+    // Unknown name: the request waits for the re-read instead of being refused.
     expect(await status('new.tail1.ts.net')).toBe(200)
     expect(await status('old.tail1.ts.net')).toBe(403)
+  })
+
+  // CmdCLD starts at login, often before Tailscale is up, so the lookup at
+  // start finds no name. The first page load from the phone was then answered
+  // 403 — the request only *started* the re-read — and worked on a refresh.
+  it('answers the first request once Tailscale has come up after start', async () => {
+    const f = fakeDeps()
+    let current: string | null = null
+    const server = new RemoteServer({ ...f.deps, resolveTailscaleHost: async () => current })
+    servers.push(server)
+    const { port } = await server.start(0)
+    await new Promise((r) => setTimeout(r, 20))
+    current = 'mine.tail1.ts.net'
+    ;(server as any).tailscaleLookupAt = 0 // as if 10 s had passed since start
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, method: 'GET', path: '/api/status', headers: { Host: 'mine.tail1.ts.net' } }, (res) => { res.resume(); resolve(res.statusCode ?? 0) })
+      req.on('error', reject); req.end()
+    })
+    expect(status).toBe(200)
+  })
+
+  // Waiting on the lookup must not hand a stranger a way to make the server
+  // run `tailscale status` per request, or to hang on one that never returns.
+  it('still looks the name up at most once per window, however many unknown names ask', async () => {
+    const f = fakeDeps()
+    let lookups = 0
+    const server = new RemoteServer({ ...f.deps, resolveTailscaleHost: async () => { lookups += 1; return 'mine.tail1.ts.net' } })
+    servers.push(server)
+    const { port } = await server.start(0)
+    await new Promise((r) => setTimeout(r, 20))
+    const status = (host: string) => new Promise<number>((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, method: 'GET', path: '/api/status', headers: { Host: host } }, (res) => { res.resume(); resolve(res.statusCode ?? 0) })
+      req.on('error', reject); req.end()
+    })
+    for (let i = 0; i < 5; i++) expect(await status(`stranger${i}.tail9.ts.net`)).toBe(403)
+    expect(lookups).toBe(1)
+  })
+
+  it('refuses rather than hangs when the lookup never returns', async () => {
+    const f = fakeDeps()
+    const server = new RemoteServer({ ...f.deps, resolveTailscaleHost: () => new Promise<string | null>(() => {}) })
+    ;(server as any).tailscaleLookupTimeoutMs = 40
+    servers.push(server)
+    const { port } = await server.start(0)
+    const started = Date.now()
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, method: 'GET', path: '/api/status', headers: { Host: 'mine.tail1.ts.net' } }, (res) => { res.resume(); resolve(res.statusCode ?? 0) })
+      req.on('error', reject); req.end()
+    })
+    expect(status).toBe(403)
+    expect(Date.now() - started).toBeLessThan(2000)
   })
 
   it('POST /api/settings refuses the remote-access keys so a remote page cannot widen its own exposure', async () => {
