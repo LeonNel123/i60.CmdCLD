@@ -17,7 +17,7 @@ import {
   normalizeAgentCli,
   type AgentCli,
 } from '../shared/agent-cli'
-import { detectAgentCliAvailability } from './agent-cli-detect'
+import { agentCliAvailability } from './agent-cli-detect'
 import { resolvePtySpawnSize } from './pty-create-validation'
 import { getGitStatus, clearGitStatusCache } from './git-status'
 import { RemoteSizeOwner, type SizeOwner } from './remote-size-owner'
@@ -635,7 +635,7 @@ export class RemoteServer {
 
     // Settings
     app.get('/api/settings', (_req: any, res: any) => {
-      res.json({ ...this.settings.getAll(), cliAvailability: detectAgentCliAvailability() })
+      res.json({ ...this.settings.getAll(), cliAvailability: agentCliAvailability() })
     })
 
     // Mirrors ipc 'settings:set'. Key must be one the settings store already

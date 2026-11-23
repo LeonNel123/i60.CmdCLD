@@ -1,4 +1,5 @@
 import { execFileSync } from 'child_process'
+import { cachedFor } from './cached'
 import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 
@@ -150,6 +151,10 @@ export function detectEditors(): EditorInfo[] {
   const vs = detectVisualStudio()
   return vs ? [...editors, vs] : editors
 }
+
+/** detectEditors, remembered for a minute. It runs where/vswhere synchronously
+ *  and is asked on every tile mount; use this everywhere except startup. */
+export const installedEditors = cachedFor(detectEditors, 60_000)
 
 export function getDefaultEditor(available: EditorInfo[]): EditorInfo | undefined {
   // Prefer in order: code, cursor, windsurf, then whatever's first

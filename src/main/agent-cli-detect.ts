@@ -1,5 +1,6 @@
 import { execFileSync } from 'child_process'
 import { platform } from 'os'
+import { cachedFor } from './cached'
 import { AGENT_CLIS, AGENT_CLI_COMMANDS, type AgentCli } from '../shared/agent-cli'
 
 export interface AgentCliAvailability {
@@ -30,3 +31,7 @@ export function detectAgentCliAvailability(): AgentCliAvailabilityMap {
     AGENT_CLIS.map((cli) => [cli, detectCommand(AGENT_CLI_COMMANDS[cli])]),
   ) as AgentCliAvailabilityMap
 }
+
+/** detectAgentCliAvailability, remembered for 30 s. It runs `where` once per
+ *  agent, synchronously, and the remote page asks with every settings fetch. */
+export const agentCliAvailability = cachedFor(detectAgentCliAvailability, 30_000)

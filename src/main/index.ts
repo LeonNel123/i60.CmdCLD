@@ -19,7 +19,7 @@ import { detectTerminals, openExternalTerminal } from './external-terminal'
 import { Settings } from './settings'
 import { LastSessionStore, type SavedSession } from './last-session-store'
 import { initCatalogue, getCatalogue, refreshCatalogue } from './openrouter-catalogue'
-import { detectEditors, getDefaultEditor, findProjectAnchor, type EditorInfo } from './editor-detect'
+import { installedEditors, getDefaultEditor, findProjectAnchor, type EditorInfo } from './editor-detect'
 import { RemoteServer } from './remote-server'
 import { createSettingsBroadcast } from './settings-broadcast'
 import { openFileTarget } from './open-target'
@@ -40,7 +40,7 @@ import { AnthropicClient, OpenRouterClient } from './autopilot/api-client'
 import { createDeterministicAttachDraft, createLlmAttachDraft } from './autopilot/attach-session'
 import type { AttachSessionStatus } from './autopilot/attach-types'
 import { loadBudget, getSnapshot as getBudgetSnapshot, setProjectCap, setGlobalCap, resetTodaySpend } from './autopilot/budget-tracker'
-import { detectAgentCliAvailability } from './agent-cli-detect'
+import { agentCliAvailability } from './agent-cli-detect'
 import {
   buildAgentLaunchCommand,
   getArgsForAgent,
@@ -295,7 +295,7 @@ try {
 
 
   // Auto-detect editors and set default if not configured
-  const availableEditors = detectEditors()
+  const availableEditors = installedEditors()
   log(`Detected editors: ${availableEditors.map(e => e.name).join(', ') || 'none'}`)
   const currentEditor = settings.get('editor')
   if (currentEditor && !availableEditors.find(e => e.id === currentEditor || e.cmd === currentEditor)) {
@@ -790,7 +790,7 @@ ipcMain.handle('editor:open', async (_event, targetPath: string, opts?: { forceF
       const err = await shell.openPath(anchor.path)
       if (!err) return { ok: true, opened: 'solution', name: anchor.name }
       // Association didn't take — launch VS directly on the solution.
-      const vs = detectEditors().find((e) => e.id === 'devenv')
+      const vs = installedEditors().find((e) => e.id === 'devenv')
       if (vs) {
         const r = await spawnEditor(vs.cmd, [anchor.path])
         if (r.ok) return { ok: true, opened: 'solution', name: anchor.name }
@@ -799,7 +799,7 @@ ipcMain.handle('editor:open', async (_event, targetPath: string, opts?: { forceF
     }
   }
 
-  const available = detectEditors()
+  const available = installedEditors()
   const projectPath = opts?.projectPath ?? (isDir ? targetPath : undefined)
   let editor = resolveEditorFor(available, projectPath, opts?.editorId)
   // A file (terminal-link click) with no chosen default still needs to open
@@ -838,13 +838,13 @@ ipcMain.handle('editor:probeProject', (_event, folderPath: string) => {
 
 // Editor settings
 ipcMain.handle('editor:getAvailable', () => {
-  return detectEditors()
+  return installedEditors()
 })
 
 // Report the global default, the per-project default (if any), and the id that
 // currently resolves for this folder (project → global, or null if unset).
 ipcMain.handle('editor:getDefaults', (_event, projectPath?: string) => {
-  const available = detectEditors()
+  const available = installedEditors()
   const global = settings.get('editor') || ''
   const project = (projectPath && settings.get('editorByProject')[projectPath]) || ''
   const resolved = resolveEditorFor(available, projectPath, undefined)
@@ -955,7 +955,7 @@ ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
   settings.set(key as any, value as any)
 })
 
-ipcMain.handle('agent-cli:availability', () => detectAgentCliAvailability())
+ipcMain.handle('agent-cli:availability', () => agentCliAvailability())
 
 // Claude CLI config (global + local settings files)
 ipcMain.handle('claude-config:read', () => readClaudeConfig())
