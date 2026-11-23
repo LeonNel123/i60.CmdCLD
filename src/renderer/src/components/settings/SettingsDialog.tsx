@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { changedSettings } from '../../../../shared/settings-diff'
+import { settingsCategoriesFor, type SettingsCategory } from '../../../../shared/settings-categories'
 import { X } from '../icons'
 import { normalizeAgentCli, type AgentCli } from '../../../../shared/agent-cli'
 import { clampTerminalFontSize, resolveTerminalFontFamily, DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE } from '../../../../shared/terminal-font'
@@ -22,19 +23,9 @@ interface SettingsDialogProps {
   activeProjectPath?: string
 }
 
-type Category = 'general' | 'agents' | 'appearance' | 'remote' | 'claude' | 'autopilot' | 'broadcast' | 'aiusage' | 'about'
+type Category = SettingsCategory
 
-const CATEGORIES: Array<{ id: Category; label: string }> = [
-  { id: 'general', label: 'General' },
-  { id: 'agents', label: 'Agents' },
-  { id: 'appearance', label: 'Appearance' },
-  { id: 'remote', label: 'Remote Access' },
-  { id: 'claude', label: 'Claude Config' },
-  { id: 'autopilot', label: 'Autopilot' },
-  { id: 'broadcast', label: 'Broadcast' },
-  { id: 'aiusage', label: 'AI Usage' },
-  { id: 'about', label: 'About' },
-]
+const CATEGORIES = settingsCategoriesFor(Boolean(window.api.remote))
 
 export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogProps) {
   const [category, setCategory] = useState<Category>('general')
