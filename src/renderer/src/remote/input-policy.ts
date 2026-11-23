@@ -40,6 +40,48 @@ export function modKeyLabel(platform: InputPlatform): string {
   return platform === 'darwin' ? '⌘' : 'Ctrl'
 }
 
+export type AppShortcut =
+  | { kind: 'terminal'; index: number }
+  | { kind: 'grid' }
+  | { kind: 'add-folder' }
+  | { kind: 'broadcast' }
+  | { kind: 'palette' }
+
+type ShortcutKey = { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }
+
+const LETTER_SHORTCUTS: Record<string, AppShortcut> = {
+  t: { kind: 'add-folder' },
+  b: { kind: 'broadcast' },
+  p: { kind: 'palette' },
+}
+
+/** The app-level shortcut a key event stands for, if any. Mod+1..9 switches
+ *  terminal, Mod+` shows the grid, Mod+T / B / P add a folder, toggle the
+ *  broadcast bar and open the palette. Off a Mac the letters also work with
+ *  Shift, which is the form that works while a terminal has focus. */
+export function appShortcutOf(e: ShortcutKey, platform: InputPlatform): AppShortcut | null {
+  if (e.altKey || !modKeyPressed(e, platform)) return null
+  if (platform === 'darwin' ? e.ctrlKey : e.metaKey) return null
+  if (!e.shiftKey && e.key >= '1' && e.key <= '9' && e.key.length === 1) {
+    return { kind: 'terminal', index: parseInt(e.key, 10) - 1 }
+  }
+  if (!e.shiftKey && e.key === '`') return { kind: 'grid' }
+  if (e.shiftKey && platform === 'darwin') return null
+  return LETTER_SHORTCUTS[e.key.toLowerCase()] ?? null
+}
+
+/** Should the terminal let this key through to the app instead of sending it
+ *  to the program? xterm stops every key it turns into input, so the app only
+ *  sees what the terminal declines. Plain Ctrl+P / T / B are real terminal
+ *  keys and stay with the program; everything else that is an app shortcut
+ *  is the app's. */
+export function terminalYieldsKey(e: ShortcutKey, platform: InputPlatform): boolean {
+  const shortcut = appShortcutOf(e, platform)
+  if (!shortcut) return false
+  if (shortcut.kind === 'terminal' || shortcut.kind === 'grid') return true
+  return platform === 'darwin' || e.shiftKey
+}
+
 /** Electron intercepts the DOM paste and Mod+V so main can read images and
  *  file lists off the OS clipboard. A browser cannot do that at all over plain
  *  http (navigator.clipboard is absent in an insecure context), but xterm's

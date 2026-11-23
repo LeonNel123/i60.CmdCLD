@@ -10,7 +10,7 @@ import { livePtyCache } from '../utils/live-pty-cache'
 import { logicalLineBounds } from '../utils/logical-line'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatPaths } from '../utils/format-paths'
-import { pastePolicy, inputPlatformOf, browserClipboardKey, pastedImageFile } from '../remote/input-policy'
+import { pastePolicy, inputPlatformOf, browserClipboardKey, pastedImageFile, terminalYieldsKey } from '../remote/input-policy'
 import { primeNativeCopy } from '../remote/copy-text'
 import { extractDroppedPaths } from '../utils/dropped-paths'
 import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
@@ -543,6 +543,9 @@ export function TerminalPanel({
     const modKey = (e: KeyboardEvent) => isMac ? e.metaKey : e.ctrlKey
 
     term.attachCustomKeyEventHandler((e) => {
+      // App shortcuts are handled on window, and xterm stops every key it
+      // turns into input: decline these so they get there.
+      if (terminalYieldsKey(e, isMac ? 'darwin' : 'other')) return false
       // Browser page: copy and paste shortcuts go to the browser's native
       // clipboard events — the only path that works over plain http.
       if (window.api.remote) {

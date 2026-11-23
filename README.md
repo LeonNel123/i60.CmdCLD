@@ -58,7 +58,9 @@ Open multiple project folders, each running its own Claude or Codex CLI instance
 | Shortcut | Action |
 |----------|--------|
 | Ctrl+1-9 | Switch to terminal by index |
-| Ctrl+T | Add folder |
+| Ctrl+T | Add folder (Ctrl+Shift+T while a terminal has focus) |
+| Ctrl+P | Command palette (Ctrl+Shift+P while a terminal has focus) |
+| Ctrl+B | Broadcast bar (Ctrl+Shift+B while a terminal has focus) |
 | Ctrl+` | Show all (grid view) |
 | Ctrl+F | Search in terminal |
 | Ctrl+=/- | Zoom in/out |

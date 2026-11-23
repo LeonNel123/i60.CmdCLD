@@ -4,7 +4,7 @@ import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { Sidebar } from './components/Sidebar'
 import { TerminalPanel, killPty, forgetPty } from './components/TerminalPanel'
-import { inputPlatformOf, modKeyPressed } from './remote/input-policy'
+import { inputPlatformOf, appShortcutOf } from './remote/input-policy'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { SettingsDialog } from './components/settings/SettingsDialog'
 import { LaunchDialog } from './components/LaunchDialog'
@@ -912,20 +912,6 @@ export default function App() {
     }
   }, [newProjectName, startAddFolder])
 
-  // Cmd+P / Ctrl+P opens the fuzzy command palette.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // The keyboard's OS — on the browser page that is the browser's, not the host's.
-      const mod = modKeyPressed(e, inputPlatformOf(window))
-      if (mod && !e.shiftKey && !e.altKey && (e.key === 'p' || e.key === 'P')) {
-        e.preventDefault()
-        setPaletteOpen(true)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
   useEffect(() => {
     const off = window.api.onAutopilotUpdate((terminalId, state: any) => {
       setAutopilotRunning((prev) => {
@@ -944,35 +930,24 @@ export default function App() {
   useEffect(() => {
     const inputPlatform = inputPlatformOf(window)
     const handler = (e: KeyboardEvent) => {
-      const mod = modKeyPressed(e, inputPlatform)
-      // Mod+1-9: switch to terminal by index (restoring it if minimized)
-      if (mod && e.key >= '1' && e.key <= '9') {
-        const idx = parseInt(e.key) - 1
-        if (idx < terminals.length) {
-          const target = terminals[idx]
+      // Which keys these are, and which of them a focused terminal lets
+      // through, is decided in input-policy.ts (appShortcutOf / terminalYieldsKey).
+      const shortcut = appShortcutOf(e, inputPlatform)
+      if (!shortcut) return
+      e.preventDefault()
+      switch (shortcut.kind) {
+        case 'terminal': {
+          // Switch to terminal by index, restoring it if minimized.
+          const target = terminals[shortcut.index]
+          if (!target) return
           if (minimizedRef.current.has(target.id)) handleRestore(target.id)
           setViewMode({ type: 'focused', terminalId: target.id })
-          e.preventDefault()
+          return
         }
-        return
-      }
-      // Mod+T: add folder
-      if (mod && e.key === 't') {
-        e.preventDefault()
-        handleAddFolder()
-        return
-      }
-      // Mod+`: show all (grid view)
-      if (mod && e.key === '`') {
-        e.preventDefault()
-        setViewMode({ type: 'grid' })
-        return
-      }
-      // Mod+B: toggle the broadcast bar
-      if (mod && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) {
-        e.preventDefault()
-        if (!window.api.remote) setBroadcastOpen((v) => !v)
-        return
+        case 'add-folder': handleAddFolder(); return
+        case 'grid': setViewMode({ type: 'grid' }); return
+        case 'broadcast': if (!window.api.remote) setBroadcastOpen((v) => !v); return
+        case 'palette': setPaletteOpen(true); return
       }
     }
     window.addEventListener('keydown', handler)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveInputPlatform, pastePolicy, browserClipboardKey, pastedImageFile, inputPlatformOf, modKeyPressed, modKeyLabel } from '../src/renderer/src/remote/input-policy'
+import { resolveInputPlatform, pastePolicy, browserClipboardKey, pastedImageFile, inputPlatformOf, modKeyPressed, modKeyLabel, appShortcutOf, terminalYieldsKey } from '../src/renderer/src/remote/input-policy'
 
 describe('resolveInputPlatform — which OS the keyboard belongs to', () => {
   it('in Electron the host platform is the keyboard platform', () => {
@@ -89,5 +89,65 @@ describe('whose modifier key', () => {
   it('names the key the way that keyboard prints it', () => {
     expect(modKeyLabel('darwin')).toBe('⌘')
     expect(modKeyLabel('other')).toBe('Ctrl')
+  })
+})
+
+// The app's shortcuts are handled on window, after xterm. Where xterm turns a
+// key into input it also stops the event, so with a terminal focused on
+// Windows the app never saw Ctrl+3..8 (typed into the agent as control
+// characters, Ctrl+3 being Escape) or Ctrl+P/T/B.
+describe('app shortcuts', () => {
+  const key = (k: string, mods: Partial<{ ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }> = {}) =>
+    ({ key: k, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...mods })
+
+  it('recognises each shortcut on both keyboards', () => {
+    expect(appShortcutOf(key('3', { ctrlKey: true }), 'other')).toEqual({ kind: 'terminal', index: 2 })
+    expect(appShortcutOf(key('9', { metaKey: true }), 'darwin')).toEqual({ kind: 'terminal', index: 8 })
+    expect(appShortcutOf(key('`', { ctrlKey: true }), 'other')).toEqual({ kind: 'grid' })
+    expect(appShortcutOf(key('t', { ctrlKey: true }), 'other')).toEqual({ kind: 'add-folder' })
+    expect(appShortcutOf(key('b', { metaKey: true }), 'darwin')).toEqual({ kind: 'broadcast' })
+    expect(appShortcutOf(key('P', { ctrlKey: true, shiftKey: true }), 'other')).toEqual({ kind: 'palette' })
+  })
+
+  it('ignores the key without the modifier, with Alt, or with the modifier of the other OS', () => {
+    expect(appShortcutOf(key('t'), 'other')).toBeNull()
+    expect(appShortcutOf(key('t', { ctrlKey: true, altKey: true }), 'other')).toBeNull()
+    expect(appShortcutOf(key('t', { metaKey: true }), 'other')).toBeNull()
+    expect(appShortcutOf(key('t', { ctrlKey: true }), 'darwin')).toBeNull()
+    expect(appShortcutOf(key('0', { ctrlKey: true }), 'other')).toBeNull()
+    expect(appShortcutOf(key('x', { ctrlKey: true }), 'other')).toBeNull()
+  })
+
+  it('keeps Cmd+Shift+letter free on a Mac, as before', () => {
+    expect(appShortcutOf(key('P', { metaKey: true, shiftKey: true }), 'darwin')).toBeNull()
+  })
+
+  // Ctrl+digit and Ctrl+` mean nothing useful to a terminal: always the app's.
+  it('takes the digit and grid shortcuts from the terminal', () => {
+    for (const k of ['1', '3', '5', '8', '9', '`']) {
+      expect(terminalYieldsKey(key(k, { ctrlKey: true }), 'other'), k).toBe(true)
+    }
+    expect(terminalYieldsKey(key('3', { metaKey: true }), 'darwin')).toBe(true)
+  })
+
+  // Ctrl+P, Ctrl+T and Ctrl+B are real terminal keys (history, Claude Code's
+  // task list and background, tmux's prefix). They stay the terminal's; with
+  // Shift added they are the app's.
+  it('leaves plain Ctrl+letter to the terminal and takes Ctrl+Shift+letter', () => {
+    for (const k of ['p', 't', 'b']) {
+      expect(terminalYieldsKey(key(k, { ctrlKey: true }), 'other'), k).toBe(false)
+      expect(terminalYieldsKey(key(k.toUpperCase(), { ctrlKey: true, shiftKey: true }), 'other'), k).toBe(true)
+    }
+  })
+
+  it('takes Cmd+letter on a Mac, where Cmd is never terminal input', () => {
+    expect(terminalYieldsKey(key('t', { metaKey: true }), 'darwin')).toBe(true)
+  })
+
+  it('leaves every other key to the terminal', () => {
+    expect(terminalYieldsKey(key('c', { ctrlKey: true }), 'other')).toBe(false)
+    expect(terminalYieldsKey(key('r', { ctrlKey: true }), 'other')).toBe(false)
+    expect(terminalYieldsKey(key('3'), 'other')).toBe(false)
+    expect(terminalYieldsKey(key('V', { ctrlKey: true, shiftKey: true }), 'other')).toBe(false)
   })
 })
