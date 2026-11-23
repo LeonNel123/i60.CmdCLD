@@ -12,6 +12,7 @@ import { WindowRegistry } from './window-registry'
 import { RecentDB } from './recent-db'
 import { recoverAfterRenderGone, recoveryActionForInput } from './window-recovery'
 import { navigationDecision } from './navigation-guard'
+import { stopRunsForTerminal } from './autopilot-run-registry'
 import { PromptLog, sentTextOf } from './prompt-log'
 import { detectTerminals, openExternalTerminal } from './external-terminal'
 import { Settings } from './settings'
@@ -148,6 +149,13 @@ const confirmedClose = new WeakSet<BrowserWindow>()
 const autopilots = new Map<string, AutopilotHandle>()  // keyed by terminalId — Classic mode
 const autopilotPros = new Map<string, AutopilotProHandle>()  // keyed by terminalId — PRO mode
 const autopilotCouncils = new Map<string, AutopilotCouncilHandle>()  // keyed by terminalId — Council mode
+
+function stopAutopilotRuns(terminalId: string, reason: string): void {
+  const stopped = stopRunsForTerminal(terminalId, [autopilots, autopilotPros, autopilotCouncils], (e) => {
+    log(`autopilot stop for ${terminalId} threw: ${e}`)
+  })
+  if (stopped > 0) log(`autopilot: stopped ${stopped} run(s) on ${terminalId} (${reason})`)
+}
 const attachSessions = new Map<string, AttachSessionStatus>()
 const attachUnsubscribers = new Map<string, () => void>()
 const cancelledAttachSessionIds = new Set<string>()
@@ -237,9 +245,10 @@ function broadcastAutopilotCouncilUpdate(terminalId: string, state: CouncilState
 
 try {
   ptyManager = new PtyManager()
-  ptyManager.on('exit', ({ id }: { id: string }) => clearAttachSession(id))
-  // A kill from the phone (DELETE /api/sessions/:id) skips pty:kill's cleanup.
-  ptyManager.on('killed', ({ id }: { id: string }) => clearAttachSession(id))
+  // However a terminal goes (the agent exits, the tile or window is closed,
+  // the phone kills it), whatever was driving it stops with it.
+  ptyManager.on('exit', ({ id }: { id: string }) => { clearAttachSession(id); stopAutopilotRuns(id, 'terminal exited') })
+  ptyManager.on('killed', ({ id }: { id: string }) => { clearAttachSession(id); stopAutopilotRuns(id, 'terminal closed') })
   autopilotPtyWriter = new QueuedPtyWriter((terminalId, data) => {
     ptyManager.write(terminalId, data)
   }, {
@@ -1042,12 +1051,7 @@ ipcMain.handle('autopilot:resume', async (_event, terminalId: string) => {
   await autopilotCouncils.get(terminalId)?.resume()
 })
 ipcMain.handle('autopilot:stop', (_event, terminalId: string) => {
-  autopilots.get(terminalId)?.stop()
-  autopilots.delete(terminalId)
-  autopilotPros.get(terminalId)?.stop()
-  autopilotPros.delete(terminalId)
-  autopilotCouncils.get(terminalId)?.stop()
-  autopilotCouncils.delete(terminalId)
+  stopAutopilotRuns(terminalId, 'stop requested')
   cancelAttachSession(terminalId)
 })
 ipcMain.handle('autopilot:approveGoal', (_event, terminalId: string) => {
