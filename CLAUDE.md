@@ -46,13 +46,23 @@ controls on it (new window, broadcast, autopilot, Finder/editor, external termin
 `src/remote-ui/` stays the phone UI at `/`; `page-select.js` redirects by width (769 px) with
 `?mobile` / `?desktop` overrides remembered in localStorage.
 
-**PTY size ownership** (`src/main/remote-size-owner.ts`): every client fits its xterm and claims the PTY
-size, "last fit wins". The desktop window never closes and adds a tile for every remote-created session, so
-it would always win. While a `/desktop` browser client is connected (handshake `client=desktop`) the server
-sends `remote:size-owner {remote:true}` and the desktop renderer passes `followPtySize` to every
-`TerminalPanel`, which then mirrors PTY dims instead of fitting. When the last such client leaves, the
-desktop refits once and takes over. Consequence: a `/desktop` tab left open keeps the desktop window
-passive — close the tab when you return to the desktop.
+**PTY size ownership** (`src/main/remote-size-owner.ts`): a terminal has one size, so one client sets it
+and the rest mirror — **the device being used owns it**. Use is a click, a key, a tap, or the window/tab
+coming to the front; being connected is not use. The owner is `local` (every desktop window) or one socket.
+
+- Taking: the desktop window sends `remote:size-take` (IPC), the `/desktop` page `size:take`, the phone
+  `size:claim {on:true}` (Fit on, terminal open; sent again when touched after losing the size). The
+  listeners are in `App.tsx` and exist only while another device owns the size.
+- Hearing: windows get `remote:size-owner {remote}`, each socket `size:owner {you}`. A client that is not the
+  owner passes `followPtySize` to every `TerminalPanel`, which mirrors PTY dims instead of fitting; when the
+  size comes back each tile fits once and claims.
+- Loading is use only when someone opened the page (`takesSizeOnLoad`, `src/shared/size-ownership.ts`): the
+  `/desktop` page reloads itself on reconnect and marks that reload so it takes nothing.
+- A remote owner that leaves hands the size to `local` after a 1.5 s grace (a reload is a disconnect and a
+  reconnect).
+
+Before this the rule was "any connected `/desktop` client owns it": a phone or a background tab reconnected
+by itself after an app restart and the window sat passive with its terminals at 80×24.
 
 `POST /api/sessions` with an `id` (UUID the renderer chose) spawns under that id, at the given `size`, and
 does **not** write the launch command — the renderer does, as with `pty:create`. Without `id` (phone UI) the
@@ -96,9 +106,11 @@ and the DOM/socket code in `app.js` / `terminal-view.js`. Three server contracts
   phone's clock is not the PC's. The list sorts sessions that went idle since the phone last opened them
   first (`sortForTriage`; "last opened" is per phone, in localStorage).
 - **Fit** (header toggle, off by default, remembered): the phone sizes the PTY to its own screen and sends
-  `size:claim {on}` so the desktop window goes passive exactly as it does for `/desktop`. It claims only
-  while a terminal is open and releases on leaving it or disconnecting. Rows are not shrunk when only the
-  height changed (`fitDims`) — the on-screen keyboard would otherwise resize the agent on every tap.
+  `size:claim {on}` to take PTY size (see "PTY size ownership"). It claims only while a terminal is open and
+  releases on leaving it or disconnecting. When another device is used the server sends `size:owner
+  {you:false}`: the phone stops fitting and mirrors (`sizeLost`) until the terminal screen is touched again.
+  Rows are not shrunk when only the height changed (`fitDims`) — the on-screen keyboard would otherwise
+  resize the agent on every tap.
 
 The key row (Esc, arrows, Tab, Enter) sends raw `session:input`; the composer and quick buttons send
 `session:submit`. Keep them apart — a key through `session:submit` gets queued and an Enter appended.

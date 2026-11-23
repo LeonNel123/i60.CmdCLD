@@ -1,62 +1,69 @@
 /**
- * Who owns PTY size: the desktop window, or a browser running the desktop
- * layout page (/desktop)?
+ * Who owns PTY size: the desktop window, or one of the remote devices?
  *
- * Every client fits its xterm to its own tile and claims the PTY size, "last
- * fit wins". That is fine between two devices used one at a time — except the
- * desktop window is never closed: it hosts the server, and it adds a tile for
- * every session a remote client creates, fits it to its own layout, and wins.
- * The remote user then sees a 33-column terminal in a 450 px tile.
+ * A terminal has one size, and every client would like it to be its own: each
+ * fits its xterm to its own tile and claims the PTY, "last fit wins". Left at
+ * that, the desktop window wins every time — it never closes, and it adds a
+ * tile for every session a remote client creates. The remote user then sees a
+ * 33-column terminal in a 450 px tile.
  *
- * So while at least one /desktop browser client is connected, the desktop
- * window goes passive: it mirrors PTY sizes instead of claiming them. A phone
- * (the single-terminal UI) mirrors too, unless "Fit" is on there: then it is
- * counted as an owner for as long as it has a terminal open (`size:claim` in
- * remote-server.ts), through the same connect/disconnect calls.
+ * So one client owns the size and the rest mirror it. The owner is the device
+ * **being used**: a click, a key, a tap, or a page brought to the front takes
+ * the size (`take`), and whoever had it follows from then on. That is what
+ * lets the desktop window and a phone be open side by side — each is right
+ * while you are at it.
  *
- * Handing ownership back waits a grace period: a browser reload is a
- * disconnect followed by a reconnect within a second, and announcing `local`
- * in between would have the desktop resize every PTY to its own layout and
- * the browser resize them all back — two SIGWINCH per agent per F5.
+ * It used to be "any connected remote owns it". A phone in a pocket and a
+ * browser tab in the background both stayed connected, reconnected by
+ * themselves after a restart, and kept the desktop window passive at whatever
+ * size its terminals had been born with (80×24).
+ *
+ * A remote owner that leaves (`release`: disconnected, left its terminal,
+ * turned Fit off) hands the size back to the desktop window after a grace
+ * period: a browser reload is a disconnect followed by a reconnect within a
+ * second, and announcing the desktop in between would have it resize every
+ * PTY to its own layout and the browser resize them all back — two SIGWINCH
+ * per agent per F5.
  */
-export type SizeOwner = 'remote' | 'local'
+export const LOCAL_OWNER = 'local'
 
 export class RemoteSizeOwner {
-  private desktopClients = 0
-  private owner: SizeOwner = 'local'
+  private owner: string = LOCAL_OWNER
   private pendingLocal: ReturnType<typeof setTimeout> | null = null
-  private readonly announce: (owner: SizeOwner) => void
+  private readonly announce: (owner: string) => void
   private readonly graceMs: number
 
-  constructor(opts: { announce: (owner: SizeOwner) => void; graceMs?: number }) {
+  constructor(opts: { announce: (owner: string) => void; graceMs?: number }) {
     this.announce = opts.announce
     this.graceMs = opts.graceMs ?? 1500
   }
 
-  get count(): number {
-    return this.desktopClients
+  /** `LOCAL_OWNER`, or the id of the remote client that owns the size. */
+  get current(): string {
+    return this.owner
   }
 
-  connect(isDesktopClient: boolean): void {
-    if (!isDesktopClient) return
-    this.desktopClients += 1
+  get remote(): boolean {
+    return this.owner !== LOCAL_OWNER
+  }
+
+  /** This client is being used: it sets the size from now on. */
+  take(id: string): void {
     this.cancelPending()
-    if (this.owner !== 'remote') {
-      this.owner = 'remote'
-      this.announce('remote')
-    }
+    if (this.owner === id) return
+    this.owner = id
+    this.announce(id)
   }
 
-  disconnect(isDesktopClient: boolean): void {
-    if (!isDesktopClient || this.desktopClients === 0) return
-    this.desktopClients -= 1
-    if (this.desktopClients > 0 || this.owner !== 'remote') return
+  /** A remote client let go. Only the owner's letting go changes anything. */
+  release(id: string): void {
+    if (id === LOCAL_OWNER || this.owner !== id) return
     this.cancelPending()
     this.pendingLocal = setTimeout(() => {
       this.pendingLocal = null
-      if (this.desktopClients === 0 && this.owner === 'remote') {
-        this.owner = 'local'
-        this.announce('local')
+      if (this.owner === id) {
+        this.owner = LOCAL_OWNER
+        this.announce(LOCAL_OWNER)
       }
     }, this.graceMs)
   }
@@ -64,10 +71,9 @@ export class RemoteSizeOwner {
   /** The server is stopping: every client is gone now, no grace. */
   reset(): void {
     this.cancelPending()
-    this.desktopClients = 0
-    if (this.owner === 'remote') {
-      this.owner = 'local'
-      this.announce('local')
+    if (this.owner !== LOCAL_OWNER) {
+      this.owner = LOCAL_OWNER
+      this.announce(LOCAL_OWNER)
     }
   }
 

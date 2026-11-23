@@ -251,14 +251,17 @@ contextBridge.exposeInMainWorld('api', {
   tailscaleServeStop: (): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('tailscale:serveStop'),
 
-  // Fires when a /desktop browser client connects or the last one leaves.
-  // While `remote` is true this window follows PTY sizes instead of fitting
-  // and claiming them — the person is at the other device.
-  onRemoteSizeOwner: (callback: (owner: { remote: boolean }) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, owner: { remote: boolean }): void => callback(owner)
+  // PTY size changed hands. While a remote device owns it (`mine` false) this
+  // window follows PTY sizes instead of fitting and claiming them — the person
+  // is at the other device.
+  onSizeOwnerChanged: (callback: (owner: { mine: boolean }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, owner: { remote: boolean }): void =>
+      callback({ mine: !owner.remote })
     ipcRenderer.on('remote:size-owner', listener)
     return () => { ipcRenderer.removeListener('remote:size-owner', listener) }
   },
+  // This window is being used: it sets PTY size again.
+  takeSizeOwnership: (): void => { ipcRenderer.send('remote:size-take') },
 
   onRemoteSessionCreated: (callback: (session: { id: string; path: string; name: string; color: string; claudeArgs: string; codexArgs?: string; grokArgs?: string; opencodeArgs?: string; agentCli?: 'claude' | 'codex' | 'grok' | 'opencode'; launchArgs?: string; isPlainShell?: boolean; settingsArgs?: { claudeArgs: string; codexArgs: string; grokArgs: string; opencodeArgs: string } }) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, session: any): void => callback(session)

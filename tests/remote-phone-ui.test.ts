@@ -74,6 +74,28 @@ describe('fit to phone', () => {
     expect(termView).toMatch(/function releaseSize\(\)[\s\S]{0,300}emit\('size:claim', \{ on: false \}\)/)
   })
 
+  // One terminal has one size and the device being used sets it. When the PC
+  // is used it takes the size back; the phone must then mirror, not fit —
+  // every keyboard pop-up would otherwise resize the terminal under the
+  // person typing at the PC.
+  it('stops fitting when another device takes the size', () => {
+    expect(appJs).toMatch(/socket\.on\('size:owner'[\s\S]{0,200}CmdCLD_Terminal\.onSizeOwner\(/)
+    expect(termView).toContain('onSizeOwner: onSizeOwner')
+    const notice = termView.slice(termView.indexOf('function onSizeOwner(')).slice(0, 300)
+    expect(notice).toContain('sizeLost = true')
+    const fit = termView.slice(termView.indexOf('function fitToPhone()')).slice(0, 200)
+    expect(fit).toContain('sizeLost')
+  })
+
+  it('takes the size back when the phone is touched again', () => {
+    const reclaim = termView.slice(termView.indexOf('function reclaimSize(')).slice(0, 400)
+    expect(reclaim).toContain('claimSize()')
+    expect(reclaim).toContain('fitToPhone()')
+    expect(termView).toMatch(/addEventListener\('pointerdown', reclaimSize, true\)/)
+    // Leaving the terminal is not using it.
+    expect(reclaim).toContain("closest('#back-btn')")
+  })
+
   it('sizes through the tested rule', () => {
     expect(termView).toContain('CmdCLD_Phone.fitDims(')
   })

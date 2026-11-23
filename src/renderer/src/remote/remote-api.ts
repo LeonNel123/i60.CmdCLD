@@ -79,7 +79,8 @@ export function createRemoteApi(deps: RemoteApiDeps): ElectronAPI & { remote: tr
     getScrollback: async (id) =>
       (await fetchJson<{ scrollback: string }>(`/api/sessions/${encodeURIComponent(id)}/scrollback`)).scrollback ?? '',
     // Rides on the scrollback route, which already carries the size. Only a
-    // tile that follows PTY size asks, and this page never follows — it owns.
+    // tile that follows PTY size asks: on this page, one that mounted before
+    // the page was used.
     getTerminalSize: async (id) => {
       const r = await fetchJson<{ cols: number; rows: number }>(`/api/sessions/${encodeURIComponent(id)}/scrollback`)
       return { cols: r.cols, rows: r.rows }
@@ -160,8 +161,15 @@ export function createRemoteApi(deps: RemoteApiDeps): ElectronAPI & { remote: tr
     claudeConfigRead: async () => ({ global: {}, local: {} }),
     claudeConfigWrite: noop,
     remoteToggle: async () => ({ ok: false, error: 'Not available remotely' }),
-    remoteStatus: async () => ({ running: true, port: 0, urls: [], desktopClients: 1 }),
-    onRemoteSizeOwner: unsub,
+    remoteStatus: async () => ({ running: true, port: 0, urls: [], remoteOwnsSize: false }),
+    // PTY size: this page mirrors it until the person uses the page, then
+    // sets it until they use another device (see remote-size-owner.ts).
+    onSizeOwnerChanged: (cb) => {
+      const handler = (msg: { you?: unknown } | undefined): void => { cb({ mine: !!msg && msg.you === true }) }
+      socket.on('size:owner', handler)
+      return () => { socket.off('size:owner', handler) }
+    },
+    takeSizeOwnership: () => { socket.emit('size:take', {}) },
     tailscaleStatus: async () => ({
       installed: false, loggedIn: false, online: false, httpsEnabled: false,
       httpsHost: null, error: null, serveActive: false, serveUrl: null,

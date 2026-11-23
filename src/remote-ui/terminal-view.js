@@ -70,16 +70,40 @@
   // of this screen.
   var lastFit = null
 
+  // The size belongs to the device being used. When the PC (or another
+  // device) is used it takes the size and the server says so: from then this
+  // terminal mirrors the PTY, and fitting waits until the phone is touched.
+  var sizeLost = false
+
   function claimSize() {
     if (!currentSocket) return
     sizeClaimed = true
+    sizeLost = false
     currentSocket.emit('size:claim', { on: true })
   }
 
   function releaseSize() {
     if (!sizeClaimed) return
     sizeClaimed = false
+    sizeLost = false
     if (currentSocket) currentSocket.emit('size:claim', { on: false })
+  }
+
+  // `size:owner {you}` from the server, for every change of owner.
+  function onSizeOwner(mine) {
+    if (!sizeClaimed) return
+    if (!mine) { sizeLost = true; return }
+    if (sizeLost) { sizeLost = false; fitToPhone() }
+  }
+
+  // Touching the terminal screen again is using the phone: take the size
+  // back and fit. Leaving the terminal is not.
+  function reclaimSize(e) {
+    if (!sizeLost || !fitOn || !term || !isMobile()) return
+    var target = e && e.target
+    if (target && target.closest && target.closest('#back-btn')) return
+    claimSize()
+    fitToPhone()
   }
 
   // xterm measures its cell from whatever font is available when it opens. On
@@ -112,7 +136,7 @@
   }
 
   function fitToPhone() {
-    if (!fitOn || !fontsReady || !term || !fitAddon || !currentSocket || !currentId || !isMobile()) return
+    if (!fitOn || sizeLost || !fontsReady || !term || !fitAddon || !currentSocket || !currentId || !isMobile()) return
     if (mobileOutput.clientWidth <= 0 || mobileOutput.clientHeight <= 0) return
     var proposed
     try { proposed = fitAddon.proposeDimensions() } catch (e) { return }
@@ -580,6 +604,12 @@
   }
   renderFitBtn()
 
+  var terminalScreen = document.getElementById('terminal-view')
+  if (terminalScreen) terminalScreen.addEventListener('pointerdown', reclaimSize, true)
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') reclaimSize()
+  })
+
   // Mobile image upload
   mobileImageInput.addEventListener('change', function (e) {
     var file = e.target.files[0]
@@ -636,5 +666,5 @@
   }
 
   // Expose globally
-  window.CmdCLD_Terminal = { open: open, close: close, onData: onData, onExit: onExit, onResize: onResize, copyOutput: copyOutput, copyText: copyText, bufferText: bufferText, hasSelection: function () { return !!(term && term.hasSelection()) }, isMobile: isMobile }
+  window.CmdCLD_Terminal = { open: open, close: close, onData: onData, onExit: onExit, onResize: onResize, onSizeOwner: onSizeOwner, copyOutput: copyOutput, copyText: copyText, bufferText: bufferText, hasSelection: function () { return !!(term && term.hasSelection()) }, isMobile: isMobile }
 })()

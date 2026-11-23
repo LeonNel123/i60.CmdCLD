@@ -9,6 +9,7 @@ import { fetchJson } from './remote/fetch-json'
 import { createRemoteApi, type RemoteStatus, type SocketLike } from './remote/remote-api'
 import { copyText } from './remote/copy-text'
 import { promptForPath } from './remote/path-prompt'
+import { markAutoReload } from '../../shared/size-ownership'
 
 declare const io: (opts?: Record<string, unknown>) => SocketLike & {
   io: { on(event: string, cb: () => void): void }
@@ -17,7 +18,7 @@ declare const io: (opts?: Record<string, unknown>) => SocketLike & {
 async function boot(): Promise<void> {
   installRandomUuidPolyfill(globalThis.crypto as any)
   const status = await fetchJson<RemoteStatus>('/api/status')
-  // `client=desktop` tells the server this page owns PTY size while connected.
+  // `client=desktop` tells the server this page shows every terminal.
   const socket = io({ reconnection: true, reconnectionDelay: 1000, query: { client: 'desktop' } })
   const resolvePath = async (raw: string): Promise<string> =>
     (await fetchJson<{ path: string }>('/api/folders/resolve?path=' + encodeURIComponent(raw))).path
@@ -28,7 +29,14 @@ async function boot(): Promise<void> {
 
   // Reconnect = the desktop's own recovery path: reload, and App rebuilds the
   // tiles from the server's live sessions under their original ids.
-  socket.io.on('reconnect', () => { location.reload() })
+  // Nobody opened the page this time, so it must not take PTY size as it
+  // loads (see shared/size-ownership.ts).
+  socket.io.on('reconnect', () => {
+    let store: Storage | undefined
+    try { store = window.sessionStorage } catch {}
+    markAutoReload(store)
+    location.reload()
+  })
   socket.on('disconnect', () => { document.body.dataset.remoteDisconnected = '1' })
   socket.on('connect', () => { delete document.body.dataset.remoteDisconnected })
 

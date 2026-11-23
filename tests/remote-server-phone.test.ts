@@ -173,61 +173,95 @@ describe('remote server — phone clients', () => {
     })
   })
 
-  // "Fit to phone": the phone resizes the PTY to its own screen. The desktop
-  // window would fit its tile and take the size straight back, so the phone
-  // asks for ownership the same way the /desktop page gets it.
+  // One terminal has one size, so one device sets it — the one being used —
+  // and the rest mirror it. Being connected is not being used.
   describe('size ownership', () => {
-    it('makes the desktop window passive while a phone claims the size', () => {
-      const phone = ctx.io.connect()
+    const told = (s: FakeSocket) => s.sent.filter((m) => m.ev === 'size:owner').map((m) => m.msg.you)
+
+    it('leaves the desktop window in charge while remote devices are only connected', () => {
+      ctx.io.connect({ client: 'desktop' })
+      ctx.io.connect()
       expect(ctx.windowMessages).toEqual([])
-      phone.receive('size:claim', { on: true })
-      expect(ctx.windowMessages).toEqual([{ remote: true }])
-      expect(ctx.server.desktopClientCount()).toBe(1)
+      expect(ctx.server.remoteOwnsSize()).toBe(false)
     })
 
-    it('counts a repeated claim once', () => {
+    it('makes the desktop window passive when the /desktop page is used', () => {
+      const page = ctx.io.connect({ client: 'desktop' })
+      page.receive('size:take')
+      expect(ctx.windowMessages).toEqual([{ remote: true }])
+      expect(ctx.server.remoteOwnsSize()).toBe(true)
+      expect(told(page)).toEqual([true])
+    })
+
+    it('makes the desktop window passive while a phone fits a terminal to its screen', () => {
       const phone = ctx.io.connect()
       phone.receive('size:claim', { on: true })
+      expect(ctx.windowMessages).toEqual([{ remote: true }])
+      expect(told(phone)).toEqual([true])
+    })
+
+    it('gives the size back the moment the desktop window is used, and tells the device that had it', () => {
+      const phone = ctx.io.connect()
       phone.receive('size:claim', { on: true })
-      expect(ctx.server.desktopClientCount()).toBe(1)
+      ctx.server.takeLocalSize()
+      expect(ctx.windowMessages).toEqual([{ remote: true }, { remote: false }])
+      expect(ctx.server.remoteOwnsSize()).toBe(false)
+      expect(told(phone)).toEqual([true, false])
+    })
+
+    it('lets the phone take it again by claiming again', () => {
+      const phone = ctx.io.connect()
+      phone.receive('size:claim', { on: true })
+      ctx.server.takeLocalSize()
+      phone.receive('size:claim', { on: true })
+      expect(ctx.windowMessages).toEqual([{ remote: true }, { remote: false }, { remote: true }])
+      expect(told(phone)).toEqual([true, false, true])
+    })
+
+    it('moves the size between two remote devices and tells each where it stands', () => {
+      const page = ctx.io.connect({ client: 'desktop' })
+      const phone = ctx.io.connect()
+      page.receive('size:take')
+      phone.receive('size:claim', { on: true })
+      expect(told(page)).toEqual([true, false])
+      expect(told(phone)).toEqual([false, true])
+      expect(ctx.server.remoteOwnsSize()).toBe(true)
     })
 
     it('hands the size back after the grace period when the phone lets go', () => {
       const phone = ctx.io.connect()
       phone.receive('size:claim', { on: true })
       phone.receive('size:claim', { on: false })
-      expect(ctx.server.desktopClientCount()).toBe(0)
+      expect(ctx.windowMessages).toEqual([{ remote: true }])
       vi.advanceTimersByTime(1500)
       expect(ctx.windowMessages).toEqual([{ remote: true }, { remote: false }])
     })
 
-    it('hands the size back when a claiming phone disconnects', () => {
-      const phone = ctx.io.connect()
-      phone.receive('size:claim', { on: true })
-      phone.receive('disconnect')
+    it('hands the size back when the device that owns it disconnects', () => {
+      const page = ctx.io.connect({ client: 'desktop' })
+      page.receive('size:take')
+      page.receive('disconnect')
       vi.advanceTimersByTime(1500)
       expect(ctx.windowMessages).toEqual([{ remote: true }, { remote: false }])
     })
 
-    it('does nothing when a phone that never claimed disconnects or lets go', () => {
-      const desktopPage = ctx.io.connect({ client: 'desktop' })
+    it('does nothing when a device that does not own the size lets go or disconnects', () => {
+      const page = ctx.io.connect({ client: 'desktop' })
       const phone = ctx.io.connect()
+      page.receive('size:take')
       phone.receive('size:claim', { on: false })
       phone.receive('disconnect')
-      expect(ctx.server.desktopClientCount()).toBe(1)
-      desktopPage.receive('disconnect')
-      expect(ctx.server.desktopClientCount()).toBe(0)
+      vi.advanceTimersByTime(5000)
+      expect(ctx.windowMessages).toEqual([{ remote: true }])
+      expect(ctx.server.remoteOwnsSize()).toBe(true)
     })
 
-    // The /desktop page owns the size for as long as it is connected; it has
-    // no toggle, and a stray message must not strand the window passive or
-    // release it early.
-    it('keeps the /desktop page an owner whatever it sends', () => {
-      const desktopPage = ctx.io.connect({ client: 'desktop' })
-      desktopPage.receive('size:claim', { on: false })
-      expect(ctx.server.desktopClientCount()).toBe(1)
-      desktopPage.receive('size:claim', { on: true })
-      expect(ctx.server.desktopClientCount()).toBe(1)
+    it('stops telling a device that has disconnected', () => {
+      const phone = ctx.io.connect()
+      const page = ctx.io.connect({ client: 'desktop' })
+      phone.receive('disconnect')
+      page.receive('size:take')
+      expect(told(phone)).toEqual([])
     })
   })
 })

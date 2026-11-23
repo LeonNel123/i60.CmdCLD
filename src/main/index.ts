@@ -1619,8 +1619,14 @@ ipcMain.handle('remote:status', () => {
     running,
     port,
     urls: running ? remoteServer.getUrls(port) : [],
-    desktopClients: running ? remoteServer.desktopClientCount() : 0,
+    remoteOwnsSize: running ? remoteServer.remoteOwnsSize() : false,
   }
+})
+
+// This window is being used (a click, a key, focus): it sets PTY size again,
+// and whichever remote device had it goes back to mirroring.
+ipcMain.on('remote:size-take', () => {
+  remoteServer.takeLocalSize()
 })
 
 // Tailscale HTTPS exposure — shells out to the user's tailscale CLI.

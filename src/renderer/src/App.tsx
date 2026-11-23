@@ -42,6 +42,7 @@ import {
 } from '../../shared/agent-cli'
 import { resolveRestoredSession, minimizedIdsFromRestore, shouldSaveSession } from '../../shared/session-restore'
 import { terminalsFromLiveSessions } from '../../shared/live-reattach'
+import { takesSizeOnLoad, consumeAutoReload } from '../../shared/size-ownership'
 import { watchMinimizedActivity } from './utils/minimized-activity'
 import {
   DEFAULT_TERMINAL_FONT_FAMILY,
@@ -56,6 +57,13 @@ const ResponsiveGridLayout = WidthProvider(Responsive)
 
 // "New window" loads the page with ?empty=1 (createWindow in main).
 const IS_SECONDARY_WINDOW = new URLSearchParams(window.location.search).get('empty') === '1'
+
+// The browser page reloads itself when its socket reconnects. Read once, at
+// module load: an effect would see it on the first of StrictMode's two runs
+// and not the second.
+const AUTO_RELOADED = consumeAutoReload((() => {
+  try { return window.sessionStorage } catch { return undefined }
+})())
 
 interface TerminalEntry {
   id: string
@@ -309,12 +317,12 @@ export default function App() {
       window.api.terminalListLive().catch(() => []),
       // Who owns PTY size has to be known before the reattached tiles mount:
       // a tile that mounts believing this window owns it fits itself and
-      // claims the size from the browser that is actually driving. Learning
+      // claims the size from the device that is actually driving. Learning
       // it in a separate effect lost that race on every reload.
       window.api.remote ? Promise.resolve(null) : window.api.remoteStatus().catch(() => null),
     ]).then(([settings, recent, live, remote]) => {
       if (settings) applySettings(settings)
-      if (remote && (remote.desktopClients ?? 0) > 0) setRemoteOwnsSize(true)
+      if (remote?.remoteOwnsSize) setOtherOwnsSize(true)
       setRecentFolders(recent)
       // Reattach to PTYs that outlived the page (a reload after a hang or a renderer
       // crash). Same ids as main, so each tile replays its scrollback instead of
@@ -460,15 +468,43 @@ export default function App() {
     return () => { cancelled = true }
   }, [showCloseAll, showCloseWindow, terminals])
 
-  // While a browser runs the desktop layout page (/desktop), the person is at
-  // that device: this window mirrors PTY sizes instead of fitting and claiming
-  // them, or every tile it adds would win "last fit" over the remote's layout.
-  const [remoteOwnsSize, setRemoteOwnsSize] = useState(false)
+  // One terminal has one size, so one device sets it: the one being used.
+  // While that is another device this client mirrors PTY sizes instead of
+  // fitting and claiming them (see main/remote-size-owner.ts). The desktop
+  // window owns the size until a remote device is used; the browser page
+  // mirrors until it is.
+  const [otherOwnsSize, setOtherOwnsSize] = useState(!!window.api.remote)
   useEffect(() => {
-    if (window.api.remote) return
-    window.api.remoteStatus().then((s) => setRemoteOwnsSize((s.desktopClients ?? 0) > 0)).catch(() => {})
-    return window.api.onRemoteSizeOwner(({ remote }) => setRemoteOwnsSize(remote))
+    if (!window.api.remote) {
+      window.api.remoteStatus().then((s) => setOtherOwnsSize(!!s.remoteOwnsSize)).catch(() => {})
+    }
+    const off = window.api.onSizeOwnerChanged(({ mine }) => setOtherOwnsSize(!mine))
+    // Opening the page (or reloading the window) is using it.
+    if (takesSizeOnLoad({
+      visible: document.visibilityState === 'visible',
+      focused: document.hasFocus(),
+      autoReloaded: AUTO_RELOADED,
+    })) window.api.takeSizeOwnership()
+    return off
   }, [])
+
+  // Using this device takes the size back: a click, a key, or bringing the
+  // window or tab to the front. Only listened for while another device has it.
+  useEffect(() => {
+    if (!otherOwnsSize) return
+    const take = (): void => { window.api.takeSizeOwnership() }
+    const onVisible = (): void => { if (document.visibilityState === 'visible') take() }
+    window.addEventListener('pointerdown', take, true)
+    window.addEventListener('keydown', take, true)
+    window.addEventListener('focus', take)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('pointerdown', take, true)
+      window.removeEventListener('keydown', take, true)
+      window.removeEventListener('focus', take)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [otherOwnsSize])
 
   // Listen for sessions created remotely
   useEffect(() => {
@@ -1119,7 +1155,7 @@ export default function App() {
                   isAutopilotRunning={autopilotRunning.has(t.id)}
                   onShowAutopilotPanel={() => setAutopilotPanelFor(t.id)}
                   onNotify={showToast}
-                  followPtySize={remoteOwnsSize}
+                  followPtySize={otherOwnsSize}
                 />
               </div>
             ))}

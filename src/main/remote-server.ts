@@ -22,7 +22,7 @@ import {
 import { agentCliAvailability } from './agent-cli-detect'
 import { resolvePtySpawnSize } from './pty-create-validation'
 import { getGitStatus, clearGitStatusCache } from './git-status'
-import { RemoteSizeOwner, type SizeOwner } from './remote-size-owner'
+import { RemoteSizeOwner, LOCAL_OWNER } from './remote-size-owner'
 import { SessionActivityTracker, activityWire } from './remote-activity'
 import { resolveFolderInput } from './folder-resolve'
 
@@ -102,6 +102,9 @@ export class RemoteServer {
   private submitWriter: QueuedPtyWriter
   private desktopUiPath: string
   private sizeOwner = new RemoteSizeOwner({ announce: (owner) => this.announceSizeOwner(owner) })
+  /** Connected sockets by the id they own PTY size under. */
+  private sizeClients = new Map<string, { emit(ev: string, msg: unknown): void }>()
+  private sizeClientSeq = 0
   // Busy/idle per session, for the phone's list (see remote-activity.ts).
   private activity = new SessionActivityTracker({
     onChange: (id, state) => {
@@ -245,10 +248,15 @@ export class RemoteServer {
     return this.httpServer !== null && this.httpServer.listening
   }
 
-  /** Connected /desktop browser clients. While > 0 the desktop window follows
-   *  PTY sizes instead of claiming them (see remote-size-owner.ts). */
-  desktopClientCount(): number {
-    return this.sizeOwner.count
+  /** A remote device owns PTY size: the desktop window follows sizes instead
+   *  of claiming them (see remote-size-owner.ts). */
+  remoteOwnsSize(): boolean {
+    return this.sizeOwner.remote
+  }
+
+  /** The desktop window is being used: it sets PTY size from now on. */
+  takeLocalSize(): void {
+    this.sizeOwner.take(LOCAL_OWNER)
   }
 
   /** Settings were written (by anyone): browser clients reload their copy. */
@@ -256,11 +264,16 @@ export class RemoteServer {
     this.io?.emit('settings:changed', { keys })
   }
 
-  private announceSizeOwner(owner: SizeOwner): void {
+  /** Every client hears who owns PTY size: the windows whether a remote device
+   *  does, each remote device whether it is the one. */
+  private announceSizeOwner(owner: string): void {
     for (const wc of this.getAllWebContents()) {
       try {
-        if (!wc.isDestroyed()) wc.send('remote:size-owner', { remote: owner === 'remote' })
+        if (!wc.isDestroyed()) wc.send('remote:size-owner', { remote: owner !== LOCAL_OWNER })
       } catch {}
+    }
+    for (const [id, socket] of this.sizeClients) {
+      try { socket.emit('size:owner', { you: id === owner }) } catch {}
     }
   }
 
@@ -285,6 +298,7 @@ export class RemoteServer {
       this.httpServer = null
     }
     this.app = null
+    this.sizeClients.clear()
     this.sizeOwner.reset()
     this.activity.reset()
     for (const { event, fn } of this.boundListeners) {
@@ -396,7 +410,7 @@ export class RemoteServer {
         version,
         uptime: Date.now() - this.startTime,
         sessions: this.ptyManager.listAll().length,
-        desktopClients: this.sizeOwner.count,
+        sizeOwner: this.sizeOwner.remote ? 'remote' : 'local',
         platform: process.platform,
         homeDir: homedir(),
         buildInfo: {
@@ -724,23 +738,23 @@ export class RemoteServer {
       // The /desktop page identifies itself in the handshake; the phone UI does not.
       const isDesktopClient = socket.handshake.query?.client === 'desktop'
 
-      // PTY size ownership (see remote-size-owner.ts). The /desktop page owns it
-      // for as long as it is connected. A phone owns it only while "fit to
-      // phone" has a terminal open, and says so with `size:claim` — without
-      // that the desktop window would fit its own tile and take the size back.
-      let ownsSize = isDesktopClient
-      this.sizeOwner.connect(ownsSize)
+      // PTY size ownership (see remote-size-owner.ts): the device being used
+      // sets the size. Connecting takes nothing. The /desktop page sends
+      // `size:take` when the person clicks, types or brings it to the front; a
+      // phone sends `size:claim {on:true}` while "fit to phone" has a terminal
+      // open — and again when it is touched after losing the size — and
+      // `{on:false}` when it leaves. Each socket is told where it stands with
+      // `size:owner {you}`.
+      const sizeId = `remote-${++this.sizeClientSeq}`
+      this.sizeClients.set(sizeId, socket)
+      socket.on('size:take', () => { this.sizeOwner.take(sizeId) })
       socket.on('size:claim', (msg: { on?: unknown } | undefined) => {
-        if (isDesktopClient) return
-        const on = !!msg && msg.on === true
-        if (on === ownsSize) return
-        ownsSize = on
-        if (on) this.sizeOwner.connect(true)
-        else this.sizeOwner.disconnect(true)
+        if (!!msg && msg.on === true) this.sizeOwner.take(sizeId)
+        else this.sizeOwner.release(sizeId)
       })
       socket.on('disconnect', () => {
-        this.sizeOwner.disconnect(ownsSize)
-        ownsSize = false
+        this.sizeClients.delete(sizeId)
+        this.sizeOwner.release(sizeId)
       })
 
       // Which terminal output this client receives. The /desktop page shows

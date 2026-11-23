@@ -272,7 +272,7 @@ describe('desktop-page support routes', () => {
     expect(typeof res.json.homeDir).toBe('string')
     expect(res.json.homeDir.length).toBeGreaterThan(0)
     expect(res.json.buildInfo).toMatchObject({ node: process.versions.node, platform: process.platform })
-    expect(res.json.desktopClients).toBe(0)
+    expect(res.json.sizeOwner).toBe('local')
   })
 
   it('GET /api/settings returns every setting plus cliAvailability', async () => {

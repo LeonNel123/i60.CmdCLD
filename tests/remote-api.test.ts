@@ -184,7 +184,7 @@ describe('createRemoteApi — every ElectronAPI member exists and stubs resolve'
     'editorGetDefaults','editorSetDefault','onWindowListUpdated','recentCheckPath','claudeConfigRead',
     'claudeConfigWrite','sessionSaveLast','sessionLoadLast','sessionClearLast','gitStatus','getBuildInfo',
     'remoteToggle','remoteStatus','tailscaleStatus','tailscaleServeStart','tailscaleServeStop',
-    'onRemoteSessionCreated','onRemoteSessionClosed','onSettingsChanged','onRemoteSizeOwner','autopilotKeyExists','autopilotKeySet','autopilotKeyClear','autopilotStart',
+    'onRemoteSessionCreated','onRemoteSessionClosed','onSettingsChanged','onSizeOwnerChanged','takeSizeOwnership','autopilotKeyExists','autopilotKeySet','autopilotKeyClear','autopilotStart',
     'autopilotProStart','autopilotCouncilStart','autopilotProRunMeta','autopilotPause','autopilotResume',
     'autopilotStop','autopilotApproveGoal','autopilotReplyToWaiting','autopilotPermissionAllow',
     'autopilotPermissionDeny','autopilotGetStatus','autopilotInspectOutput','autopilotProbeArtifacts',
@@ -216,6 +216,28 @@ describe('createRemoteApi — every ElectronAPI member exists and stubs resolve'
       try { await out } catch { settled = false }
       expect(settled, k).toBe(true)
     }
+  })
+})
+
+// One terminal has one size; the device being used sets it and the rest
+// mirror. This page says when it is used and hears whether it is the owner.
+describe('createRemoteApi — PTY size ownership', () => {
+  it('tells the server when this page is being used', () => {
+    const { api, socket } = make()
+    api.takeSizeOwnership()
+    expect(socket.emitted.map((e) => e.event)).toEqual(['size:take'])
+  })
+
+  it('reports whether this page owns the size', () => {
+    const { api, socket } = make()
+    const seen: boolean[] = []
+    const unsub = api.onSizeOwnerChanged(({ mine }) => seen.push(mine))
+    socket.receive('size:owner', { you: true })
+    socket.receive('size:owner', { you: false })
+    socket.receive('size:owner', undefined)
+    unsub()
+    socket.receive('size:owner', { you: true })
+    expect(seen).toEqual([true, false, false])
   })
 })
 

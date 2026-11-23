@@ -151,6 +151,12 @@
         window.CmdCLD_Terminal.onResize(msg.cols, msg.rows)
       }
     })
+
+    // PTY size changed hands — the device being used owns it. Matters only
+    // while Fit is on: the terminal stops fitting when another device took it.
+    socket.on('size:owner', function (msg) {
+      if (window.CmdCLD_Terminal.onSizeOwner) window.CmdCLD_Terminal.onSizeOwner(!!(msg && msg.you === true))
+    })
   }
 
   function loadSeen() {
