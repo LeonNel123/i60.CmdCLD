@@ -237,6 +237,35 @@ describe('AutopilotProStateMachine', () => {
     })
   })
 
+  // The agent names an artifact the way the prompt tells it to ("spec.md"),
+  // and the file lives under .autopilot-pro/. The planner was handed the
+  // project-root path, found nothing there, and approved or refined a
+  // document it had never seen.
+  describe('artifact shown to the planner', () => {
+    it('reads the artifact from where artifacts are kept', async () => {
+      writeArtifact(TMP, 'spec', '# Spec\n\nUNIQUE-SPEC-BODY-7731')
+      const api = fakeChatClient(() => ({ shape: 'approve', verdict: 'approve', why: 'fine' }))
+      const sm = makeSm(api, [])
+      await sm.start()
+      sm.feedPty(['[ORCH:WAITING] review', 'DECISION_SHAPE: approve', 'ARTIFACT: spec.md', ''].join('\n'))
+      await flush()
+      expect(JSON.stringify((api.chat as any).mock.calls)).toContain('UNIQUE-SPEC-BODY-7731')
+      sm.stop()
+    })
+
+    it('does not read a file outside the project for the planner', async () => {
+      const api = fakeChatClient(() => ({ shape: 'approve', verdict: 'refine', directive: 'x' }))
+      const sm = makeSm(api, [])
+      await sm.start()
+      writeFileSync(join(TMP, '..', 'outside-secret.md'), 'OUTSIDE-SECRET-4410')
+      sm.feedPty(['[ORCH:WAITING] review', 'DECISION_SHAPE: approve', 'ARTIFACT: ../outside-secret.md', ''].join('\n'))
+      await flush()
+      rmSync(join(TMP, '..', 'outside-secret.md'), { force: true })
+      expect(JSON.stringify((api.chat as any).mock.calls)).not.toContain('OUTSIDE-SECRET-4410')
+      sm.stop()
+    })
+  })
+
   describe('handing over to a human', () => {
     // The run told the agent "Escalating to human" and then carried on: the
     // agent asked again, the planner refined again, and each lap was a paid

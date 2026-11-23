@@ -672,10 +672,7 @@ export class AutopilotProStateMachine {
     // Build artifact-content extra for approve shape so the planner can see what to evaluate.
     let artifactContent: string | undefined
     if (shape === 'approve' && m.artifactPath) {
-      const path = join(this.opts.projectPath, m.artifactPath)
-      if (existsSync(path)) {
-        artifactContent = readFileSync(path, 'utf-8').slice(0, 4000)
-      }
+      artifactContent = this.readArtifactForPlanner(m.artifactPath)
     }
 
     // Call planner.
@@ -1259,6 +1256,30 @@ On your question: ${answer}`
     // the life of the app.
     this.releaseRunResources()
     this.notify()
+  }
+
+  /**
+   * The text of the artifact the agent asked to have approved.
+   *
+   * The agent names it as the prompt tells it to ("spec.md", "reviews/phase-1.md"), which
+   * is a name, not a location: artifacts live under the control directory (or docs/ for
+   * research and decisions), and `readArtifact` knows where. Reading the name relative
+   * to the project root found nothing, so the planner judged documents it never saw.
+   * A path that leaves the project is not read at all — its content would be sent to
+   * the planner's API.
+   */
+  private readArtifactForPlanner(artifactPath: string): string | undefined {
+    const normalized = artifactPath.trim().replace(/\\/g, '/')
+    if (!normalized || normalized.startsWith('/') || /^[a-zA-Z]:/.test(normalized)) return undefined
+    if (normalized.split('/').includes('..')) return undefined
+    const { content } = readArtifact(this.opts.projectPath, this.inferArtifactKind(normalized), this.inferPhaseId(normalized))
+    if (content !== null) return content.slice(0, 4000)
+    const direct = join(this.opts.projectPath, normalized)
+    try {
+      return existsSync(direct) ? readFileSync(direct, 'utf-8').slice(0, 4000) : undefined
+    } catch {
+      return undefined
+    }
   }
 
   private inferArtifactKind(path: string): ArtifactKind {
