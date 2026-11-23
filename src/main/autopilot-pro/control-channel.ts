@@ -70,6 +70,7 @@ const proChannel = makeControlChannel<ProMarker>({
 
 export const readProControlMarker = proChannel.readControlMarker
 export const writeProInboxReply = proChannel.writeInboxReply
+export const discardStaleProMarker = proChannel.discardStaleMarker
 
 export function markerToProSnapshot(marker: ProMarker, receivedAt = Date.now()): ProSettledSnapshot {
   return { text: 'file-control-channel', marker, receivedAt }

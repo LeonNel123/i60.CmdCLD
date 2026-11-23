@@ -16,7 +16,7 @@ import { debugCall } from './debug'
 import { saveRuntimeClassic, loadRuntimeClassic } from './runtime-state'
 import { recordSpend } from './budget-tracker'
 import { getAutopilotRuntime, type AutopilotRuntime } from './runtime'
-import { markerToSnapshot, readControlMarker, reconcileMilestoneState, writeInboxReply } from './control-channel'
+import { discardStaleMarker, markerToSnapshot, readControlMarker, reconcileMilestoneState, writeInboxReply } from './control-channel'
 
 const MAX_GOAL_READY_REPAIR_PROMPTS = 2
 
@@ -124,6 +124,11 @@ export class AutopilotStateMachine {
       this.armSilenceTimer()
       this.watcher.feed(data)
     })
+    // A marker already on disk was written for an earlier run; nothing else
+    // removes it, and the first poll would answer it as this run's.
+    if (discardStaleMarker(this.opts.projectPath)) {
+      this.appendActivity('orchestrator-resume', 'discarded a marker.json left by an earlier run')
+    }
     this.startControlWatchdog()
 
     // Discover validation once at start

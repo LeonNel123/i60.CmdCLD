@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 
 export type BaseMarkerKind = 'WAITING' | 'PROGRESS' | 'GOAL_READY' | 'STUCK'
@@ -97,6 +97,10 @@ export interface ControlChannelOptions<M extends BaseControlMarker> {
 export interface ControlChannel<M extends BaseControlMarker> {
   readControlMarker(projectPath: string): ControlMarkerRead<M> | ControlMarkerValidationError | null
   writeInboxReply(projectPath: string, text: string): void
+  /** Removes a marker.json that is already on disk; true if there was one.
+   *  Call once when a run starts: nothing else ever removes the file, so what
+   *  is there belongs to an earlier run and must not be answered by this one. */
+  discardStaleMarker(projectPath: string): boolean
 }
 
 export function makeControlChannel<M extends BaseControlMarker = BaseControlMarker>(
@@ -121,6 +125,16 @@ export function makeControlChannel<M extends BaseControlMarker = BaseControlMark
         return { id: base.id, marker: enriched.marker, mtimeMs: statSync(path).mtimeMs }
       } catch (e: any) {
         return { reason: `marker.json could not be read: ${e?.message ?? 'unknown'}` }
+      }
+    },
+    discardStaleMarker(projectPath) {
+      const path = join(projectPath, outboxPath)
+      if (!existsSync(path)) return false
+      try {
+        rmSync(path, { force: true })
+        return true
+      } catch {
+        return false
       }
     },
     writeInboxReply(projectPath, text) {

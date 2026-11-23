@@ -76,6 +76,16 @@ describe('makeControlChannel', () => {
     })
   })
 
+  it('discards a marker that is already there, and reports whether there was one', () => {
+    const ch = makeControlChannel({ dir: '.autopilot' })
+    expect(ch.discardStaleMarker(TMP)).toBe(false)
+    mkdirSync(join(TMP, '.autopilot', 'outbox'), { recursive: true })
+    writeFileSync(join(TMP, '.autopilot', 'outbox', 'marker.json'), '{"schemaVersion":1,"id":"x","kind":"WAITING"}')
+    expect(ch.discardStaleMarker(TMP)).toBe(true)
+    expect(ch.readControlMarker(TMP)).toBeNull()
+    expect(ch.discardStaleMarker(TMP)).toBe(false)
+  })
+
   it('propagates validateExtra rejection', () => {
     const custom = makeControlChannel({
       dir: '.autopilot',

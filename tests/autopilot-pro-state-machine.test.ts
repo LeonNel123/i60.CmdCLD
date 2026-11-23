@@ -287,6 +287,27 @@ describe('AutopilotProStateMachine', () => {
   })
 
   describe('file-based control channel', () => {
+    it('does not act on a marker.json left behind by an earlier run', async () => {
+      writeArtifact(TMP, 'spec', '# spec'); markApproved(TMP, 'spec')
+      writeArtifact(TMP, 'plan', '# plan'); markApproved(TMP, 'plan')
+      const markerPath = join(TMP, '.autopilot-pro', 'outbox', 'marker.json')
+      mkdirSync(join(TMP, '.autopilot-pro', 'outbox'), { recursive: true })
+      writeFileSync(markerPath, JSON.stringify({
+        schemaVersion: 1, id: 'pro-waiting-old', kind: 'WAITING',
+        text: 'review please', question: 'review please', shape: 'reply',
+      }))
+      const calls: unknown[] = []
+      const api = fakeChatClient(() => { calls.push(1); return { shape: 'reply', text: 'continue working' } })
+      const sm = makeSm(api, [])
+      await sm.start()
+
+      await new Promise((r) => setTimeout(r, 1200))
+
+      expect(calls).toEqual([])
+      expect(existsSync(markerPath)).toBe(false)
+      sm.stop()
+    })
+
     it('uses .autopilot-pro/outbox/marker.json as the primary control channel', async () => {
       writeArtifact(TMP, 'spec', '# spec'); markApproved(TMP, 'spec')
       writeArtifact(TMP, 'plan', '# plan'); markApproved(TMP, 'plan')

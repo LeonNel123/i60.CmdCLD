@@ -16,6 +16,10 @@ export function readControlMarker(projectPath: string):
   return channel.readControlMarker(projectPath)
 }
 
+export function discardStaleMarker(projectPath: string): boolean {
+  return channel.discardStaleMarker(projectPath)
+}
+
 export function writeInboxReply(projectPath: string, text: string): void {
   channel.writeInboxReply(projectPath, text)
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { AutopilotStateMachine } from '../src/main/autopilot/state-machine'
 import type { ApiClient, AutopilotOptions, Goal, Milestone, ApiUsage, DecideResult } from '../src/main/autopilot/types'
@@ -263,6 +263,37 @@ describe('AutopilotStateMachine', () => {
 
     expect(writes).toContain('Yes, proceed with m1/s2.\r')
     expect(api.decide).not.toHaveBeenCalled()
+  })
+
+  // marker.json is never removed by anything, so the last marker of the
+  // previous run in this folder was still there when the next run started,
+  // and its first poll answered it as if the agent had just written it.
+  it('does not act on a marker.json left behind by an earlier run', async () => {
+    const milestone = makeMilestone()
+    milestone.subgoals.push({ id: 's2', description: 'b', status: 'pending' })
+    writeGoal(TMP, makeGoal()); writeMilestone(TMP, milestone)
+    const stale = JSON.stringify({
+      schemaVersion: 1, id: 'm1-s1-done-1', kind: 'PROGRESS', text: 'm1/s1 done',
+      subgoalId: 'm1/s1', status: 'done', boundaryOk: true, question: 'Ready for m1/s2?',
+    })
+    const markerPath = join(TMP, '.autopilot', 'outbox', 'marker.json')
+    mkdirSync(join(TMP, '.autopilot', 'outbox'), { recursive: true })
+    writeFileSync(markerPath, stale)
+
+    const writes: string[] = []
+    const api = makeApi(() => ({ kind: 'reply', text: 'planner should not be called' }))
+    const sm = makeSm('idea', api, writes)
+    await sm.start()
+    sm.approveGoal()
+    await waitForFlush(1200)
+
+    expect(writes).not.toContain('Yes, proceed with m1/s2.\r')
+    expect(existsSync(markerPath)).toBe(false)
+
+    // The same marker written now, by this run's agent, is answered.
+    writeFileSync(markerPath, stale)
+    await waitForFlush(1200)
+    expect(writes).toContain('Yes, proceed with m1/s2.\r')
   })
 
   it('uses .autopilot/outbox/marker.json as the primary control channel', async () => {

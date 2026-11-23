@@ -6,7 +6,7 @@ import { enrichProMarker } from '../autopilot-pro/state-machine'
 import { stage0Kickoff } from '../autopilot-pro/prompts'
 import { arbitrateCouncilReview } from './arbitration'
 import {
-  readCouncilControlMarker, writeCouncilInboxReply, markerToCouncilSnapshot,
+  readCouncilControlMarker, writeCouncilInboxReply, markerToCouncilSnapshot, discardStaleCouncilMarker,
 } from './control-channel'
 import { buildReviewPacket, formatReviewPacketForReviewer } from './packets'
 import { buildCouncilImplementerPrompt } from './prompts'
@@ -155,6 +155,11 @@ export class AutopilotCouncilStateMachine {
           this.buffer += data
           this.watcher.feed(data)
         })
+      }
+      // First start only: a marker already on disk was written for an earlier
+      // run. On a resume the file may hold what the agent wrote while paused.
+      if (!this.kickoffSent && discardStaleCouncilMarker(this.opts.projectPath)) {
+        this.appendActivity('orchestrator-resume', 'discarded a marker.json left by an earlier run')
       }
       this.startControlWatchdog()
 

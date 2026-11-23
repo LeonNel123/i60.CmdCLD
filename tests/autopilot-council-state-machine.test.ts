@@ -1003,6 +1003,31 @@ describe('AutopilotCouncilStateMachine', () => {
   })
 
   describe('file-based control channel', () => {
+    it('does not act on a marker.json left behind by an earlier run', async () => {
+      const root = project()
+      const markerPath = join(root, '.autopilot-council', 'outbox', 'marker.json')
+      mkdirSync(join(root, '.autopilot-council', 'outbox'), { recursive: true })
+      writeFileSync(markerPath, JSON.stringify({
+        schemaVersion: 1, id: 'council-waiting-old', kind: 'WAITING',
+        text: 'review please', question: 'review please', shape: 'reply',
+      }))
+      const writes: string[] = []
+      const sm = new AutopilotCouncilStateMachine(opts({
+        projectPath: root,
+        writeToPty: (_id, data) => { writes.push(data) },
+      }), reviewer(decision({
+        verdict: 'approve', risk: 'low', findings: [], recommended_instruction: '', rationale: 'ok',
+      })))
+      await sm.start()
+      const afterKickoff = writes.length
+
+      await new Promise((r) => setTimeout(r, 1200))
+
+      expect(writes.length).toBe(afterKickoff)
+      expect(existsSync(markerPath)).toBe(false)
+      sm.stop()
+    })
+
     it('uses .autopilot-council/outbox/marker.json as the primary control channel', async () => {
       const root = project()
       const writes: string[] = []

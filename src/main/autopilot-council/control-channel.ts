@@ -71,6 +71,7 @@ const councilChannel = makeControlChannel<ProMarker>({
 
 export const readCouncilControlMarker = councilChannel.readControlMarker
 export const writeCouncilInboxReply = councilChannel.writeInboxReply
+export const discardStaleCouncilMarker = councilChannel.discardStaleMarker
 
 export function markerToCouncilSnapshot(
   marker: ProMarker,

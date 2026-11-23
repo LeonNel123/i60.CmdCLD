@@ -31,7 +31,7 @@ import { detectResearchSignals } from './research-signals'
 import { recordSpend } from '../autopilot/budget-tracker'
 import { getAutopilotRuntime, type AutopilotRuntime } from '../autopilot/runtime'
 import {
-  readProControlMarker, writeProInboxReply, markerToProSnapshot,
+  readProControlMarker, writeProInboxReply, markerToProSnapshot, discardStaleProMarker,
 } from './control-channel'
 import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
@@ -370,6 +370,11 @@ export class AutopilotProStateMachine {
       this.proBuffer += data
       this.watcher.feed(data)
     })
+    // A marker already on disk was written for an earlier run; nothing else
+    // removes it, and the first poll would answer it as this run's.
+    if (discardStaleProMarker(this.opts.projectPath)) {
+      this.appendActivity('orchestrator-resume', 'discarded a marker.json left by an earlier run')
+    }
     this.startControlWatchdog()
 
     this.state.validation = discoverValidation(this.opts.projectPath)
