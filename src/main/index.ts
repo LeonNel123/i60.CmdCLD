@@ -13,6 +13,7 @@ import { RecentDB } from './recent-db'
 import { recoverAfterRenderGone, recoveryActionForInput } from './window-recovery'
 import { navigationDecision } from './navigation-guard'
 import { stopRunsForTerminal } from './autopilot-run-registry'
+import { archivePreviousRun } from './autopilot-shared/archive-run'
 import { createQuitIntent } from './quit-intent'
 import { PromptLog, sentTextOf } from './prompt-log'
 import { detectTerminals, openExternalTerminal } from './external-terminal'
@@ -151,6 +152,23 @@ const quitIntent = createQuitIntent()
 const autopilots = new Map<string, AutopilotHandle>()  // keyed by terminalId — Classic mode
 const autopilotPros = new Map<string, AutopilotProHandle>()  // keyed by terminalId — PRO mode
 const autopilotCouncils = new Map<string, AutopilotCouncilHandle>()  // keyed by terminalId — Council mode
+
+/**
+ * A start that carries an idea is "start fresh"; Resume sends none. A fresh
+ * start sets the previous run in that project aside first, or the orchestrator
+ * finds its goal, spec or runtime state on disk and resumes it, ignoring the
+ * new idea (archive-run.ts).
+ */
+function prepareFreshRun(projectPath: string, controlDir: string, idea: string): { ok: true } | { ok: false; error: string } {
+  if (!idea || !idea.trim()) return { ok: true }
+  try {
+    const archived = archivePreviousRun(projectPath, controlDir)
+    if (archived) log(`autopilot: previous run in ${projectPath} archived to ${archived}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: `Could not set the previous run aside (${e instanceof Error ? e.message : e}). Close anything using ${controlDir} and try again, or use Resume.` }
+  }
+}
 
 function stopAutopilotRuns(terminalId: string, reason: string): void {
   const stopped = stopRunsForTerminal(terminalId, [autopilots, autopilotPros, autopilotCouncils], (e) => {
@@ -1025,6 +1043,8 @@ ipcMain.handle('autopilot:start', async (_event, args: { terminalId: string; pro
   if (hasActiveAttachSession(args.terminalId)) return { ok: false, error: 'Attach is already active for this terminal.' }
   const runtime = getAutopilotRuntimeStartContext(args.terminalId)
   if (!runtime.ok) return runtime
+  const fresh = prepareFreshRun(args.projectPath, '.autopilot', args.freeTextIdea)
+  if (!fresh.ok) return fresh
 
   const opts: AutopilotOptions = {
     terminalId: args.terminalId,
@@ -1433,6 +1453,8 @@ ipcMain.handle('autopilot-pro:start', async (_event, args: { terminalId: string;
   }
   const runtime = getAutopilotRuntimeStartContext(args.terminalId)
   if (!runtime.ok) return runtime
+  const fresh = prepareFreshRun(args.projectPath, '.autopilot-pro', args.freeTextIdea)
+  if (!fresh.ok) return fresh
 
   const opts: AutopilotProOptions = {
     terminalId: args.terminalId,
@@ -1480,6 +1502,8 @@ ipcMain.handle('autopilot-council:start', async (event, args: {
   if (runtime.agentCli !== args.implementerCli) {
     return { ok: false, error: 'Council Implementer must match the visible terminal CLI.' }
   }
+  const fresh = prepareFreshRun(args.projectPath, '.autopilot-council', args.freeTextIdea)
+  if (!fresh.ok) return fresh
 
   const reviewerLaunchArgs = getArgsForAgent(args.reviewerCli, {
     claudeArgs: settings.get('claudeArgs'),

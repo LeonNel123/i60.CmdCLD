@@ -145,7 +145,7 @@ export function AutopilotKickoff({ terminalId, projectPath, agentCli, launchArgs
               opacity: busy || !guardrail.canStart ? 0.5 : 1,
             }}
           >▶ Resume existing run</button>
-          <div style={{ color: '#666', fontSize: 11, textAlign: 'center', margin: '4px 0' }}>── or start fresh ──</div>
+          <div style={{ color: '#666', fontSize: 11, textAlign: 'center', margin: '4px 0' }}>── or start fresh (the previous run is moved to its archive folder) ──</div>
         </>
       )}
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11 }}>
