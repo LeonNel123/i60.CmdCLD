@@ -487,7 +487,9 @@ export default function App() {
       // have just changed them, and a stale copy would pin the folder.
       // A plain shell is not a choice of agent for the folder: recording one
       // replaced whatever CLI and args the folder had with "claude".
-      if (!session.isPlainShell) {
+      // On the browser page the session was started by another client, which
+      // has already recorded the folder's agent; this page only shows it.
+      if (!session.isPlainShell && !window.api.remote) {
         rememberProjectAgent(session.path, rememberLaunch(remoteCli, launched, session.settingsArgs ?? argsSettingsRef.current))
       }
       setTerminals((prev) => {

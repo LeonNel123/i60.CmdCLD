@@ -269,3 +269,55 @@ describe('createRemoteApi — sessions closed elsewhere', () => {
     expect(closed).toEqual([])
   })
 })
+
+// The browser page listed sessions once, at load. One started afterwards on
+// the desktop window or the phone never appeared until the page was reloaded.
+describe('createRemoteApi — sessions started elsewhere', () => {
+  const meta = { id: 'abc', path: 'D:\proj', name: 'proj', color: '', agentCli: 'codex', launchArgs: '--full-auto' }
+
+  it('reports a session another client started', () => {
+    const { api, socket } = make()
+    const seen: any[] = []
+    api.onRemoteSessionCreated((s) => seen.push(s))
+    socket.receive('session:created', meta)
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({ id: 'abc', path: 'D:\proj', name: 'proj', agentCli: 'codex', launchArgs: '--full-auto' })
+  })
+
+  it('carries the plain-shell mark', () => {
+    const { api, socket } = make()
+    const seen: any[] = []
+    api.onRemoteSessionCreated((s) => seen.push(s))
+    socket.receive('session:created', { ...meta, isPlainShell: true })
+    expect(seen[0].isPlainShell).toBe(true)
+  })
+
+  it('does not report a session this page started itself', async () => {
+    const { api, socket } = make()
+    const seen: any[] = []
+    api.onRemoteSessionCreated((s) => seen.push(s))
+    await api.createTerminal('mine', 'D:\proj', 'claude', '', false, { cols: 80, rows: 24 }).catch(() => {})
+    socket.receive('session:created', { ...meta, id: 'mine' })
+    expect(seen).toEqual([])
+  })
+
+  // Council's reviewer runs in a PTY of its own that is not a tile.
+  it('does not report a hidden reviewer terminal', () => {
+    const { api, socket } = make()
+    const seen: any[] = []
+    api.onRemoteSessionCreated((s) => seen.push(s))
+    socket.receive('session:created', { ...meta, id: 'council-reviewer-abc-123' })
+    expect(seen).toEqual([])
+  })
+
+  it('ignores a malformed notice and stops after unsubscribe', () => {
+    const { api, socket } = make()
+    const seen: any[] = []
+    const unsub = api.onRemoteSessionCreated((s) => seen.push(s))
+    socket.receive('session:created', undefined)
+    socket.receive('session:created', { id: 5 })
+    unsub()
+    socket.receive('session:created', meta)
+    expect(seen).toEqual([])
+  })
+})

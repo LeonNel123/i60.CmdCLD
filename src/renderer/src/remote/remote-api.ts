@@ -24,6 +24,7 @@ export interface RemoteApiDeps {
 }
 
 type Listener<T> = (payload: T) => void
+type RemoteCreatedSession = Parameters<Parameters<ElectronAPI['onRemoteSessionCreated']>[0]>[0]
 
 /** Per-id subscriber registry for one server event. One socket listener is
  *  attached at construction; subscribers are looked up by id on each event. */
@@ -56,6 +57,8 @@ export function createRemoteApi(deps: RemoteApiDeps): ElectronAPI & { remote: tr
   const onResize = fanOut<{ id: string; cols: number; rows: number }>(socket, 'session:resize')
 
   const noop = async () => {}
+  /** Sessions this page created itself (see onRemoteSessionCreated). */
+  const ownSessionIds = new Set<string>()
   const unsub = () => () => {}
   const q = (params: Record<string, string | undefined>) =>
     '?' + Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => `${k}=${encodeURIComponent(v!)}`).join('&')
@@ -67,6 +70,7 @@ export function createRemoteApi(deps: RemoteApiDeps): ElectronAPI & { remote: tr
 
     // ---- terminal lifecycle --------------------------------------------
     createTerminal: async (id, cwd, agentCli, launchArgs, _elevated, size, isPlainShell) => {
+      ownSessionIds.add(id)
       await post('/api/sessions', { id, path: cwd, agentCli, launchArgs, size, isPlainShell: isPlainShell || undefined })
     },
     writeTerminal: async (id, data) => { socket.emit('session:input', { id, data }) },
@@ -164,7 +168,29 @@ export function createRemoteApi(deps: RemoteApiDeps): ElectronAPI & { remote: tr
     }),
     tailscaleServeStart: async () => ({ ok: false, error: 'Not available remotely' }),
     tailscaleServeStop: async () => ({ ok: false, error: 'Not available remotely' }),
-    onRemoteSessionCreated: unsub,
+    // Every PTY the host creates is announced to every socket. The ones this
+    // page asked for already have their tile; the rest were started on the
+    // desktop window, the phone or another browser, and need one here.
+    onRemoteSessionCreated: (cb) => {
+      const handler = (meta: Record<string, unknown> | undefined): void => {
+        if (!meta || typeof meta.id !== 'string' || typeof meta.path !== 'string') return
+        if (ownSessionIds.has(meta.id) || meta.id.startsWith('council-reviewer-')) return
+        const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+        const launchArgs = typeof meta.launchArgs === 'string' ? meta.launchArgs : undefined
+        cb({
+          id: meta.id,
+          path: meta.path,
+          name: str(meta.name) || meta.path.split(/[\\/]/).pop() || meta.path,
+          color: str(meta.color),
+          agentCli: meta.agentCli as RemoteCreatedSession['agentCli'],
+          launchArgs,
+          claudeArgs: '',
+          ...(meta.isPlainShell === true ? { isPlainShell: true } : {}),
+        })
+      }
+      socket.on('session:created', handler)
+      return () => { socket.off('session:created', handler) }
+    },
     onSettingsChanged: (cb) => {
       const handler = (msg: { keys?: unknown } | undefined): void => {
         cb({ keys: msg && Array.isArray(msg.keys) ? msg.keys.filter((k): k is string => typeof k === 'string') : [] })
