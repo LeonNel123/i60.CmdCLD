@@ -140,6 +140,36 @@ describe('POST /api/sessions with a renderer-chosen id', () => {
     expect(written[0].id).toBe(created[0].id)
   })
 
+  // The phone sends a folder and an agent, never args. The server launched
+  // with the global default, and the desktop window then recorded that launch
+  // as the folder's choice: the custom args the folder had were gone.
+  it('launches a folder from the phone with the args remembered for it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cmdcld-'))
+    const { port, created, sent } = await start({
+      settings: { claudeArgs: '--model opus', projectAgents: { [dir]: { agentCli: 'claude', customArgs: '--model sonnet --verbose' } } },
+    })
+    const res = await request(port, 'POST', '/api/sessions', { path: dir, agentCli: 'claude' })
+    expect(res.status).toBe(200)
+    expect(created[0].meta.launchArgs).toBe('--model sonnet --verbose')
+    expect(sent.find((s) => s.channel === 'remote:session-created')!.msg.launchArgs).toBe('--model sonnet --verbose')
+  })
+
+  it('uses the default args when the phone picks a different agent than the folder remembers', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cmdcld-'))
+    const { port, created } = await start({
+      settings: { codexArgs: '--full-auto', projectAgents: { [dir]: { agentCli: 'claude', customArgs: '--model sonnet' } } },
+    })
+    await request(port, 'POST', '/api/sessions', { path: dir, agentCli: 'codex' })
+    expect(created[0].meta.launchArgs).toBe('--full-auto')
+  })
+
+  it('uses the default args for a folder with nothing remembered', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cmdcld-'))
+    const { port, created } = await start({ settings: { claudeArgs: '--model opus' } })
+    await request(port, 'POST', '/api/sessions', { path: dir, agentCli: 'claude' })
+    expect(created[0].meta.launchArgs).toBe('--model opus')
+  })
+
   // A plain shell opened on the /desktop page arrived here with no way to say
   // so, was recorded as a Claude session, and the desktop window then stored
   // "claude" as that folder's agent over whatever the user had chosen.

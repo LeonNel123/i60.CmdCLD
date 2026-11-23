@@ -13,9 +13,11 @@ import { RecentDB } from './recent-db'
 import { trustFolder } from './claude-config'
 import {
   buildAgentLaunchCommand,
+  customArgsFor,
   getArgsForAgent,
   normalizeAgentCli,
   type AgentCli,
+  type RememberedProjectAgent,
 } from '../shared/agent-cli'
 import { agentCliAvailability } from './agent-cli-detect'
 import { resolvePtySpawnSize } from './pty-create-validation'
@@ -455,8 +457,16 @@ export class RemoteServer {
         grok: typeof grokArgs === 'string' ? grokArgs : this.settings.get('grokArgs'),
         opencode: typeof opencodeArgs === 'string' ? opencodeArgs : this.settings.get('opencodeArgs'),
       }
+      // The phone names a folder and an agent, never args. If this folder has
+      // args of its own for that agent, launch with them: launching with the
+      // default made the desktop window record the default as the folder's
+      // choice, and the folder's own args were lost.
+      const projectAgents = (this.settings.get('projectAgents') ?? {}) as Record<string, RememberedProjectAgent>
+      const rememberedArgs = rendererDriven ? undefined : customArgsFor(projectAgents[cwd], agentCli)
       const args = rendererDriven && typeof launchArgsRaw === 'string'
         ? launchArgsRaw
+        : rememberedArgs !== undefined
+        ? rememberedArgs
         : getArgsForAgent(agentCli, {
             claudeArgs: argsByAgent.claude,
             codexArgs: argsByAgent.codex,
