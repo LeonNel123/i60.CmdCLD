@@ -193,6 +193,7 @@ The rule that decides what an exit must release:
 | Exit | `resume()` accepts it? | Releases |
 |---|---|---|
 | `pause` (classic, PRO) | yes | silence timer only |
+| PRO hand-over to a human (`pauseForHuman`: refine bound, planner error, no markers after two nudges) | yes | silence timer only |
 | Council `pause` / `blocked` | yes | watcher + reviewer + watchdog; listener kept |
 | `stop` (all three) | no | everything |
 | PRO `finishRun` (stage → done) | no | everything |

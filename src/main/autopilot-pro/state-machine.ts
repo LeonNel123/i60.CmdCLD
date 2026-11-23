@@ -232,6 +232,8 @@ export class AutopilotProStateMachine {
   private proBuffer = ''
   private controlPollTimer: ReturnType<typeof setInterval> | null = null
   private lastControlMarkerId: string | null = null
+  /** The marker a failed planner call left unanswered; retried on resume. */
+  private unansweredSnapshot: ProSettledSnapshot | null = null
   private lastControlValidationReason: string | null = null
   private lastFileControlMarkerSignature: string | null = null
   private lastFileControlMarkerAt = 0
@@ -439,9 +441,34 @@ export class AutopilotProStateMachine {
   resume(): void {
     if (this.state.control === 'blocked' || this.state.control === 'stopped') return
     this.state.control = 'running'
+    this.state.escalationReason = null
     this.state.liveStatus = 'waiting for doer'
     this.armSilenceTimer()
     this.appendActivity('orchestrator-resume', 'resumed')
+    this.notify()
+    // A question the planner failed on is still unanswered: the agent is
+    // waiting and will not ask again, so answer it now.
+    const retry = this.unansweredSnapshot
+    this.unansweredSnapshot = null
+    if (retry) void this.onSettled(retry)
+  }
+
+  /**
+   * Hand the run to a human: stop acting, say why, stay resumable.
+   *
+   * Used wherever the run tells the agent or the panel that it is escalating.
+   * Setting `escalationReason` alone left the run `running`, so the agent's
+   * next marker got another paid planner call and the same outcome, lap after
+   * lap until the cost cap. Unlike `blockAutomation` this is a hold, not an
+   * exit: Resume or a manual reply continues the run.
+   */
+  private pauseForHuman(reason: string): void {
+    if (this.state.control !== 'running') return
+    this.state.control = 'paused'
+    this.state.escalationReason = reason
+    this.state.liveStatus = reason
+    this.clearSilenceTimer()
+    this.appendActivity('escalation', reason)
     this.notify()
   }
 
@@ -500,6 +527,7 @@ export class AutopilotProStateMachine {
   }
 
   replyToWaiting(text: string): void {
+    this.unansweredSnapshot = null  // the human has answered it
     this.sendToDoer(text, 'manual-reply')
     this.state.liveStatus = 'waiting for doer'
     this.appendActivity('orchestrator-reply', `Manual reply: ${text.slice(0, 80)}`)
@@ -680,14 +708,12 @@ export class AutopilotProStateMachine {
         researchTopics: m.researchTopics,
       })
     } catch (e: any) {
-      this.state.escalationReason = `planner error: ${e?.message ?? 'unknown'}`
-      this.appendActivity('escalation', this.state.escalationReason)
-      this.notify()
+      this.unansweredSnapshot = snap
+      this.pauseForHuman(`planner error: ${e?.message ?? 'unknown'}`)
       return
-    } finally {
-      this.state.liveStatus = 'waiting for doer'
-      this.notify()
     }
+    this.state.liveStatus = 'waiting for doer'
+    this.notify()
 
     this.cost.add(out.costUsd)
     this.appendDebug('planner-response', {
@@ -878,9 +904,8 @@ On your question: ${answer}`
           const newCount = incrementRefineCount(this.opts.projectPath, kind, phaseId)
           this.state.artifacts = readState(this.opts.projectPath)
           if (newCount > REFINE_LIMIT) {
-            this.state.escalationReason = `refinement-bound-exceeded: ${path}`
-            this.appendActivity('escalation', this.state.escalationReason)
             this.sendToDoer(`Refinement bound (${REFINE_LIMIT}) exceeded for ${path}. Escalating to human.`, 'refinement-bound-exceeded')
+            this.pauseForHuman(`refinement-bound-exceeded: ${path}`)
             return
           }
           const reply = this.withAnswer(`Refine ${path} (attempt ${newCount}/${REFINE_LIMIT}): ${result.directive}`, result, marker)
@@ -1309,9 +1334,7 @@ On your question: ${answer}`
     // armed before a stop, pause or completion still wrote to the terminal afterwards.
     if (!this.canProcessPty()) return
     if (this.markerFallbackPromptCount >= 2) {
-      this.state.escalationReason = 'doer not emitting markers — manual intervention needed'
-      this.appendActivity('escalation', this.state.escalationReason)
-      this.notify()
+      this.pauseForHuman('doer not emitting markers — manual intervention needed')
       return
     }
     this.markerFallbackPromptCount++

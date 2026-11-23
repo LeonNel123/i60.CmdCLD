@@ -237,6 +237,85 @@ describe('AutopilotProStateMachine', () => {
     })
   })
 
+  describe('handing over to a human', () => {
+    // The run told the agent "Escalating to human" and then carried on: the
+    // agent asked again, the planner refined again, and each lap was a paid
+    // call until the cost cap. Handing over to a human has to stop the laps.
+    it('pauses, and makes no further planner calls', async () => {
+      writeArtifact(TMP, 'spec', '# spec')
+      const api = fakeChatClient(() => ({ shape: 'approve', verdict: 'refine', directive: 'try again' }))
+      const writes: string[] = []
+      const sm = makeSm(api, writes)
+      await sm.start()
+      const ask = () => sm.feedPty(['[ORCH:WAITING] review', 'DECISION_SHAPE: approve', 'ARTIFACT: spec.md', ''].join('\n'))
+      for (let i = 0; i < 4; i++) { ask(); await flush() }
+
+      expect(sm.state.control).toBe('paused')
+      const callsAtHandover = (api.chat as any).mock.calls.length
+      const writesAtHandover = writes.length
+
+      for (let i = 0; i < 3; i++) { ask(); await flush() }
+
+      expect((api.chat as any).mock.calls.length).toBe(callsAtHandover)
+      expect(writes.length).toBe(writesAtHandover)
+    })
+
+    it('can be resumed, with the reason cleared', async () => {
+      writeArtifact(TMP, 'spec', '# spec')
+      const sm = makeSm(fakeChatClient(() => ({ shape: 'approve', verdict: 'refine', directive: 'try again' })))
+      await sm.start()
+      for (let i = 0; i < 4; i++) {
+        sm.feedPty(['[ORCH:WAITING] review', 'DECISION_SHAPE: approve', 'ARTIFACT: spec.md', ''].join('\n'))
+        await flush()
+      }
+      expect(sm.state.control).toBe('paused')
+      sm.resume()
+      expect(sm.state.control).toBe('running')
+      expect(sm.state.escalationReason).toBeNull()
+      sm.stop()
+    })
+
+    // A failed planner call left the run "running" with the agent's question
+    // consumed and unanswered: nothing would move again until the 30-minute
+    // silence guard ended the run for good.
+    it('pauses on a planner failure, and answers the same question when resumed', async () => {
+      writeArtifact(TMP, 'spec', '# spec'); markApproved(TMP, 'spec')
+      writeArtifact(TMP, 'plan', '# plan'); markApproved(TMP, 'plan')
+      let fail = true
+      const api: ApiClient = {
+        decide: vi.fn(),
+        debug: vi.fn(),
+        chat: vi.fn(async () => {
+          if (fail) throw new Error('network down')
+          return {
+            text: JSON.stringify({ shape: 'reply', text: 'carry on with task 2' }),
+            usage: { inputTokens: 100, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 50 } as ApiUsage,
+          }
+        }),
+        estimateCost: () => 0.001,
+      }
+      const writes: string[] = []
+      const sm = makeSm(api, writes)
+      await sm.start()
+      writes.length = 0
+
+      sm.feedPty(['[ORCH:WAITING] what next?', 'DECISION_SHAPE: reply', ''].join('\n'))
+      await flush()
+
+      expect(sm.state.control).toBe('paused')
+      expect(sm.state.escalationReason).toMatch(/planner error: network down/)
+      expect(writes.join('')).not.toContain('carry on with task 2')
+
+      fail = false
+      sm.resume()
+      await flush()
+
+      expect(sm.state.control).toBe('running')
+      expect(writes.join('')).toContain('carry on with task 2')
+      sm.stop()
+    })
+  })
+
   describe('subagent ETA window', () => {
     it('extends silence guard when SUBAGENT_ETA_MIN is reported', async () => {
       vi.useFakeTimers()
