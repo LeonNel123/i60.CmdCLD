@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resolveRestoredSession, minimizedIdsFromRestore } from '../src/shared/session-restore'
+import { shouldSaveSession } from '../src/shared/session-restore'
 
 const saved = {
   path: 'D:/proj',
@@ -101,5 +102,34 @@ describe('carrying minimized state across a restore', () => {
   it('throws rather than misattributing when the two lists disagree', () => {
     expect(() => minimizedIdsFromRestore([{ id: 'a' }], projects)).toThrow(/1:1/)
     expect(() => minimizedIdsFromRestore(entries, [{ path: 'p1' }])).toThrow(/1:1/)
+  })
+})
+
+// One file holds "the last session". Every window wrote to it, a second after
+// it opened and again on close: a window that had not reopened anything yet
+// wrote an empty list over the session it was offering to reopen, and a second
+// window (which always starts empty) did the same to the first window's.
+describe('shouldSaveSession', () => {
+  const base = { restoreEnabled: true, secondaryWindow: false, terminalCount: 2, hadTerminals: true }
+
+  it('saves the open terminals of the primary window', () => {
+    expect(shouldSaveSession(base)).toBe(true)
+  })
+
+  it('does not save when restore is off', () => {
+    expect(shouldSaveSession({ ...base, restoreEnabled: false })).toBe(false)
+  })
+
+  it('never saves from a second window', () => {
+    expect(shouldSaveSession({ ...base, secondaryWindow: true })).toBe(false)
+    expect(shouldSaveSession({ ...base, secondaryWindow: true, terminalCount: 0 })).toBe(false)
+  })
+
+  it('does not save an empty list from a window that has not opened anything yet', () => {
+    expect(shouldSaveSession({ ...base, terminalCount: 0, hadTerminals: false })).toBe(false)
+  })
+
+  it('saves an empty list once the person has closed everything they had open', () => {
+    expect(shouldSaveSession({ ...base, terminalCount: 0, hadTerminals: true })).toBe(true)
   })
 })

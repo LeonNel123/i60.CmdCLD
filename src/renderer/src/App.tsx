@@ -40,7 +40,7 @@ import {
   AGENT_CLI_LABELS,
   type AgentCli,
 } from '../../shared/agent-cli'
-import { resolveRestoredSession, minimizedIdsFromRestore } from '../../shared/session-restore'
+import { resolveRestoredSession, minimizedIdsFromRestore, shouldSaveSession } from '../../shared/session-restore'
 import { terminalsFromLiveSessions } from '../../shared/live-reattach'
 import { watchMinimizedActivity } from './utils/minimized-activity'
 import {
@@ -53,6 +53,9 @@ import { DEFAULT_APP_FONT_FAMILY, resolveAppFontFamily } from '../../shared/app-
 import { DEFAULT_UI_SCALE_PCT, clampUiScalePct, chromeScale, uiScaleFactor } from '../../shared/ui-scale'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
+
+// "New window" loads the page with ?empty=1 (createWindow in main).
+const IS_SECONDARY_WINDOW = new URLSearchParams(window.location.search).get('empty') === '1'
 
 interface TerminalEntry {
   id: string
@@ -331,6 +334,8 @@ export default function App() {
     let cancelled = false
     void (async () => {
       try {
+        // A second window starts empty; the saved session is the first one's.
+        if (IS_SECONDARY_WINDOW) return
         const saved = await window.api.sessionLoadLast()
         if (cancelled || !saved) return
         const checks = await Promise.all(saved.projects.map(async (p) => {
@@ -351,9 +356,20 @@ export default function App() {
     return () => { cancelled = true }
   }, [])
 
+  // Which window may write the one last-session file, and when an empty list
+  // is worth writing: see shouldSaveSession.
+  const hadTerminalsRef = useRef(false)
+  if (terminals.length > 0) hadTerminalsRef.current = true
+  const maySaveSession = shouldSaveSession({
+    restoreEnabled: restoreSessionEnabled,
+    secondaryWindow: IS_SECONDARY_WINDOW,
+    terminalCount: terminals.length,
+    hadTerminals: hadTerminalsRef.current,
+  })
+
   // Debounced autosave of the open project set when restore is enabled.
   useEffect(() => {
-    if (!restoreSessionEnabled) return
+    if (!maySaveSession) return
     const timer = setTimeout(() => {
       const projects = terminals.map((t) => ({
         path: t.path,
@@ -368,12 +384,12 @@ export default function App() {
       window.api.sessionSaveLast({ savedAt: Date.now(), projects }).catch(() => {})
     }, 1000)
     return () => clearTimeout(timer)
-  }, [terminals, restoreSessionEnabled, minimizedIds])
+  }, [terminals, maySaveSession, minimizedIds])
 
   // Flush save on window close so the most recent terminals state is captured
   // even if the 1s autosave debounce hasn't fired yet.
   useEffect(() => {
-    if (!restoreSessionEnabled) return
+    if (!maySaveSession) return
     const onBeforeUnload = () => {
       const projects = terminals.map((t) => ({
         path: t.path,
@@ -389,7 +405,7 @@ export default function App() {
     }
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
-  }, [terminals, restoreSessionEnabled, minimizedIds])
+  }, [terminals, maySaveSession, minimizedIds])
 
   // While the close-terminal dialog is up, warn about work that would not be
   // reachable from another machine: uncommitted changes and unpushed commits.

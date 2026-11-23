@@ -89,3 +89,22 @@ export function minimizedIdsFromRestore(
   }
   return entries.filter((_, i) => saved[i]?.minimized).map((e) => e.id)
 }
+
+/**
+ * Should this window write the last-session file now?
+ *
+ * The file is one slot shared by every window. Only the primary window owns
+ * it (a second window always starts empty and is not what "reopen my last
+ * session" means), and an empty list is only worth writing once the person
+ * has had terminals open and closed them: a window that has not reopened its
+ * session yet would otherwise erase the very session it is offering.
+ */
+export function shouldSaveSession(args: {
+  restoreEnabled: boolean
+  secondaryWindow: boolean
+  terminalCount: number
+  hadTerminals: boolean
+}): boolean {
+  if (!args.restoreEnabled || args.secondaryWindow) return false
+  return args.terminalCount > 0 || args.hadTerminals
+}
