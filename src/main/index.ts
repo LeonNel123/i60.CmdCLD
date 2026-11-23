@@ -13,6 +13,7 @@ import { RecentDB } from './recent-db'
 import { recoverAfterRenderGone, recoveryActionForInput } from './window-recovery'
 import { navigationDecision } from './navigation-guard'
 import { stopRunsForTerminal } from './autopilot-run-registry'
+import { createQuitIntent } from './quit-intent'
 import { PromptLog, sentTextOf } from './prompt-log'
 import { detectTerminals, openExternalTerminal } from './external-terminal'
 import { Settings } from './settings'
@@ -145,6 +146,7 @@ const newWindowIds = new Set<string>()
 // Tracks windows that have already passed the "are you sure?" close dialog,
 // so the cascading close event after dialog-OK doesn't re-prompt.
 const confirmedClose = new WeakSet<BrowserWindow>()
+const quitIntent = createQuitIntent()
 
 const autopilots = new Map<string, AutopilotHandle>()  // keyed by terminalId — Classic mode
 const autopilotPros = new Map<string, AutopilotProHandle>()  // keyed by terminalId — PRO mode
@@ -544,7 +546,11 @@ function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: s
     // On non-macOS, quit when last window closes
     if (process.platform !== 'darwin' && registry.size() === 0) {
       app.quit()
+      return
     }
+    // A quit was under way and this window's confirmation interrupted it:
+    // carry on. The next window with live terminals asks in its turn.
+    if (quitIntent.active()) app.quit()
   })
 
   return { id, window: win }
@@ -1824,8 +1830,15 @@ app.on('window-all-closed', () => {
   app.quit()
 })
 
-// Cleanup resources when app is quitting (works on all platforms including macOS Cmd+Q)
+// Only note the intent here. before-quit fires before the windows are asked
+// to close; killing the PTYs at this point left every window with nothing to
+// confirm, so Cmd+Q ended all agents without the question a window close asks.
 app.on('before-quit', () => {
+  quitIntent.request()
+})
+
+// Every window has closed (each with its confirmation, if it had terminals).
+app.on('will-quit', () => {
   log('App quitting — cleaning up')
   for (const meta of ptyManager.listAll()) {
     clearAttachSession(meta.id)
