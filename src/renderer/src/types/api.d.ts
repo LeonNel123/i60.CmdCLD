@@ -88,6 +88,8 @@ export interface GitStatus {
   branch: string | null
   dirty: boolean
   ahead: number
+  /** A repository whose state could not be read: dirty/ahead are not known. */
+  unknown?: true
 }
 
 export type ApiProvider = 'anthropic' | 'openrouter'

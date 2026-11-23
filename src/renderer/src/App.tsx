@@ -420,7 +420,8 @@ export default function App() {
       const parts: string[] = []
       if (s.dirty) parts.push('uncommitted changes')
       if (s.ahead > 0) parts.push(`${s.ahead} unpushed commit${s.ahead === 1 ? '' : 's'}`)
-      if (parts.length > 0) setCloseWarning(`⚠ This project has ${parts.join(' and ')}.`)
+      if (s.unknown) setCloseWarning('⚠ Could not check this project for uncommitted or unpushed work.')
+      else if (parts.length > 0) setCloseWarning(`⚠ This project has ${parts.join(' and ')}.`)
     }).catch(() => {})
     return () => { cancelled = true }
   }, [closingId, terminals])
@@ -446,7 +447,9 @@ export default function App() {
       const name = (p: string): string => p.split(/[\\/]/).pop() || p
       const dirty = checks.filter((c) => c?.status.dirty).map((c) => name(c!.path))
       const unpushed = checks.filter((c) => c?.status.ahead).map((c) => name(c!.path))
+      const unchecked = checks.filter((c) => c?.status.unknown).map((c) => name(c!.path))
       const lines: string[] = []
+      if (unchecked.length > 0) lines.push(`⚠ Could not check for unsaved work in: ${unchecked.join(', ')}`)
       if (dirty.length > 0) lines.push(`⚠ Uncommitted changes in: ${dirty.join(', ')}`)
       if (unpushed.length > 0) lines.push(`⚠ Unpushed commits in: ${unpushed.join(', ')}`)
       if (lines.length > 0) setCloseAllWarning(lines.join('\n'))
