@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { changedSettings } from '../../../../shared/settings-diff'
 import { X } from '../icons'
 import { normalizeAgentCli, type AgentCli } from '../../../../shared/agent-cli'
 import { clampTerminalFontSize, resolveTerminalFontFamily, DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE } from '../../../../shared/terminal-font'
@@ -96,11 +97,14 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   const [ccLocalDeny, setCcLocalDeny] = useState<string[]>([])
   const [ccLoaded, setCcLoaded] = useState(false)
   const [ccSaved, setCcSaved] = useState(false)
+  // The settings as they were when the dialog opened; Save writes the difference.
+  const loadedRef = useRef<Record<string, unknown> | null>(null)
 
   useEffect(() => {
     window.api.getVersion().then(setAppVersion).catch(() => {})
     window.api.getBuildInfo().then(setBuildInfo).catch(() => {})
     window.api.settingsGetAll().then((s) => {
+      loadedRef.current = s as unknown as Record<string, unknown>
       const loadedAgent = normalizeAgentCli(s.defaultAgentCli)
       setDefaultAgentCli(loadedAgent)
       setAgentArgsTab(loadedAgent)
@@ -208,35 +212,40 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   }
 
   const save = () => {
-    window.api.settingsSet('defaultAgentCli', defaultAgentCli)
-    window.api.settingsSet('claudeArgs', claudeArgs)
-    window.api.settingsSet('codexArgs', codexArgs)
-    window.api.settingsSet('grokArgs', grokArgs)
-    window.api.settingsSet('opencodeArgs', opencodeArgs)
-    window.api.settingsSet('askBeforeLaunch', askBeforeLaunch)
-    window.api.settingsSet('defaultViewMode', defaultViewMode)
-    window.api.settingsSet('notifyOnIdle', notifyOnIdle)
-    window.api.settingsSet('projectsRoot', projectsRoot)
-    window.api.settingsSet('remotePort', remotePort)
-    window.api.settingsSet('favoriteFolders', favoriteFolders)
-    window.api.settingsSet('restoreSessionEnabled', restoreSessionEnabled)
-    window.api.settingsSet('disableShortcuts', disableShortcuts)
-    window.api.settingsSet('restoreSessionResume', restoreSessionResume)
+    // Only what was edited here. Writing every key would put back the old
+    // value of anything changed elsewhere while this dialog was open.
+    const edited = changedSettings(loadedRef.current, {
+      defaultAgentCli: defaultAgentCli,
+      claudeArgs: claudeArgs,
+      codexArgs: codexArgs,
+      grokArgs: grokArgs,
+      opencodeArgs: opencodeArgs,
+      askBeforeLaunch: askBeforeLaunch,
+      defaultViewMode: defaultViewMode,
+      notifyOnIdle: notifyOnIdle,
+      projectsRoot: projectsRoot,
+      remotePort: remotePort,
+      favoriteFolders: favoriteFolders,
+      restoreSessionEnabled: restoreSessionEnabled,
+      disableShortcuts: disableShortcuts,
+      restoreSessionResume: restoreSessionResume,
+      terminalFontFamily: resolveTerminalFontFamily(terminalFontFamily),
+      terminalFontSize: clampTerminalFontSize(terminalFontSize),
+      appFontFamily: resolveAppFontFamily(appFontFamily),
+      uiScalePct: clampUiScalePct(uiScalePct),
+      autopilotApiProvider: apProvider,
+      autopilotPlannerModel: apModel,
+      broadcastRefineModel: refineModel,
+      broadcastAutoRefine: autoRefine,
+      broadcastRefineSystemPrompt: refinePrompt,
+      autopilotDefaultCostCap: apCostCap,
+      autopilotDefaultMaxIterations: apMaxIter,
+    })
+    for (const [key, value] of Object.entries(edited)) window.api.settingsSet(key, value)
     if (!restoreSessionEnabled) {
       // Clear the saved file so the next launch behaves like a fresh install.
       window.api.sessionClearLast().catch(() => {})
     }
-    window.api.settingsSet('terminalFontFamily', resolveTerminalFontFamily(terminalFontFamily))
-    window.api.settingsSet('terminalFontSize', clampTerminalFontSize(terminalFontSize))
-    window.api.settingsSet('appFontFamily', resolveAppFontFamily(appFontFamily))
-    window.api.settingsSet('uiScalePct', clampUiScalePct(uiScalePct))
-    window.api.settingsSet('autopilotApiProvider', apProvider)
-    window.api.settingsSet('autopilotPlannerModel', apModel)
-    window.api.settingsSet('broadcastRefineModel', refineModel)
-    window.api.settingsSet('broadcastAutoRefine', autoRefine)
-    window.api.settingsSet('broadcastRefineSystemPrompt', refinePrompt)
-    window.api.settingsSet('autopilotDefaultCostCap', apCostCap)
-    window.api.settingsSet('autopilotDefaultMaxIterations', apMaxIter)
     onClose()
   }
 
