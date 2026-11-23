@@ -381,6 +381,52 @@ describe('AutopilotStateMachine', () => {
     expect(sm.state.recentLog.some((entry) => entry.summary.includes('control marker invalid'))).toBe(true)
   })
 
+  // The kickoff dialog asks for a maximum number of iterations. The number was
+  // passed in and never read: the limit came from goal.md, which the agent
+  // writes with the default of 40 whatever was asked for.
+  it('pauses at the iteration limit set in the kickoff dialog', async () => {
+    writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())   // goal.md says 40
+    const writes: string[] = []
+    const api = makeApi(() => ({ kind: 'reply', text: 'keep going' }))
+    const sm = new AutopilotStateMachine({
+      terminalId: 't', projectPath: TMP, freeTextIdea: '', costCapUsd: 1, maxIterations: 2,
+      apiProvider: 'anthropic', apiKey: 'test', plannerModel: 'claude-sonnet-4-6',
+      writeToPty: (_id, data) => { writes.push(data) },
+      onPtyData: () => () => {}, onUpdate: () => {},
+      runtimeJson: false, budgetTracker: false,
+    }, api, 10, 24 * 60 * 60 * 1000)
+    await sm.start()
+
+    for (let i = 1; i <= 3; i++) {
+      sm.feedPty(`[ORCH:WAITING] which approach for step ${i}?\n`)
+      await waitForFlush(200)
+    }
+
+    expect(api.decide).toHaveBeenCalledTimes(2)
+    expect(sm.state.phase).toBe('paused')
+    expect(sm.state.recentLog.some((e) => e.summary.includes('max iterations (2) reached'))).toBe(true)
+  })
+
+  it('falls back to the limit in goal.md when the dialog gives none', async () => {
+    const goal = makeGoal()
+    goal.constraints.maxIterations = 1
+    writeGoal(TMP, goal); writeMilestone(TMP, makeMilestone())
+    const api = makeApi(() => ({ kind: 'reply', text: 'keep going' }))
+    const sm = new AutopilotStateMachine({
+      terminalId: 't', projectPath: TMP, freeTextIdea: '', costCapUsd: 1, maxIterations: 0,
+      apiProvider: 'anthropic', apiKey: 'test', plannerModel: 'claude-sonnet-4-6',
+      writeToPty: () => {}, onPtyData: () => () => {}, onUpdate: () => {},
+      runtimeJson: false, budgetTracker: false,
+    }, api, 10, 24 * 60 * 60 * 1000)
+    await sm.start()
+    for (let i = 1; i <= 2; i++) {
+      sm.feedPty(`[ORCH:WAITING] which approach for step ${i}?\n`)
+      await waitForFlush(200)
+    }
+    expect(api.decide).toHaveBeenCalledTimes(1)
+    expect(sm.state.phase).toBe('paused')
+  })
+
   it('halts on cost cap', async () => {
     writeGoal(TMP, makeGoal()); writeMilestone(TMP, makeMilestone())
     const expensiveApi: ApiClient = {

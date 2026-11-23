@@ -292,8 +292,15 @@ export class AutopilotStateMachine {
     }
 
     this.state.cycleCount++
-    if (this.state.cycleCount > (this.state.goal.constraints.maxIterations ?? 40)) {
-      this.transition('paused', `max iterations (${this.state.goal.constraints.maxIterations}) reached`)
+    // The number asked for in the kickoff dialog decides. goal.md also carries
+    // one, but the agent writes that file and fills in the default of 40
+    // whatever was asked, so it is only the fallback.
+    const asked = this.opts.maxIterations
+    const maxIterations = Number.isFinite(asked) && asked > 0
+      ? asked
+      : this.state.goal.constraints.maxIterations ?? 40
+    if (this.state.cycleCount > maxIterations) {
+      this.transition('paused', `max iterations (${maxIterations}) reached`)
       return
     }
 
