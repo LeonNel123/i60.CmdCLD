@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { marked } from 'marked'
+import { useState, useEffect, useMemo, type MouseEvent } from 'react'
+import { renderMarkdownSafe } from '../../../shared/markdown-safe'
 
 interface MarkdownViewerProps {
   filePath: string
@@ -29,7 +29,18 @@ export function MarkdownViewer({ filePath, onClose }: MarkdownViewerProps) {
     return () => document.removeEventListener('keydown', handler)
   }, [onClose])
 
-  const html = content ? marked.parse(content, { async: false }) as string : ''
+  const html = useMemo(() => (content ? renderMarkdownSafe(content) : ''), [content])
+
+  // A link in the document must never navigate this window: it holds the
+  // bridge to every terminal. Web links go to the browser; anything else
+  // (renderMarkdownSafe only leaves in-page anchors) does nothing.
+  const onBodyClick = (e: MouseEvent<HTMLDivElement>) => {
+    const anchor = (e.target as HTMLElement).closest?.('a')
+    if (!anchor) return
+    e.preventDefault()
+    const href = anchor.getAttribute('href') || ''
+    if (/^(https?:|mailto:)/i.test(href)) void window.api.openExternal(href, 'markdown-viewer')
+  }
 
   return (
     <>
@@ -121,6 +132,7 @@ export function MarkdownViewer({ filePath, onClose }: MarkdownViewerProps) {
           ) : (
             <div
               className="markdown-body"
+              onClick={onBodyClick}
               dangerouslySetInnerHTML={{ __html: html }}
             />
           )}
