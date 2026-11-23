@@ -50,6 +50,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
   const [defaultViewMode, setDefaultViewMode] = useState<'grid' | 'focused'>('grid')
   const [notifyOnIdle, setNotifyOnIdle] = useState(false)
   const [restoreSessionEnabled, setRestoreSessionEnabled] = useState(false)
+  const [disableShortcuts, setDisableShortcuts] = useState(false)
   const [restoreSessionResume, setRestoreSessionResume] = useState(false)
   const [terminalFontFamily, setTerminalFontFamily] = useState<string>(DEFAULT_TERMINAL_FONT_FAMILY)
   const [terminalFontSize, setTerminalFontSize] = useState<number>(DEFAULT_TERMINAL_FONT_SIZE)
@@ -116,6 +117,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
       setRemoteLanAccess(s.remoteLanAccess ?? false)
       setFavoriteFolders(s.favoriteFolders ?? [])
       setRestoreSessionEnabled(s.restoreSessionEnabled ?? false)
+      setDisableShortcuts(s.disableShortcuts ?? false)
       setRestoreSessionResume(s.restoreSessionResume ?? false)
       setTerminalFontFamily(resolveTerminalFontFamily(s.terminalFontFamily))
       setTerminalFontSize(clampTerminalFontSize(s.terminalFontSize))
@@ -218,6 +220,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
     window.api.settingsSet('remotePort', remotePort)
     window.api.settingsSet('favoriteFolders', favoriteFolders)
     window.api.settingsSet('restoreSessionEnabled', restoreSessionEnabled)
+    window.api.settingsSet('disableShortcuts', disableShortcuts)
     window.api.settingsSet('restoreSessionResume', restoreSessionResume)
     if (!restoreSessionEnabled) {
       // Clear the saved file so the next launch behaves like a fresh install.
@@ -275,6 +278,7 @@ export function SettingsDialog({ onClose, activeProjectPath }: SettingsDialogPro
             notifyOnIdle={notifyOnIdle} onNotifyOnIdleChange={setNotifyOnIdle}
             restoreSessionEnabled={restoreSessionEnabled} onRestoreSessionEnabledChange={setRestoreSessionEnabled}
             restoreSessionResume={restoreSessionResume} onRestoreSessionResumeChange={setRestoreSessionResume}
+            disableShortcuts={disableShortcuts} onDisableShortcutsChange={setDisableShortcuts}
             projectsRoot={projectsRoot} onProjectsRootChange={setProjectsRoot}
           />
         )

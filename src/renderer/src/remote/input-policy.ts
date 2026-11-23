@@ -40,6 +40,13 @@ export function modKeyLabel(platform: InputPlatform): string {
   return platform === 'darwin' ? '⌘' : 'Ctrl'
 }
 
+// The "Disable keyboard shortcuts" setting. App.tsx keeps it in step with the
+// setting; everything that would act on a key instead of passing it to the
+// program asks here first. Copy and paste are not shortcuts in this sense.
+let shortcutsOff = false
+export function setShortcutsDisabled(disabled: boolean): void { shortcutsOff = disabled }
+export function shortcutsDisabled(): boolean { return shortcutsOff }
+
 export type AppShortcut =
   | { kind: 'terminal'; index: number }
   | { kind: 'grid' }
@@ -60,6 +67,7 @@ const LETTER_SHORTCUTS: Record<string, AppShortcut> = {
  *  broadcast bar and open the palette. Off a Mac the letters also work with
  *  Shift, which is the form that works while a terminal has focus. */
 export function appShortcutOf(e: ShortcutKey, platform: InputPlatform): AppShortcut | null {
+  if (shortcutsOff) return null
   if (e.altKey || !modKeyPressed(e, platform)) return null
   if (platform === 'darwin' ? e.ctrlKey : e.metaKey) return null
   if (!e.shiftKey && e.key >= '1' && e.key <= '9' && e.key.length === 1) {

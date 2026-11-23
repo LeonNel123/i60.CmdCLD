@@ -67,6 +67,8 @@ Open multiple project folders, each running its own Claude or Codex CLI instance
 | Ctrl+0 | Reset zoom |
 | Ctrl+End | Scroll terminal to bottom (no input sent) |
 
+Settings → General → **Disable keyboard shortcuts** turns all of these off, so every key typed in a terminal goes to the program. Copy and paste still work.
+
 **Other**
 - Always starts with a blank slate (no session restore)
 - Close All button to kill all terminals at once

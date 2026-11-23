@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveInputPlatform, pastePolicy, browserClipboardKey, pastedImageFile, inputPlatformOf, modKeyPressed, modKeyLabel, appShortcutOf, terminalYieldsKey } from '../src/renderer/src/remote/input-policy'
+import { resolveInputPlatform, pastePolicy, browserClipboardKey, pastedImageFile, inputPlatformOf, modKeyPressed, modKeyLabel, appShortcutOf, terminalYieldsKey, setShortcutsDisabled, shortcutsDisabled } from '../src/renderer/src/remote/input-policy'
 
 describe('resolveInputPlatform — which OS the keyboard belongs to', () => {
   it('in Electron the host platform is the keyboard platform', () => {
@@ -149,5 +149,32 @@ describe('app shortcuts', () => {
     expect(terminalYieldsKey(key('r', { ctrlKey: true }), 'other')).toBe(false)
     expect(terminalYieldsKey(key('3'), 'other')).toBe(false)
     expect(terminalYieldsKey(key('V', { ctrlKey: true, shiftKey: true }), 'other')).toBe(false)
+  })
+})
+
+// "I type something in a console and suddenly something happens in the app."
+// With the setting on, no key does anything but reach the program.
+describe('shortcuts disabled by the setting', () => {
+  const key = (k: string, mods: Partial<{ ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }> = {}) =>
+    ({ key: k, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...mods })
+
+  it('recognises no app shortcut and takes no key from the terminal', () => {
+    setShortcutsDisabled(true)
+    try {
+      for (const k of ['1', '3', '9', '`', 't', 'b', 'p']) {
+        expect(appShortcutOf(key(k, { ctrlKey: true }), 'other'), k).toBeNull()
+        expect(appShortcutOf(key(k, { metaKey: true }), 'darwin'), k).toBeNull()
+        expect(terminalYieldsKey(key(k, { ctrlKey: true }), 'other'), k).toBe(false)
+        expect(terminalYieldsKey(key(k.toUpperCase(), { ctrlKey: true, shiftKey: true }), 'other'), k).toBe(false)
+      }
+      expect(shortcutsDisabled()).toBe(true)
+    } finally {
+      setShortcutsDisabled(false)
+    }
+  })
+
+  it('is off unless set', () => {
+    expect(shortcutsDisabled()).toBe(false)
+    expect(appShortcutOf(key('t', { ctrlKey: true }), 'other')).toEqual({ kind: 'add-folder' })
   })
 })

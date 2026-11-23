@@ -4,7 +4,7 @@ import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { Sidebar } from './components/Sidebar'
 import { TerminalPanel, killPty, forgetPty } from './components/TerminalPanel'
-import { inputPlatformOf, appShortcutOf } from './remote/input-policy'
+import { inputPlatformOf, appShortcutOf, setShortcutsDisabled } from './remote/input-policy'
 import { markModalOpen } from './utils/modal-state'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { SettingsDialog } from './components/settings/SettingsDialog'
@@ -279,6 +279,7 @@ export default function App() {
     setDefaultViewMode(settings.defaultViewMode)
     setFavoriteFolders(settings.favoriteFolders ?? [])
     setRestoreSessionEnabled(settings.restoreSessionEnabled ?? false)
+    setShortcutsDisabled(settings.disableShortcuts ?? false)
     setRestoreSessionResume(settings.restoreSessionResume ?? false)
     setTerminalFontFamily(resolveTerminalFontFamily(settings.terminalFontFamily))
     setTerminalFontSize(clampTerminalFontSize(settings.terminalFontSize))
@@ -914,6 +915,7 @@ export default function App() {
       setProjectsRoot(s.projectsRoot)
       setDefaultViewMode(s.defaultViewMode)
       setRestoreSessionEnabled(s.restoreSessionEnabled ?? false)
+      setShortcutsDisabled(s.disableShortcuts ?? false)
       setRestoreSessionResume(s.restoreSessionResume ?? false)
       setTerminalFontFamily(resolveTerminalFontFamily(s.terminalFontFamily))
       setTerminalFontSize(clampTerminalFontSize(s.terminalFontSize))

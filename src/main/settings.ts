@@ -31,6 +31,8 @@ export interface AppSettings {
   remoteLanAccess: boolean
   favoriteFolders: string[]
   restoreSessionEnabled: boolean
+  /** No key triggers an app action; everything typed reaches the program. */
+  disableShortcuts: boolean
   restoreSessionResume: boolean
   terminalFontFamily: string
   terminalFontSize: number
@@ -73,6 +75,7 @@ const DEFAULTS: AppSettings = {
   remoteLanAccess: false,
   favoriteFolders: [],
   restoreSessionEnabled: false,
+  disableShortcuts: false,
   restoreSessionResume: false,
   terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
   terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,

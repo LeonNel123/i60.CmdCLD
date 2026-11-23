@@ -11,7 +11,7 @@ import { logicalLineBounds } from '../utils/logical-line'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatPaths } from '../utils/format-paths'
 import { isModalOpen } from '../utils/modal-state'
-import { pastePolicy, inputPlatformOf, browserClipboardKey, pastedImageFile, terminalYieldsKey } from '../remote/input-policy'
+import { pastePolicy, inputPlatformOf, browserClipboardKey, pastedImageFile, terminalYieldsKey, shortcutsDisabled } from '../remote/input-policy'
 import { primeNativeCopy } from '../remote/copy-text'
 import { extractDroppedPaths } from '../utils/dropped-paths'
 import { AGENT_CLI_LABELS, buildAgentLaunchCommand, type AgentCli } from '../../../shared/agent-cli'
@@ -586,6 +586,9 @@ export function TerminalPanel({
       if (e.type === 'keyup' && modKey(e) && e.key === 'v' && paste.interceptModV) {
         return false
       }
+      // Past this point are conveniences (search, zoom, scroll to bottom).
+      // With shortcuts disabled the key belongs to the program.
+      if (shortcutsDisabled()) return true
       // Mod+F: open search
       if (e.type === 'keydown' && modKey(e) && e.key === 'f') {
         setSearchOpen(true)

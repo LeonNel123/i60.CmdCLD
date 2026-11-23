@@ -11,6 +11,8 @@ export interface GeneralPaneProps {
   onRestoreSessionEnabledChange: (v: boolean) => void
   restoreSessionResume: boolean
   onRestoreSessionResumeChange: (v: boolean) => void
+  disableShortcuts: boolean
+  onDisableShortcutsChange: (v: boolean) => void
   projectsRoot: string
   onProjectsRootChange: (v: string) => void
 }
@@ -56,6 +58,13 @@ export function GeneralPane(p: GeneralPaneProps) {
         onChange={p.onRestoreSessionResumeChange}
         label="Resume conversations on reopen"
         hint="Adds --continue (Claude, Grok) / resume --last (Codex) when reopening, so each agent picks up its previous conversation."
+      />
+
+      <CheckboxRow
+        checked={p.disableShortcuts}
+        onChange={p.onDisableShortcutsChange}
+        label="Disable keyboard shortcuts"
+        hint="Nothing you type triggers an app action: no terminal switching, add folder, grid, broadcast bar or command palette, and no search or zoom inside a terminal. Every key goes to the program. Copy and paste still work."
       />
 
       <Field
