@@ -10,6 +10,7 @@ import { livePtyCache } from '../utils/live-pty-cache'
 import { logicalLineBounds } from '../utils/logical-line'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatPaths } from '../utils/format-paths'
+import { isModalOpen } from '../utils/modal-state'
 import { pastePolicy, inputPlatformOf, browserClipboardKey, pastedImageFile, terminalYieldsKey } from '../remote/input-policy'
 import { primeNativeCopy } from '../remote/copy-text'
 import { extractDroppedPaths } from '../utils/dropped-paths'
@@ -543,6 +544,9 @@ export function TerminalPanel({
     const modKey = (e: KeyboardEvent) => isMac ? e.metaKey : e.ctrlKey
 
     term.attachCustomKeyEventHandler((e) => {
+      // A dialog is open over the terminals: nothing typed now is for the
+      // program. Declining also lets the key reach the dialog's own handler.
+      if (isModalOpen()) return false
       // App shortcuts are handled on window, and xterm stops every key it
       // turns into input: decline these so they get there.
       if (terminalYieldsKey(e, isMac ? 'darwin' : 'other')) return false

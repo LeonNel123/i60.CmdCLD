@@ -5,6 +5,7 @@ import 'react-resizable/css/styles.css'
 import { Sidebar } from './components/Sidebar'
 import { TerminalPanel, killPty, forgetPty } from './components/TerminalPanel'
 import { inputPlatformOf, appShortcutOf } from './remote/input-policy'
+import { markModalOpen } from './utils/modal-state'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { SettingsDialog } from './components/settings/SettingsDialog'
 import { LaunchDialog } from './components/LaunchDialog'
@@ -925,6 +926,37 @@ export default function App() {
     })
     return () => { off() }
   }, [])
+
+  // A modal does not take the keyboard by being drawn; the terminal behind it
+  // keeps focus. While one is open, terminals decline every key (modal-state)
+  // and the focused terminal is blurred, then given focus back on close.
+  const modalOpen = Boolean(
+    closingId || showCloseAll || showCloseWindow || showSettings || pendingLaunch
+    || markdownFile || paletteOpen || autopilotKickoffFor || historyOpen,
+  )
+  useEffect(() => {
+    if (!modalOpen) return
+    const release = markModalOpen()
+    const active = document.activeElement as HTMLElement | null
+    const terminalInput = active?.closest?.('.xterm') ? active : null
+    terminalInput?.blur()
+    return () => {
+      release()
+      if (terminalInput?.isConnected && document.activeElement === document.body) terminalInput.focus()
+    }
+  }, [modalOpen])
+
+  // Escape closes the two dialogs that have no handler of their own.
+  useEffect(() => {
+    if (!pendingLaunch && !autopilotKickoffFor) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      setPendingLaunch(null)
+      setAutopilotKickoffFor(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pendingLaunch, autopilotKickoffFor])
 
   // Global keyboard shortcuts (Cmd on macOS, Ctrl on Windows/Linux)
   useEffect(() => {
