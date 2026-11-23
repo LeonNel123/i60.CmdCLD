@@ -122,11 +122,15 @@ describe('app shortcuts', () => {
     expect(appShortcutOf(key('P', { metaKey: true, shiftKey: true }), 'darwin')).toBeNull()
   })
 
-  // Ctrl+digit and Ctrl+` mean nothing useful to a terminal: always the app's.
-  it('takes the digit and grid shortcuts from the terminal', () => {
+  // We do not know what the program binds. Ctrl+digit is terminal input
+  // (Ctrl+3 is Escape), so a focused terminal keeps it.
+  it('leaves Ctrl+digit and Ctrl+` to the program', () => {
     for (const k of ['1', '3', '5', '8', '9', '`']) {
-      expect(terminalYieldsKey(key(k, { ctrlKey: true }), 'other'), k).toBe(true)
+      expect(terminalYieldsKey(key(k, { ctrlKey: true }), 'other'), k).toBe(false)
     }
+  })
+
+  it('takes Cmd+digit on a Mac, where Cmd is never terminal input', () => {
     expect(terminalYieldsKey(key('3', { metaKey: true }), 'darwin')).toBe(true)
   })
 

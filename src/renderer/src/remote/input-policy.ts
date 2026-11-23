@@ -79,15 +79,20 @@ export function appShortcutOf(e: ShortcutKey, platform: InputPlatform): AppShort
 }
 
 /** Should the terminal let this key through to the app instead of sending it
- *  to the program? xterm stops every key it turns into input, so the app only
- *  sees what the terminal declines. Plain Ctrl+P / T / B are real terminal
- *  keys and stay with the program; everything else that is an app shortcut
- *  is the app's. */
+ *  to the program?
+ *
+ *  The rule: a focused terminal keeps every key it can deliver to the program.
+ *  We do not know which keys Claude Code, Codex or anything else binds, so the
+ *  app takes nothing the program could have received. That leaves two cases:
+ *  Cmd on a Mac, which is never terminal input, and Ctrl+Shift+letter, which
+ *  xterm sends as the same byte as Ctrl+letter — the program cannot tell them
+ *  apart, and the plain form still reaches it. Ctrl+digit is terminal input
+ *  (Ctrl+3 is Escape) and stays with the program. */
 export function terminalYieldsKey(e: ShortcutKey, platform: InputPlatform): boolean {
   const shortcut = appShortcutOf(e, platform)
   if (!shortcut) return false
-  if (shortcut.kind === 'terminal' || shortcut.kind === 'grid') return true
-  return platform === 'darwin' || e.shiftKey
+  if (platform === 'darwin') return true
+  return e.shiftKey && shortcut.kind !== 'terminal' && shortcut.kind !== 'grid'
 }
 
 /** Electron intercepts the DOM paste and Mod+V so main can read images and

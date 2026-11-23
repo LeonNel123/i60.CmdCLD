@@ -547,8 +547,8 @@ export function TerminalPanel({
       // A dialog is open over the terminals: nothing typed now is for the
       // program. Declining also lets the key reach the dialog's own handler.
       if (isModalOpen()) return false
-      // App shortcuts are handled on window, and xterm stops every key it
-      // turns into input: decline these so they get there.
+      // App shortcuts the program could never receive (see terminalYieldsKey):
+      // decline them so they reach the handler on window.
       if (terminalYieldsKey(e, isMac ? 'darwin' : 'other')) return false
       // Browser page: copy and paste shortcuts go to the browser's native
       // clipboard events — the only path that works over plain http.
