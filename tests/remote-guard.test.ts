@@ -48,6 +48,30 @@ describe('isRequestAllowed', () => {
     expect(isRequestAllowed('localhost:3456', 'null', LOOPBACK)).toBe(false)
     expect(isRequestAllowed('localhost:3456', 'not a url', LOOPBACK)).toBe(false)
   })
+
+  // Comparing only the hostname let any page served from this machine — a dev
+  // server, a notebook, a docs preview — open the socket and type into PTYs.
+  it('rejects a page on another local port', () => {
+    expect(isRequestAllowed('localhost:3456', 'http://localhost:5173', LOOPBACK)).toBe(false)
+    expect(isRequestAllowed('localhost:3456', 'http://127.0.0.1:8888', LOOPBACK)).toBe(false)
+    expect(isRequestAllowed('localhost:3456', 'http://localhost', LOOPBACK)).toBe(false)
+    expect(isRequestAllowed('127.0.0.1:3456', 'http://[::1]:9000', LOOPBACK)).toBe(false)
+    expect(isRequestAllowed('192.168.1.20:3456', 'http://192.168.1.20:8080', LAN)).toBe(false)
+  })
+
+  it('rejects a local page that names this server by a different loopback spelling', () => {
+    expect(isRequestAllowed('localhost:3456', 'http://127.0.0.1:3456', LOOPBACK)).toBe(false)
+  })
+
+  it('accepts the server\'s own pages on every address it answers on', () => {
+    expect(isRequestAllowed('127.0.0.1:3456', 'http://127.0.0.1:3456', LOOPBACK)).toBe(true)
+    expect(isRequestAllowed('[::1]:3456', 'http://[::1]:3456', LOOPBACK)).toBe(true)
+    expect(isRequestAllowed('192.168.1.20:3456', 'http://192.168.1.20:3456', LAN)).toBe(true)
+    expect(isRequestAllowed('LocalHost:3456', 'http://localhost:3456', LOOPBACK)).toBe(true)
+    expect(isRequestAllowed('localhost:80', 'http://localhost', LOOPBACK)).toBe(true)
+    expect(isRequestAllowed('mymachine.tail1234.ts.net', 'https://mymachine.tail1234.ts.net', LOOPBACK)).toBe(true)
+    expect(isRequestAllowed('mymachine.tail1234.ts.net:443', 'https://mymachine.tail1234.ts.net', LOOPBACK)).toBe(true)
+  })
 })
 
 describe('namesTailscaleHost', () => {

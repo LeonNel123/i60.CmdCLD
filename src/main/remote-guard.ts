@@ -40,15 +40,35 @@ export function isRequestAllowed(
 ): boolean {
   if (!hostHeader || !isAllowedHostname(hostHeaderName(hostHeader), opts)) return false
   if (originHeader !== undefined) {
-    let originName: string
+    let origin: URL
     try {
-      originName = new URL(originHeader).hostname.toLowerCase()
+      origin = new URL(originHeader)
     } catch {
       return false // covers "Origin: null" and malformed values
     }
-    if (!isAllowedHostname(originName.replace(/^\[|\]$/g, ''), opts)) return false
+    const originName = origin.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+    if (!isAllowedHostname(originName, opts)) return false
+    // This machine's own Tailscale name is served by Tailscale itself, which
+    // proxies to us; nothing else answers on it. Every other allowed name
+    // (loopback, a LAN address) is shared with whatever else runs here, so the
+    // page must come from this server: same host and same port as the request.
+    if (originName.endsWith('.ts.net')) return true
+    return sameHostAndPort(origin, hostHeader)
   }
   return true
+}
+
+function defaultPort(protocol: string): string {
+  return protocol === 'https:' ? '443' : '80'
+}
+
+function sameHostAndPort(origin: URL, hostHeader: string): boolean {
+  const h = hostHeader.trim().toLowerCase()
+  const portMatch = /:(\d+)$/.exec(h.startsWith('[') ? h.slice(h.indexOf(']') + 1) : h)
+  const hostPort = portMatch ? portMatch[1] : defaultPort(origin.protocol)
+  const originPort = origin.port || defaultPort(origin.protocol)
+  const originName = origin.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  return originName === hostHeaderName(hostHeader) && originPort === hostPort
 }
 
 /** True when a rejected request named some `.ts.net` host — worth re-reading
