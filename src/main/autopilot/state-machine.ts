@@ -28,6 +28,7 @@ export class AutopilotStateMachine {
   private watcher: PtyWatcher
   private detachPty: (() => void) | null = null
   private settleResolvers: Array<() => void> = []
+  private resetInProgress = false
   private outputVolumeSinceReset = 0
   private partialStreak = 0
   private markerFallbackPromptCount = 0
@@ -194,6 +195,11 @@ export class AutopilotStateMachine {
 
   private async onSettled(snap: SettledSnapshot): Promise<void> {
     while (this.settleResolvers.length) this.settleResolvers.shift()?.()
+    // A settle that arrives while a reset is running is the agent answering
+    // the reset's own prompts. It has just released the reset's wait above and
+    // is nothing more: handled as a marker it started a second reset inside
+    // the first, and their prompts interleaved with the clear command.
+    if (this.resetInProgress) return
     if (!this.canProcessPty()) return
 
     const markerSignature = this.markerSignature(snap.marker)
@@ -557,6 +563,16 @@ export class AutopilotStateMachine {
   }
 
   private async reset(reason: string): Promise<void> {
+    if (this.resetInProgress) return
+    this.resetInProgress = true
+    try {
+      await this.runReset(reason)
+    } finally {
+      this.resetInProgress = false
+    }
+  }
+
+  private async runReset(reason: string): Promise<void> {
     this.appendActivity('orchestrator-reset', reason)
     await runResetSequence({
       writeToPty: (s) => {

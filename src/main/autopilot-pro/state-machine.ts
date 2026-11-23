@@ -244,6 +244,7 @@ export class AutopilotProStateMachine {
   private markerFallbackPromptCount = 0
   private outputVolumeSinceReset = 0
   private settleResolvers: (() => void)[] = []
+  private resetInProgress = false
   private maxDoerOutputPerReset: number
   private runtimeJsonEnabled: boolean
   private budgetTrackerEnabled: boolean
@@ -595,6 +596,11 @@ export class AutopilotProStateMachine {
 
     // Drain any pending waitForSettle promises (used by reset())
     while (this.settleResolvers.length) this.settleResolvers.shift()?.()
+    // A settle that arrives while a reset is running is the agent answering
+    // the reset's own prompts. It has just released the reset's wait above and
+    // is nothing more: handled as a marker it started a second reset inside
+    // the first, and their prompts interleaved with the clear command.
+    if (this.resetInProgress) return
 
     // Output threshold reset only at a stable implementation checkpoint.
     // Discovery/planning/review stages often produce large artifacts; clearing
@@ -1220,6 +1226,16 @@ On your question: ${answer}`
   }
 
   private async reset(reason: string): Promise<void> {
+    if (this.resetInProgress) return
+    this.resetInProgress = true
+    try {
+      await this.runReset(reason)
+    } finally {
+      this.resetInProgress = false
+    }
+  }
+
+  private async runReset(reason: string): Promise<void> {
     this.appendActivity('orchestrator-reset', reason)
     this.notify()
     await runResetSequencePro({

@@ -1530,6 +1530,40 @@ describe('PRO context-reset path (Wave 4.0)', () => {
     expect(writes.some((w) => w.includes('state.md'))).toBe(true)
   })
 
+  it('treats the agent\u2019s replies during a reset as part of the reset', async () => {
+    setupExecuting()
+    const writes: string[] = []
+    const opts: AutopilotProOptions = {
+      terminalId: 't',
+      projectPath: TMP,
+      freeTextIdea: 'x',
+      costCapUsd: 1.0,
+      apiProvider: 'anthropic',
+      apiKey: 'fake',
+      plannerModel: 'claude-sonnet-4-6',
+      maxDoerOutputPerReset: 50,
+      writeToPty: (_id, data) => { writes.push(data) },
+      onPtyData: () => () => {},
+      onUpdate: () => {},
+    }
+    const api = fakeChatClient(() => ({ shape: 'reply', text: 'planner-reply' }))
+    const sm = new AutopilotProStateMachine(opts, api, 10, 24 * 60 * 60 * 1000)
+    await sm.start()
+    writes.length = 0
+    sm.feedPty('x'.repeat(60) + '\n')
+    sm.feedPty('[ORCH:WAITING] q\nDECISION_SHAPE: reply\n')
+    await flush()
+    sm.feedPty('summary written\n[ORCH:WAITING] saved\nDECISION_SHAPE: reply\n')
+    await flush()
+    sm.feedPty('cleared\n[ORCH:WAITING] ready\nDECISION_SHAPE: reply\n')
+    await flush()
+
+    expect(writes.filter((w) => w.includes('state.md') && w.includes('/clear')).length).toBeLessThanOrEqual(1)
+    expect(writes.filter((w) => w.trim() === '/clear').length).toBe(1)
+    expect((api.chat as any).mock.calls.length).toBe(0)
+    sm.stop()
+  })
+
   it('threshold does not reset during planning artifact work', async () => {
     writeArtifact(TMP, 'spec', '# spec'); markApproved(TMP, 'spec')
     const writes: string[] = []

@@ -174,6 +174,39 @@ describe('AutopilotStateMachine', () => {
     expect(writes.some((w) => w === 'next\r')).toBe(false)
   })
 
+  // The reset asks for a summary, waits for the agent to settle, clears, waits
+  // again. Each of those settles is a marker like any other, and it was handled
+  // like any other: the volume was still over the limit, so a second reset
+  // started inside the first and their prompts interleaved with /clear.
+  it('treats the agent\u2019s replies during a reset as part of the reset', async () => {
+    const goal = makeGoal()
+    goal.constraints.maxDoerOutputPerReset = 50
+    const milestone = makeMilestone()
+    milestone.subgoals.push({ id: 's2', description: 'b', status: 'pending' })
+    writeGoal(TMP, goal); writeMilestone(TMP, milestone)
+    const writes: string[] = []
+    const api = makeApi(() => ({ kind: 'reply', text: 'next' }))
+    const sm = makeSm('idea', api, writes)
+    await sm.start()
+    sm.approveGoal()
+    writes.length = 0
+
+    ;(sm as any).outputVolumeSinceReset = 100
+    sm.feedPty('[ORCH:WAITING] checkpoint\n')
+    await waitForFlush(200)
+    sm.feedPty('summary written\n[ORCH:WAITING] state saved\n')
+    await waitForFlush(200)
+    sm.feedPty('context cleared\n[ORCH:WAITING] ready\n')
+    await waitForFlush(200)
+
+    const summaryAsks = writes.filter((w) => w.includes('Before we /clear context')).length
+    const clears = writes.filter((w) => w.trim() === '/clear').length
+    expect(summaryAsks).toBe(1)
+    expect(clears).toBe(1)
+    expect(api.decide).not.toHaveBeenCalled()
+    expect(writes.some((w) => w === 'next\r')).toBe(false)
+  })
+
   it('does not reset a WAITING marker that carries completed subgoal metadata', async () => {
     const goal = makeGoal()
     goal.constraints.maxDoerOutputPerReset = 50
