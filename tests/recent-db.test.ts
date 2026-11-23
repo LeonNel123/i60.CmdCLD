@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { RecentDB, getEffectiveRoot, checkPathStatus, RECENT_LIMIT } from '../src/main/recent-db'
-import { mkdirSync, rmSync, mkdtempSync } from 'fs'
+import { mkdirSync, rmSync, mkdtempSync, writeFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -221,5 +221,33 @@ describe('RecentDB.pruneStale', () => {
     expect(remaining).toContain(realPath)
     expect(remaining).toContain(fakePath)
     expect(remaining).not.toContain(missingPath)
+  })
+})
+
+// recent.db was written in place, so a crash mid-write left a torn file, and a
+// torn file made start-up fail for good: every later call waited on a start
+// that had already thrown, and the recent list stayed empty until the file was
+// deleted by hand.
+describe('RecentDB — a damaged file', () => {
+  const dir = join(__dirname, '.tmp-recent-damaged')
+  const path = join(dir, 'recent.db')
+  beforeEach(() => { mkdirSync(dir, { recursive: true }) })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('starts empty, works, and keeps a copy of the damaged file', async () => {
+    writeFileSync(path, 'this is not a database, it is a torn write')
+    const damaged = new RecentDB(path)
+    expect(await damaged.list()).toEqual([])
+    await damaged.add('C:\projects\after')
+    expect((await damaged.list()).map((r) => r.path)).toEqual(['C:\projects\after'])
+    damaged.close()
+    expect(readdirSync(dir).filter((f) => f.startsWith('recent.db.corrupt-'))).toHaveLength(1)
+  })
+
+  it('leaves no temporary file behind after a write', async () => {
+    const fresh = new RecentDB(path)
+    await fresh.add('C:\projects\a')
+    fresh.close()
+    expect(readdirSync(dir)).toEqual(['recent.db'])
   })
 })

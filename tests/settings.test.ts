@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { Settings } from '../src/main/settings'
 import {
@@ -196,5 +196,40 @@ describe('resolveTerminalFontFamily', () => {
     expect(resolveTerminalFontFamily('   ')).toBe(DEFAULT_TERMINAL_FONT_FAMILY)
     expect(resolveTerminalFontFamily(undefined)).toBe(DEFAULT_TERMINAL_FONT_FAMILY)
     expect(resolveTerminalFontFamily(null)).toBe(DEFAULT_TERMINAL_FONT_FAMILY)
+  })
+})
+
+// A settings.json that does not parse (a hand edit with a stray comma) loaded
+// as defaults without a word, and the next setting change wrote those defaults
+// over the file: every setting gone, nothing to recover from.
+describe('Settings — a file that cannot be parsed', () => {
+  const damaged = '{ "claudeArgs": "--foo", "remotePort": 4000, }'
+  const copies = () => readdirSync(TMP).filter((f) => f.startsWith('settings.json.corrupt-'))
+
+  it('keeps a copy of the file before anything can overwrite it', () => {
+    writeFileSync(FILE, damaged)
+    const s = new Settings(FILE)
+    expect(copies()).toHaveLength(1)
+    s.set('remotePort', 5000)
+    expect(readFileSync(join(TMP, copies()[0]), 'utf-8')).toBe(damaged)
+  })
+
+  it('still starts, on defaults', () => {
+    writeFileSync(FILE, damaged)
+    const s = new Settings(FILE)
+    expect(s.get('remotePort')).toBe(new Settings(join(TMP, 'none.json')).get('remotePort'))
+  })
+
+  it('treats a file holding something other than an object the same way', () => {
+    writeFileSync(FILE, '[1,2,3]')
+    new Settings(FILE)
+    expect(copies()).toHaveLength(1)
+  })
+
+  it('makes no copy of a good or a missing file', () => {
+    new Settings(FILE)
+    writeFileSync(FILE, JSON.stringify({ remotePort: 4000 }))
+    expect(new Settings(FILE).get('remotePort')).toBe(4000)
+    expect(copies()).toHaveLength(0)
   })
 })

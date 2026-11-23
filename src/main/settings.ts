@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'fs'
+import { backupCorrupt } from './autopilot/corrupt-backup'
 import { dirname } from 'path'
 import { DEFAULT_AGENT_CLI, normalizeAgentCli, type AgentCli } from '../shared/agent-cli'
 import { DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE } from '../shared/terminal-font'
@@ -100,15 +101,19 @@ export class Settings {
   }
 
   private load(): AppSettings {
+    if (!existsSync(this.filePath)) return { ...DEFAULTS }
     try {
-      if (existsSync(this.filePath)) {
-        const raw = JSON.parse(readFileSync(this.filePath, 'utf-8'))
-        const merged = { ...DEFAULTS, ...raw }
-        merged.defaultAgentCli = normalizeAgentCli(merged.defaultAgentCli)
-        return merged
-      }
-    } catch {}
-    return { ...DEFAULTS }
+      const raw: unknown = JSON.parse(readFileSync(this.filePath, 'utf-8'))
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('not an object')
+      const merged = { ...DEFAULTS, ...(raw as Partial<AppSettings>) }
+      merged.defaultAgentCli = normalizeAgentCli(merged.defaultAgentCli)
+      return merged
+    } catch {
+      // Start on defaults, but keep what was there: the next set() rewrites
+      // the file, and a stray comma should not cost every setting.
+      backupCorrupt(this.filePath)
+      return { ...DEFAULTS }
+    }
   }
 
   get<K extends keyof AppSettings>(key: K): AppSettings[K] {

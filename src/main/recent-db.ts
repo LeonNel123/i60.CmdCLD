@@ -1,5 +1,6 @@
 import initSqlJs, { Database } from 'sql.js/dist/sql-asm.js'
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'fs'
+import { backupCorrupt } from './autopilot/corrupt-backup'
 import { dirname, parse as parsePath } from 'path'
 
 // ---------- drive-root helpers ----------
@@ -61,24 +62,30 @@ export class RecentDB {
   private async init(): Promise<void> {
     const SQL = await initSqlJs()
 
-    try {
-      if (existsSync(this.dbPath)) {
-        const buffer = readFileSync(this.dbPath)
-        this.db = new SQL.Database(buffer)
-      } else {
-        this.db = new SQL.Database()
-      }
-    } catch {
-      this.db = new SQL.Database()
-    }
-
-    this.db.run(`
+    const createTable = `
       CREATE TABLE IF NOT EXISTS recent_folders (
         path TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         last_opened INTEGER NOT NULL
       )
-    `)
+    `
+    try {
+      if (existsSync(this.dbPath)) {
+        // sql.js accepts any bytes here; a damaged file only fails at the
+        // first statement, so that statement is part of opening it.
+        const opened = new SQL.Database(readFileSync(this.dbPath))
+        opened.run(createTable)
+        this.db = opened
+      }
+    } catch {
+      // Keep the damaged file aside and start again. Throwing from here left
+      // `ready` rejected for good, and with it every later call.
+      backupCorrupt(this.dbPath)
+    }
+    if (!this.db) {
+      this.db = new SQL.Database()
+      this.db.run(createTable)
+    }
     this.save()
     this.pruneStaleInternal()  // one-shot startup sweep
   }
@@ -88,7 +95,11 @@ export class RecentDB {
     try {
       mkdirSync(dirname(this.dbPath), { recursive: true })
       const data = this.db.export()
-      writeFileSync(this.dbPath, Buffer.from(data))
+      // Write beside the file and rename: a crash mid-write must not leave a
+      // torn database where the good one was.
+      const tmp = this.dbPath + '.tmp'
+      writeFileSync(tmp, Buffer.from(data))
+      renameSync(tmp, this.dbPath)
     } catch {}
   }
 
