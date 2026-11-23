@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, renameSync, unlinkSync } from 'fs'
 import { join, dirname } from 'path'
 import { homedir } from 'os'
 
@@ -6,18 +6,46 @@ const settingsPath = (): string => join(homedir(), '.claude', 'settings.json')
 const settingsLocalPath = (): string => join(homedir(), '.claude', 'settings.local.json')
 const claudeJsonPath = (): string => join(homedir(), '.claude.json')
 
-function readJson(path: string): Record<string, unknown> | null {
+type JsonObject = Record<string, unknown>
+
+// These files belong to Claude Code, which rewrites them while it runs. A read
+// can therefore land on a half-written or damaged file, and that is not the
+// same as no file: 'missing' may be created, 'unreadable' must be left alone.
+type ReadResult = { state: 'ok'; data: JsonObject } | { state: 'missing' } | { state: 'unreadable' }
+
+function readJsonFile(path: string): ReadResult {
+  let text: string
   try {
-    if (!existsSync(path)) return null
-    return JSON.parse(readFileSync(path, 'utf-8'))
+    text = readFileSync(path, 'utf-8')
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'ENOENT' ? { state: 'missing' } : { state: 'unreadable' }
+  }
+  try {
+    const data: unknown = JSON.parse(text)
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return { state: 'unreadable' }
+    return { state: 'ok', data: data as JsonObject }
   } catch {
-    return null
+    return { state: 'unreadable' }
   }
 }
 
+function readJson(path: string): JsonObject | null {
+  const r = readJsonFile(path)
+  return r.state === 'ok' ? r.data : null
+}
+
+// Write beside the target and rename over it, so a reader (Claude Code) never
+// sees a partial file and a crash mid-write leaves the old one intact.
 function writeJson(path: string, data: unknown): void {
   mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(data, null, 2))
+  const tmp = `${path}.cmdcld-${process.pid}.tmp`
+  try {
+    writeFileSync(tmp, JSON.stringify(data, null, 2))
+    renameSync(tmp, path)
+  } catch (e) {
+    try { unlinkSync(tmp) } catch { /* nothing to clean up */ }
+    throw e
+  }
 }
 
 // Read both global and local Claude settings files for the UI
@@ -31,7 +59,11 @@ export function readClaudeConfig(): { global: Record<string, unknown>; local: Re
 // Write back the global or local settings, preserving fields the UI doesn't edit
 export function writeClaudeConfig(scope: 'global' | 'local', data: Record<string, unknown>): void {
   const path = scope === 'global' ? settingsPath() : settingsLocalPath()
-  const current = readJson(path) || {}
+  const read = readJsonFile(path)
+  if (read.state === 'unreadable') {
+    throw new Error(`${path} could not be read as JSON; it was left unchanged`)
+  }
+  const current = read.state === 'ok' ? read.data : {}
   const merged = { ...current, ...data }
   // If permissions was updated, merge it properly
   if (data.permissions && current.permissions) {
@@ -54,7 +86,11 @@ export function trustFolder(folderPath: string): void {
   if (!folderPath) return
   try {
     const path = claudeJsonPath()
-    const current = (readJson(path) as Record<string, unknown>) || {}
+    const read = readJsonFile(path)
+    // Unreadable right now (mid-write, damaged): do nothing. Claude asks its
+    // trust question once; rewriting the file would cost every other project.
+    if (read.state === 'unreadable') return
+    const current = read.state === 'ok' ? read.data : {}
     const projects = (current.projects as Record<string, Record<string, unknown>>) || {}
     const existing = projects[folderPath] || {}
     if (existing.hasTrustDialogAccepted === true) return

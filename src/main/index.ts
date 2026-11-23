@@ -946,7 +946,12 @@ ipcMain.handle('agent-cli:availability', () => detectAgentCliAvailability())
 ipcMain.handle('claude-config:read', () => readClaudeConfig())
 
 ipcMain.handle('claude-config:write', (_event, scope: 'global' | 'local', data: Record<string, unknown>) => {
-  writeClaudeConfig(scope, data)
+  try {
+    writeClaudeConfig(scope, data)
+  } catch (e) {
+    log(`claude-config:write ${scope} refused: ${e}`)
+    throw e
+  }
 })
 
 // Last-session store — best-effort persistence of the open project set.
