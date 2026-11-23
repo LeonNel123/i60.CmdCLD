@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Menu, powerSaveBlocker, safeStorage, screen } from 'electron'
 import { join, resolve as resolvePath, sep as pathSep } from 'path'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
 import { spawn, execSync } from 'child_process'
 import { appendFileSync, existsSync, statSync, writeFileSync, readFileSync, mkdirSync } from 'fs'
 import * as os from 'os'
@@ -11,6 +11,7 @@ import { Store } from './store'
 import { WindowRegistry } from './window-registry'
 import { RecentDB } from './recent-db'
 import { recoverAfterRenderGone, recoveryActionForInput } from './window-recovery'
+import { navigationDecision } from './navigation-guard'
 import { PromptLog, sentTextOf } from './prompt-log'
 import { detectTerminals, openExternalTerminal } from './external-terminal'
 import { Settings } from './settings'
@@ -381,6 +382,26 @@ function createWindow(opts?: { empty?: boolean; persistedId?: string }): { id: s
     }
     return { action: 'deny' }
   })
+
+  // The window only ever shows the app's own page (navigation-guard.ts). The
+  // reference is what the first load actually reports, since Chromium's
+  // spelling of a file URL is the one later navigations are compared against.
+  let appUrl = process.env.ELECTRON_RENDERER_URL
+    || pathToFileURL(join(__dirname, '../renderer/index.html')).href
+  win.webContents.once('did-finish-load', () => {
+    const loaded = win.webContents.getURL()
+    if (loaded) appUrl = loaded
+  })
+  const guardNavigation = (event: { preventDefault: () => void }, url: string): void => {
+    const decision = navigationDecision(url, appUrl)
+    if (decision === 'allow') return
+    event.preventDefault()
+    log(`window ${id}: navigation ${decision === 'external' ? 'sent to browser' : 'refused'}: ${url}`)
+    if (decision === 'external') shell.openExternal(url)
+  }
+  win.webContents.on('will-navigate', guardNavigation)
+  win.webContents.on('will-redirect', guardNavigation)
+  win.webContents.on('will-attach-webview', (event) => event.preventDefault())
 
   if (process.env.ELECTRON_RENDERER_URL) {
     const url = new URL(process.env.ELECTRON_RENDERER_URL)
