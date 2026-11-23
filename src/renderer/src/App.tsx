@@ -96,6 +96,7 @@ export default function App() {
   // Ref mirror so setTerminals updaters and the activity listener see the
   // current set without joining every dependency array.
   const minimizedRef = useRef(minimizedIds)
+  const terminalsRef = useRef<TerminalEntry[]>([])
   minimizedRef.current = minimizedIds
   const [closingId, setClosingId] = useState<string | null>(null)
   const [closeWarning, setCloseWarning] = useState<string | null>(null)
@@ -359,6 +360,7 @@ export default function App() {
 
   // Which window may write the one last-session file, and when an empty list
   // is worth writing: see shouldSaveSession.
+  terminalsRef.current = terminals
   const hadTerminalsRef = useRef(false)
   if (terminals.length > 0) hadTerminalsRef.current = true
   const maySaveSession = shouldSaveSession({
@@ -514,31 +516,37 @@ export default function App() {
     return unsub
   }, [defaultViewMode, rememberProjectAgent])
 
+  // Add one tile to whatever is open *now*. Every add path used to build the
+  // new list from the `terminals` it closed over, and several of them await
+  // first (a folder picker, the home folder): a session closed from another
+  // client in that gap came back with the new tile, and a tile that comes back
+  // relaunches its agent. Colour is picked here for the same reason.
+  const appendTile = useCallback((entry: Omit<TerminalEntry, 'color'> & { color?: string }) => {
+    setTerminals((prev) => {
+      const tile: TerminalEntry = { ...entry, color: entry.color ?? assignColor(prev.map((t) => t.color)) }
+      const next = [...prev, tile]
+      setLayouts(layoutsForVisible(next, minimizedRef.current))
+      if (prev.length === 0 && defaultViewMode === 'focused') {
+        setViewMode({ type: 'focused', terminalId: tile.id })
+      }
+      return next
+    })
+  }, [defaultViewMode])
+
   // Actually create a terminal with a specific agent CLI + args.
   const createTerminal = useCallback((folderPath: string, args: string, agentCli: AgentCli = defaultAgentCli) => {
     const normalizedAgent = normalizeAgentCli(agentCli)
     rememberProjectAgent(folderPath, rememberLaunch(normalizedAgent, args, { claudeArgs, codexArgs, grokArgs, opencodeArgs }))
-    const usedColors = terminals.map((t) => t.color)
-    const newEntry: TerminalEntry = {
+    appendTile({
       id: crypto.randomUUID(),
       path: folderPath,
       name: folderPath.split(/[\\/]/).pop() || folderPath,
-      color: assignColor(usedColors),
       agentCli: normalizedAgent,
       claudeArgs: normalizedAgent === 'claude' ? args : '',
       codexArgs: normalizedAgent === 'codex' ? args : '',
       grokArgs: normalizedAgent === 'grok' ? args : '',
       opencodeArgs: normalizedAgent === 'opencode' ? args : '',
-    }
-
-    const newTerminals = [...terminals, newEntry]
-    setTerminals(newTerminals)
-    if (terminals.length === 0 && defaultViewMode === 'focused') {
-      setViewMode({ type: 'focused', terminalId: newEntry.id })
-    }
-
-    const newLayouts = layoutsForVisible(newTerminals, minimizedRef.current)
-    setLayouts(newLayouts)
+    })
 
     window.api.recentAdd(folderPath).then(() => {
       return window.api.recentList()
@@ -546,7 +554,7 @@ export default function App() {
       setRecentFolders(list)
     }).catch(() => {})
 
-  }, [defaultAgentCli, defaultViewMode, terminals, showToast, rememberProjectAgent, claudeArgs, codexArgs, grokArgs, opencodeArgs])
+  }, [defaultAgentCli, appendTile, showToast, rememberProjectAgent, claudeArgs, codexArgs, grokArgs, opencodeArgs])
 
   // Start the folder-open flow (may show dialog or launch directly).
   // Pass agentOverride to force a specific CLI — used by the right-click
@@ -571,23 +579,14 @@ export default function App() {
   // Spawn a plain shell for the same folder path as an existing terminal
   const handleSpawnShell = useCallback((folderPath: string, parentColor: string) => {
     const folderName = folderPath.split(/[\\/]/).pop() || folderPath
-    const newEntry: TerminalEntry = {
+    appendTile({
       id: crypto.randomUUID(),
       path: folderPath,
       name: `${folderName} (shell)`,
       color: parentColor,
       isPlainShell: true,
-    }
-
-    const newTerminals = [...terminals, newEntry]
-    setTerminals(newTerminals)
-    if (terminals.length === 0 && defaultViewMode === 'focused') {
-      setViewMode({ type: 'focused', terminalId: newEntry.id })
-    }
-
-    const newLayouts = layoutsForVisible(newTerminals, minimizedRef.current)
-    setLayouts(newLayouts)
-  }, [defaultViewMode, terminals])
+    })
+  }, [appendTile])
 
   const handleCloseAll = useCallback(() => {
     setShowCloseAll(true)
@@ -638,26 +637,17 @@ export default function App() {
   const handleQuickShell = useCallback(async () => {
     const homeDir = await window.api.getHomeDir()
     const folderName = homeDir.split(/[\\/]/).pop() || homeDir
-    const usedColors = terminals.map((t) => t.color)
-    const newEntry: TerminalEntry = {
+    appendTile({
       id: crypto.randomUUID(),
       path: homeDir,
       name: `${folderName} (shell)`,
-      color: assignColor(usedColors),
       isPlainShell: true,
-    }
-    const newTerminals = [...terminals, newEntry]
-    setTerminals(newTerminals)
-    if (terminals.length === 0 && defaultViewMode === 'focused') {
-      setViewMode({ type: 'focused', terminalId: newEntry.id })
-    }
-    const newLayouts = layoutsForVisible(newTerminals, minimizedRef.current)
-    setLayouts(newLayouts)
+    })
     // Deliberately NOT recorded in recents. This is a scratch shell in the
     // home folder, not a project the user opened — recording it spent a
     // recents slot on ~/ and pushed a real project out. The admin-shell
     // variant below has never recorded one either.
-  }, [defaultViewMode, terminals])
+  }, [appendTile])
 
   // Windows-only. In-grid admin tile when an elevation bridge (gsudo / sudo
   // inline) can relay the elevated shell into our pty; otherwise a separate
@@ -668,22 +658,13 @@ export default function App() {
       if (mode === 'in-app') {
         const homeDir = await window.api.getHomeDir()
         const folderName = homeDir.split(/[\\/]/).pop() || homeDir
-        const usedColors = terminals.map((t) => t.color)
-        const newEntry: TerminalEntry = {
+        appendTile({
           id: crypto.randomUUID(),
           path: homeDir,
           name: `${folderName} (admin shell)`,
-          color: assignColor(usedColors),
           isPlainShell: true,
           elevated: true,
-        }
-        const newTerminals = [...terminals, newEntry]
-        setTerminals(newTerminals)
-        if (terminals.length === 0 && defaultViewMode === 'focused') {
-          setViewMode({ type: 'focused', terminalId: newEntry.id })
-        }
-        const newLayouts = layoutsForVisible(newTerminals, minimizedRef.current)
-        setLayouts(newLayouts)
+        })
         return
       }
       const res = await window.api.openAdminShell()
@@ -693,7 +674,7 @@ export default function App() {
     } catch {
       showToast('Admin shell failed to launch', 'warn')
     }
-  }, [showToast, terminals, defaultViewMode])
+  }, [showToast, appendTile])
 
   const handleToggleFavorite = useCallback((path: string) => {
     setFavoriteFolders((prev) => {
@@ -1296,7 +1277,9 @@ export default function App() {
                   handleOpenRecent(path)
                   // Defer until terminal is created; pick up via the most recent terminal of this path.
                   setTimeout(() => {
-                    const t = terminals.find((tt) => tt.path === path)
+                    // The tile list as it is now: `terminals` here is the list from
+                    // before the tile was added. Newest tile for this folder.
+                    const t = [...terminalsRef.current].reverse().find((tt) => tt.path === path)
                     if (t) setAutopilotKickoffFor(t.id)
                   }, 200)
                 }},
